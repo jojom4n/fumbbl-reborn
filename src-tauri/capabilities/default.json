@@ -1,0 +1,16 @@
+{
+  "identifier": "default",
+  "description": "allows http access to fumbbl",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "http:allow-fetch",
+    "store:default"
+  ],
+  "allow": [
+    {
+      "identifier": "http:allow-fetch",
+      "url": "https://fumbbl.com/api/*"
+    }
+  ]
+}
