@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { MessageSquare, Dice5, Activity, Shield, Users, Settings, ChevronRight, Search, Send } from 'lucide-react';
 
-// --- TIPI (Mockup Dati) ---
+// --- TYPES (Mock Data) ---
 interface Player {
   id: number;
   name: string;
@@ -34,13 +34,13 @@ const TEAM_2_PLAYERS: Player[] = [
   { id: 101, name: 'Elf Player', number: 1, status: 'active', skills: ['AG', 'D'], position: 'AP' },
   { id: 102, name: 'Elf Player', number: 2, status: 'active', skills: [], position: 'AP' },
   { id: 103, name: 'Elf Lineman', number: 3, status: 'active', skills: [], position: 'BL' },
-  // ... altri giocatori
+  // ... more players
 ];
 
-// --- COMPONENTI UI ---
+// --- UI COMPONENTS ---
 
 const StatusIcon = ({ status }: { status: string }) => {
-  // Placeholder per le icone di status (feriti, attivi, ecc.)
+  // Placeholder for status icons (injured, active, etc.)
   if (status === 'injured') return <div className="w-3 h-3 bg-red-500 rounded-full" title="Injured" />;
   if (status === 'dead') return <div className="w-3 h-3 bg-red-800 rounded-full" title="Dead" />;
   return <div className="w-3 h-3 bg-green-500 rounded-full" title="Active" />;
@@ -69,7 +69,7 @@ const PlayerRow = ({ player }: { player: Player }) => (
 
 const Header = () => (
   <header className="h-16 bg-[#1a1a1a] border-b border-white/10 flex items-center justify-between px-4 shrink-0">
-    {/* Squadre e Punteggio */}
+    {/* Teams and Score */}
     <div className="flex items-center gap-4 w-1/4">
       <div className="flex items-center gap-2">
         <div className="w-10 h-10 bg-green-800 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold">Orc</div>
@@ -82,7 +82,7 @@ const Header = () => (
       </div>
     </div>
 
-    {/* Info Partita */}
+    {/* Match Info */}
     <div className="flex items-center justify-center gap-8 w-2/4">
       <div className="flex flex-col items-center">
         <span className="text-xs text-gray-400">TURN</span>
@@ -106,7 +106,7 @@ const Header = () => (
         </div>
       </div>
 
-      {/* Meteo */}
+      {/* Weather */}
       <div className="flex flex-col items-center">
         <span className="text-xs text-gray-400">WEATHER</span>
         <div className="text-sm text-blue-300 flex items-center gap-1">
@@ -132,7 +132,7 @@ const Header = () => (
 const DiceLogPanel = () => (
   <div className="bg-[#1e1e1e] border border-white/10 rounded-lg p-2 h-full flex flex-col">
     <div className="text-xs text-gray-400 mb-2 font-bold uppercase flex items-center gap-2">
-      <Dice5 size={14} /> Log dei Dadi
+      <Dice5 size={14} /> Dice Log
     </div>
     <div className="flex-1 overflow-y-auto text-xs space-y-2">
       {[
@@ -173,28 +173,28 @@ const ChatPanel = () => (
 
 const GameField = () => (
   <div className="relative w-full h-full bg-[#2d3a25] rounded-lg border-4 border-[#1a2015] overflow-hidden shadow-inner">
-    {/* Griglia del campo */}
+    {/* Field grid */}
     <div className="absolute inset-0 grid grid-cols-12 grid-rows-8 gap-[1px] opacity-20">
       {Array.from({ length: 96 }).map((_, i) => (
         <div key={i} className="bg-white/5"></div>
       ))}
     </div>
     
-    {/* Linea centrocampo */}
+    {/* Center line */}
     <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/30"></div>
     <div className="absolute top-0 bottom-0 left-1/4 w-0.5 border-r border-dashed border-white/20"></div>
     <div className="absolute top-0 bottom-0 right-1/4 w-0.5 border-l border-dashed border-white/20"></div>
 
-    {/* Token Giocatori (Esempio) */}
+    {/* Player Tokens (Example) */}
     <div className="absolute top-[20%] left-[50%] transform -translate-x-1/2 -translate-y-1/2">
       <div className="w-10 h-10 rounded-full bg-yellow-500 border-2 border-white shadow-lg flex items-center justify-center text-black font-bold relative group cursor-pointer hover:scale-110 transition-transform">
         1
-        {/* Icona Abilità */}
+        {/* Skill Icon */}
         <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center border border-white">AG</div>
       </div>
     </div>
     
-    {/* Overlay Azioni (Action Wheel Placeholder) */}
+    {/* Actions Overlay (Action Wheel Placeholder) */}
     <div className="absolute top-[40%] left-[60%] transform -translate-x-1/2 -translate-y-1/2">
       <div className="w-12 h-12 rounded-full bg-green-600 border-2 border-white shadow-xl flex items-center justify-center text-white font-bold relative">
         5
@@ -204,7 +204,7 @@ const GameField = () => (
       </div>
     </div>
 
-    {/* Effetti Visivi (Dadi, POW) */}
+    {/* Visual Effects (Dice, POW) */}
     <div className="absolute top-[35%] left-[55%]">
         <div className="text-4xl animate-bounce">💥</div>
         <div className="absolute -top-2 -right-2 bg-red-600 text-white text-[10px] px-1 rounded font-bold">POW</div>
@@ -212,7 +212,7 @@ const GameField = () => (
   </div>
 );
 
-// --- LAYOUT PRINCIPALE ---
+// --- MAIN LAYOUT ---
 
 export default function DashboardLayout() {
   const [selectedPlayer, setSelectedPlayer] = useState<number | null>(null);
@@ -225,7 +225,7 @@ export default function DashboardLayout() {
       {/* 2. MAIN BODY */}
       <div className="flex flex-1 overflow-hidden p-2 gap-2">
         
-        {/* SIDBAR SINISTRA: Team 1 Roster */}
+        {/* LEFT SIDEBAR: Team 1 Roster */}
         <div className="w-64 bg-[#1a1a1a] rounded-lg border border-white/10 flex flex-col overflow-hidden">
           <div className="bg-[#252525] p-2 text-xs font-bold text-center border-b border-white/10">
             TEAM ROSTERS - ORCS
@@ -242,13 +242,13 @@ export default function DashboardLayout() {
           </div>
         </div>
 
-        {/* CENTRO: Campo di Gioco */}
+        {/* CENTER: Game Field */}
         <div className="flex-1 flex flex-col gap-2 min-w-0">
-          {/* Area Campo */}
+          {/* Field Area */}
           <div className="flex-1 relative">
             <GameField />
             
-            {/* Action Wheel (Appare al click, qui come esempio statico per layout) */}
+            {/* Action Wheel (Appe on click, shown here as static layout example) */}
             {selectedPlayer && (
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
                 <div className="bg-[#1e1e1e] border border-white/20 rounded-full p-4 shadow-2xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-200">
@@ -272,15 +272,15 @@ export default function DashboardLayout() {
             )}
           </div>
 
-          {/* BOTTOM AREA: Dice Log (Sostituisce la barra azioni statica) */}
+          {/* BOTTOM AREA: Dice Log (Replaces the static action bar) */}
           <div className="h-48 shrink-0">
             <DiceLogPanel />
           </div>
         </div>
 
-        {/* SIDBAR DESTRA: Team 2 Roster + Chat */}
+        {/* RIGHT SIDEBAR: Team 2 Roster + Chat */}
         <div className="w-64 flex flex-col gap-2">
-          {/* Roster Team 2 */}
+          {/* Team 2 Roster */}
           <div className="h-[400px] bg-[#1a1a1a] rounded-lg border border-white/10 flex flex-col overflow-hidden">
             <div className="bg-[#252525] p-2 text-xs font-bold text-center border-b border-white/10">
               TEAM ROSTERS - ELVES

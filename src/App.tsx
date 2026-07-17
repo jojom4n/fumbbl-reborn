@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Store } from '@tauri-apps/plugin-store';
+import DashboardLayout from './components/Dashboard';
 
 const STORE_FILE = 'fumbbl-credentials.json';
 
@@ -40,15 +41,16 @@ async function authenticateFumbbl(clientId: string, clientSecret: string) {
     
     const sessionData = await sessionResponse.json();
     
-    // Salva le credenziali
+    // Save credentials
     const store = await Store.load(STORE_FILE);
     await store.set('credentials', { clientId, clientSecret });
     await store.save();
 
-    alert("Connessione riuscita! Credenziali salvate.");
+    return true; // Success
   } catch (error) {
     console.error("Errore autenticazione:", error);
     alert("Errore: " + error);
+    return false;
   }
 }
 
@@ -58,6 +60,7 @@ function App() {
     clientSecret: ''
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // <-- STATE FOR THE DASHBOARD
 
   useEffect(() => {
     const loadCredentials = async () => {
@@ -66,6 +69,7 @@ function App() {
         const saved = await store.get<Credentials>('credentials');
         if (saved) {
           setCredentials(saved);
+          setIsAuthenticated(true); // <-- IF CREDENTIALS EXIST, GO TO DASHBOARD
         }
       } catch (e) {
         console.error("Errore caricamento credenziali", e);
@@ -78,69 +82,75 @@ function App() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await authenticateFumbbl(credentials.clientId, credentials.clientSecret);
+    const success = await authenticateFumbbl(credentials.clientId, credentials.clientSecret);
+    if (success) {
+      setIsAuthenticated(true); // <-- SWITCH TO DASHBOARD
+    }
   };
 
-  if (isLoading) return <div className="min-h-screen bg-[#1a1b26] flex items-center justify-center text-white">Caricamento...</div>;
+  if (isLoading) return <div className="h-screen w-screen bg-[#121212] flex items-center justify-center text-white">Caricamento...</div>;
 
   return (
-    <div className="min-h-screen bg-[#1a1b26] flex items-center justify-center p-4 font-sans">
-      <div className="bg-[#24283b] p-8 rounded-xl shadow-2xl w-full max-w-md border border-[#414868]">
-        <h1 className="text-3xl font-bold text-white mb-2 text-center">
-          FUMBBL Reborn
-        </h1>
-        <p className="text-gray-400 text-center mb-6 text-sm">
-          Inserisci le tue credenziali API per connetterti
-        </p>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-blue-400 text-xs font-bold uppercase mb-1 tracking-wider">Client ID</label>
-            <input 
-              type="text" 
-              className="w-full bg-[#1f2335] text-white p-3 rounded-lg border border-[#414868] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-              placeholder="Inserisci Client ID"
-              value={credentials.clientId}
-              onChange={(e) => setCredentials({...credentials, clientId: e.target.value})}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-blue-400 text-xs font-bold uppercase mb-1 tracking-wider">Client Secret</label>
-            <input 
-              type="password" 
-              className="w-full bg-[#1f2335] text-white p-3 rounded-lg border border-[#414868] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-              placeholder="Inserisci Client Secret"
-              value={credentials.clientSecret}
-              onChange={(e) => setCredentials({...credentials, clientSecret: e.target.value})}
-            />
-          </div>
-          
-          <button 
-            type="submit" 
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg mt-4"
-          >
-            CONNETTI E SALVA
-          </button>
-          
-          <button 
-            type="button"
-            onClick={async () => {
-              const store = await Store.load(STORE_FILE);
-              await store.delete('credentials');
-              setCredentials({ clientId: '', clientSecret: '' });
-              alert("Credenziali cancellate.");
-            }}
-            className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 text-sm py-2 px-4 rounded transition duration-200 mt-2"
-          >
-            CANCELLA CREDENZIALI SALVATE
-          </button>
-        </form>
+    <div className="h-screen w-screen bg-[#121212] overflow-hidden">
+      {isAuthenticated ? (
+        <DashboardLayout /> // <-- RENDER THE DASHBOARD
+      ) : (
+        <div className="h-full flex items-center justify-center bg-[#0f0f0f]">
+          <div className="w-full max-w-md bg-[#1a1a1a] p-8 rounded-xl border border-white/10 shadow-2xl">
+            <h1 className="text-3xl font-bold text-white mb-2 text-center">FUMBBL Reborn</h1>
+            <p className="text-gray-400 text-center mb-6">Client Desktop Ufficiale</p>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Client ID</label>
+                  <input
+                    type="text"
+                    value={credentials.clientId}
+                    onChange={(e) => setCredentials({ ...credentials, clientId: e.target.value })}
+                    className="w-full bg-[#0f0f0f] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Client Secret</label>
+                  <input
+                    type="password"
+                    value={credentials.clientSecret}
+                    onChange={(e) => setCredentials({ ...credentials, clientSecret: e.target.value })}
+                    className="w-full bg-[#0f0f0f] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                    required
+                  />
+                </div>
+              </div>
 
-        <p className="text-gray-500 text-xs mt-6 text-center">
-          Ottieni le chiavi su <a href="https://fumbbl.com/p/oauth" target="_blank" className="text-blue-500 hover:underline">fumbbl.com/p/oauth</a>
-        </p>
-      </div>
+              <button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg mt-6"
+              >
+                CONNETTI E SALVA
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const store = await Store.load(STORE_FILE);
+                  await store.delete('credentials');
+                  setCredentials({ clientId: '', clientSecret: '' });
+                  alert("Credenziali cancellate.");
+                }}
+                className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 text-sm py-2 px-4 rounded transition duration-200 mt-2"
+              >
+                CANCELLA CREDENZIALI SALVATE
+              </button>
+            </form>
+
+            <p className="text-gray-500 text-xs mt-6 text-center">
+              Ottieni le chiavi su <a href="https://fumbbl.com/p/oauth" target="_blank" className="text-blue-500 hover:underline">fumbbl.com/p/oauth</a>
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
