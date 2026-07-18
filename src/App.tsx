@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Store } from '@tauri-apps/plugin-store';
-import DashboardLayout from './components/Dashboard';
+import DashboardLayout from './components/Dashboard/DashboardLayout';
 
 const STORE_FILE = 'fumbbl-credentials.json';
 
@@ -38,8 +38,6 @@ async function authenticateFumbbl(clientId: string, clientSecret: string) {
     });
 
     if (!sessionResponse.ok) throw new Error("Errore seconda chiamata API");
-    
-    const sessionData = await sessionResponse.json();
     
     // Save credentials
     const store = await Store.load(STORE_FILE);
