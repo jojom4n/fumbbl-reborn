@@ -212,7 +212,7 @@ export type PlayerPosition =
 // -----------------------------------------------------------------------------
 
 export interface Player {
-  id: number;
+  id: string | number;       // String ID from server (unique) or number for compatibility
   name: string;
   number: number;
   race: string;              // Orc, Elf, Human, Dwarf, etc.

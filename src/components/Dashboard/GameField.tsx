@@ -46,7 +46,9 @@ export default function GameField({
             Array.from({ length: 17 }).map((_, col) => {
               const player = getPlayerAt(col, row);
               const isBall = ballPosition.x === col && ballPosition.y === row;
-              const playerTeam = player?.race === 'Orc' ? 'team1' : 'team2';
+              // Determine team by checking which team's player list contains this player
+              const team1Ids = new Set(team1Players.map(p => String(p.id)));
+              const playerTeam = team1Ids.has(String(player?.id)) ? 'team1' : 'team2';
 
               return (
                 <div
@@ -82,6 +84,7 @@ export default function GameField({
                   {/* Player token */}
                   {player && (
                     <button
+                      key={`player-btn-${player.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onPlayerSelect(player);
@@ -93,7 +96,7 @@ export default function GameField({
                           ? 'bg-green-700 border-green-400 text-white hover:bg-green-600'
                           : 'bg-yellow-600 border-yellow-400 text-white hover:bg-yellow-500'
                         }
-                        ${selectedPlayer?.id === player.id
+                        ${selectedPlayer && String(selectedPlayer.id) === String(player.id)
                           ? 'ring-2 ring-white ring-offset-1 ring-offset-green-900 scale-110'
                           : ''
                         }

@@ -2,140 +2,68 @@
 // GameContext — Global Game State Provider
 // =============================================================================
 
-import { createContext, useContext, useReducer, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import {
   GameState,
   Player,
   BloodBowlAction,
   DiceLogEntry,
   ChatMessage,
-  Weather,
-  FanAttendance,
-  ReRolls,
 } from '../types/bloodbowl';
 
+import { FumbblService, FumbblServiceConfig } from '../services/fumbblService';
+
 // -----------------------------------------------------------------------------
-// Mock Data
+// Unique ID generator (avoids Date.now() duplicates)
+// Uses timestamp + counter, returns number for DiceLogEntry/ChatMessage compatibility
 // -----------------------------------------------------------------------------
-
-const createMockTeam1Players = (): Player[] => [
-  { id: 1, name: 'Grom Flayer', number: 1, race: 'Orc', position: 'ap', status: 'active', skills: ['AG', 'D'], ma: 6, st: 4, ag: 3, pa: 3, av: 10 },
-  { id: 2, name: 'Karg Blitzer', number: 2, race: 'Orc', position: 'bl', status: 'active', skills: ['ST', 'T'], ma: 6, st: 5, ag: 2, pa: 2, av: 10 },
-  { id: 3, name: 'Snikchy Blitzer', number: 3, race: 'Orc', position: 'bl', status: 'active', skills: ['AG'], ma: 6, st: 4, ag: 3, pa: 3, av: 10 },
-  { id: 4, name: 'Throt Block', number: 4, race: 'Orc', position: 'bl', status: 'active', skills: ['B', 'ST'], ma: 5, st: 5, ag: 2, pa: 2, av: 12 },
-  { id: 5, name: 'Mog Halfback', number: 5, race: 'Orc', position: 'rb', status: 'injured', skills: ['AG', 'C'], ma: 7, st: 3, ag: 3, pa: 4, av: 10 },
-  { id: 6, name: 'Grimskull Runaround', number: 6, race: 'Orc', position: 'wr', status: 'active', skills: ['AG', 'D', 'C'], ma: 7, st: 3, ag: 4, pa: 2, av: 10 },
-  { id: 7, name: 'Fingle Running Thug', number: 7, race: 'Orc', position: 'wr', status: 'active', skills: ['AG'], ma: 7, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 8, name: 'Nasty Chikey', number: 8, race: 'Orc', position: 'c', status: 'active', skills: ['ST'], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 9, name: 'Urk Stone-Eyed', number: 9, race: 'Orc', position: 'lh', status: 'active', skills: [], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 10, name: 'Mash Bouncer', number: 10, race: 'Orc', position: 'rh', status: 'active', skills: ['ST'], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 11, name: 'Ghazgull Goalie', number: 11, race: 'Orc', position: 'g', status: 'active', skills: ['AN'], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 12, name: 'Shunk Large', number: 12, race: 'Orc', position: 'sub', status: 'active', skills: ['ST'], ma: 5, st: 5, ag: 2, pa: 2, av: 12 },
-  { id: 13, name: 'Dak Backstabber', number: 13, race: 'Orc', position: 'sub', status: 'active', skills: ['AG', 'NK'], ma: 6, st: 4, ag: 3, pa: 3, av: 10 },
-  { id: 14, name: 'Pogo Block', number: 14, race: 'Orc', position: 'sub', status: 'active', skills: ['B'], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 15, name: 'Ripted Block', number: 15, race: 'Orc', position: 'sub', status: 'active', skills: [], ma: 5, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 16, name: 'Zug Anvil', number: 16, race: 'Orc', position: 'sub', status: 'active', skills: ['ST'], ma: 5, st: 5, ag: 2, pa: 2, av: 12 },
-];
-
-const createMockTeam2Players = (): Player[] => [
-  { id: 101, name: 'Sylvan Glader', number: 1, race: 'Elf', position: 'ap', status: 'active', skills: ['AG', 'D', 'C', 'SV'], ma: 8, st: 2, ag: 4, pa: 4, av: 10 },
-  { id: 102, name: 'Aenil Runaround', number: 2, race: 'Elf', position: 'wr', status: 'active', skills: ['AG', 'D', 'C'], ma: 8, st: 2, ag: 4, pa: 2, av: 10 },
-  { id: 103, name: 'Evershader', number: 3, race: 'Elf', position: 'wr', status: 'active', skills: ['AG', 'D'], ma: 8, st: 2, ag: 3, pa: 2, av: 10 },
-  { id: 104, name: 'Lightstep', number: 4, race: 'Elf', position: 'rb', status: 'active', skills: ['AG', 'C'], ma: 7, st: 3, ag: 3, pa: 3, av: 10 },
-  { id: 105, name: 'Nimblefellow', number: 5, race: 'Elf', position: 'c', status: 'active', skills: ['ST'], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 106, name: 'Truefly', number: 6, race: 'Elf', position: 'lh', status: 'active', skills: [], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 107, name: 'Clearwater', number: 7, race: 'Elf', position: 'rh', status: 'active', skills: ['ST'], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 108, name: 'Valourheart', number: 8, race: 'Elf', position: 'bl', status: 'active', skills: ['B', 'ST'], ma: 6, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 109, name: 'Fairhelms', number: 9, race: 'Elf', position: 'bl', status: 'active', skills: ['B', 'AN'], ma: 6, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 110, name: 'Waverider', number: 10, race: 'Elf', position: 'g', status: 'active', skills: ['K', 'AN'], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 111, name: 'Shadefell', number: 11, race: 'Elf', position: 'sub', status: 'active', skills: ['AG', 'D'], ma: 8, st: 2, ag: 3, pa: 2, av: 10 },
-  { id: 112, name: 'Glenlough', number: 12, race: 'Elf', position: 'sub', status: 'active', skills: ['ST'], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 113, name: 'Dawnstrider', number: 13, race: 'Elf', position: 'sub', status: 'active', skills: ['AG'], ma: 7, st: 3, ag: 3, pa: 3, av: 10 },
-  { id: 114, name: 'Brightblade', number: 14, race: 'Elf', position: 'sub', status: 'active', skills: ['B'], ma: 6, st: 4, ag: 2, pa: 2, av: 12 },
-  { id: 115, name: 'Goldleaf', number: 15, race: 'Elf', position: 'sub', status: 'active', skills: [], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-  { id: 116, name: 'Silvertongue', number: 16, race: 'Elf', position: 'sub', status: 'active', skills: ['ST'], ma: 6, st: 3, ag: 3, pa: 2, av: 10 },
-];
-
-const createMockWeather = (): Weather => ({
-  type: 'raining',
-  icon: '🌧️',
-  description: 'Raining',
-});
-
-const createMockFanAttendance = (): FanAttendance => ({
-  total: 7,
-  dedicatedFans: { team1: 4, team2: 3 },
-});
-
-const createMockReRolls = (): ReRolls => ({ team1: 2, team2: 1 });
-
-const createInitialState = (): GameState => {
-  const team1Players = createMockTeam1Players();
-  const team2Players = createMockTeam2Players();
-
-  // Assign field positions for display
-  team1Players.forEach((p, i) => {
-    if (i < 11) {
-      p.fieldX = Math.floor(Math.random() * 4) + 1; // Columns 1-4
-      p.fieldY = i;
-    }
-  });
-  team2Players.forEach((p, i) => {
-    if (i < 11) {
-      p.fieldX = Math.floor(Math.random() * 4) + 11; // Columns 11-14
-      p.fieldY = i;
-    }
-  });
-
-  return {
-    score: { team1: 2, team2: 1 },
-    turn: 6,
-    phase: 'regular',
-    reRolls: createMockReRolls(),
-    timer: 81, // 01:21
-    weather: createMockWeather(),
-    fanAttendance: createMockFanAttendance(),
-    team1: {
-      id: 'orc',
-      name: 'Orcs',
-      race: 'Orc',
-      logoUrl: 'https://fumbbl.com/api/team/orc/logo',
-      players: team1Players,
-      color: '#4a7c3f',
-      secondaryColor: '#2d5a1e',
-    },
-    team2: {
-      id: 'elf',
-      name: 'Elves',
-      race: 'Elf',
-      logoUrl: 'https://fumbbl.com/api/team/elf/logo',
-      players: team2Players,
-      color: '#c4a35a',
-      secondaryColor: '#8b7332',
-    },
-    team1Players,
-    team2Players,
-    field: {
-      markers: [],
-      ballPosition: { x: 8, y: 5 },
-    },
-    ballPosition: { x: 8, y: 5 },
-    selectedPlayer: null,
-    selectedTeam: 'team1',
-    diceLog: [
-      { id: 1, type: 'action', timestamp: Date.now() - 60000, text: 'Orc Blitzer #5 uses Blitz', color: 'text-gray-300', turn: 6 },
-      { id: 2, type: 'block_roll', timestamp: Date.now() - 55000, text: '[Block Roll] -> Selected', color: 'text-yellow-400', dice: [6, 4], target: 3, result: 'success', turn: 6 },
-      { id: 3, type: 'armor', timestamp: Date.now() - 50000, text: 'Elf #8 Armor Roll: 9 -> Armor Broken!', color: 'text-red-400', dice: [9], target: 4, result: 'failure', turn: 6 },
-      { id: 4, type: 'injury', timestamp: Date.now() - 45000, text: 'Elf #8 Injury Roll: 10 -> CASUALTY (Smashed Hip) - Unconscious', color: 'text-red-500 font-bold', dice: [10], target: 6, result: 'failure', turn: 6 },
-    ],
-    chatMessages: [
-      { id: 1, sender: 'FUMBBL_Player', senderColor: 'text-green-400', text: 'Bel colpo!', timestamp: Date.now() - 50000, type: 'general' },
-      { id: 2, sender: 'Orc_Admin', senderColor: 'text-red-400', text: 'RIP Sylvan Glader', timestamp: Date.now() - 40000, type: 'general' },
-    ],
-    isLive: true,
-    lastUpdate: Date.now(),
-  };
+let _idCounter = 0;
+const generateUniqueId = (): number => {
+  _idCounter += 1;
+  // Use timestamp with counter offset to avoid duplicates within same millisecond
+  return Number(`${Date.now()}${String(_idCounter).padStart(6, '0')}`);
 };
+
+// -----------------------------------------------------------------------------
+// Default Initial State (no mock data — clean slate)
+// -----------------------------------------------------------------------------
+
+const createInitialState = (): GameState => ({
+  score: { team1: 0, team2: 0 },
+  turn: 0,
+  phase: 'setup',
+  reRolls: { team1: 0, team2: 0 },
+  timer: 120,
+  weather: { type: 'clear', icon: '☀️', description: 'Clear' },
+  fanAttendance: { total: 0, dedicatedFans: { team1: 0, team2: 0 } },
+  team1: {
+    id: '',
+    name: '',
+    race: '',
+    players: [],
+    color: '#4a7c3f',
+  },
+  team2: {
+    id: '',
+    name: '',
+    race: '',
+    players: [],
+    color: '#c4a35a',
+  },
+  team1Players: [],
+  team2Players: [],
+  field: {
+    markers: [],
+    ballPosition: { x: 8, y: 5 },
+  },
+  ballPosition: { x: 8, y: 5 },
+  selectedPlayer: null,
+  selectedTeam: 'team1',
+  diceLog: [],
+  chatMessages: [],
+  isLive: false,
+  lastUpdate: Date.now(),
+});
 
 // -----------------------------------------------------------------------------
 // Actions
@@ -147,15 +75,18 @@ type GameAction =
   | { type: 'SELECT_TEAM'; payload: 'team1' | 'team2' }
   | { type: 'SEND_ACTION'; payload: { action: BloodBowlAction; playerId: number } }
   | { type: 'ADD_DICE_LOG'; payload: DiceLogEntry }
+  | { type: 'ADD_DICE_LOGS'; payload: DiceLogEntry[] }
   | { type: 'CLEAR_DICE_LOG' }
   | { type: 'ADD_CHAT_MESSAGE'; payload: ChatMessage }
+  | { type: 'ADD_CHAT_MESSAGES'; payload: ChatMessage[] }
   | { type: 'CLEAR_CHAT' }
   | { type: 'UPDATE_TIMER'; payload: number }
   | { type: 'UPDATE_SCORE'; payload: { team1: number; team2: number } }
   | { type: 'UPDATE_TURN'; payload: number }
-  | { type: 'UPDATE_FAN_ATTENDANCE'; payload: FanAttendance }
+  | { type: 'UPDATE_FAN_ATTENDANCE'; payload: { total: number; dedicatedFans: { team1: number; team2: number } } }
   | { type: 'TOGGLE_REROLL'; payload: 'team1' | 'team2' }
-  | { type: 'LOAD_STATE'; payload: GameState };
+  | { type: 'LOAD_STATE'; payload: GameState }
+  | { type: 'SYNC_STATE'; payload: GameState };
 
 // -----------------------------------------------------------------------------
 // Reducer
@@ -172,10 +103,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SEND_ACTION': {
       const player = [...state.team1Players, ...state.team2Players].find(p => p.id === action.payload.playerId);
       if (!player) return state;
+      const newId = generateUniqueId();
+      const now = Date.now();
       const newLogEntry: DiceLogEntry = {
-        id: Date.now(),
-        type: 'action',
-        timestamp: Date.now(),
+        id: newId,
+        type: 'action' as const,
+        timestamp: now,
         text: `${player.name} uses ${action.payload.action.charAt(0).toUpperCase() + action.payload.action.slice(1)}`,
         turn: state.turn,
       };
@@ -187,10 +120,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
     case 'ADD_DICE_LOG':
       return { ...state, diceLog: [...state.diceLog, action.payload], lastUpdate: Date.now() };
+    case 'ADD_DICE_LOGS':
+      return { ...state, diceLog: [...state.diceLog, ...action.payload], lastUpdate: Date.now() };
     case 'CLEAR_DICE_LOG':
       return { ...state, diceLog: [], lastUpdate: Date.now() };
     case 'ADD_CHAT_MESSAGE':
       return { ...state, chatMessages: [...state.chatMessages, action.payload], lastUpdate: Date.now() };
+    case 'ADD_CHAT_MESSAGES':
+      return { ...state, chatMessages: [...state.chatMessages, ...action.payload], lastUpdate: Date.now() };
     case 'CLEAR_CHAT':
       return { ...state, chatMessages: [], lastUpdate: Date.now() };
     case 'UPDATE_TIMER':
@@ -211,7 +148,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         lastUpdate: Date.now(),
       };
     case 'LOAD_STATE':
-      return action.payload;
+      return { ...action.payload, lastUpdate: Date.now() };
+    case 'SYNC_STATE':
+      // Merge incoming state with defaults to ensure all fields exist
+      return { ...createInitialState(), ...action.payload, lastUpdate: Date.now() };
     default:
       return state;
   }
@@ -223,21 +163,36 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
 interface GameContextType {
   gameState: GameState;
+  // FUMBBL Service access
+  fumbblService: FumbblService | null;
+  isServiceConnected: boolean;
+  // Authentication
+  isAuthenticated: boolean;
   // Actions
   setState: (payload: Partial<GameState>) => void;
+  setCredentials: (clientId: string, clientSecret: string) => Promise<void>;
   selectPlayer: (player: Player | null) => void;
   selectTeam: (team: 'team1' | 'team2') => void;
   sendAction: (action: BloodBowlAction, playerId: number) => void;
   addDiceLog: (entry: DiceLogEntry) => void;
+  addDiceLogs: (entries: DiceLogEntry[]) => void;
   clearDiceLog: () => void;
   addChatMessage: (message: ChatMessage) => void;
   clearChat: () => void;
   updateTimer: (timer: number) => void;
   updateScore: (score: { team1: number; team2: number }) => void;
   updateTurn: (turn: number) => void;
-  updateFanAttendance: (fa: FanAttendance) => void;
+  updateFanAttendance: (fa: { total: number; dedicatedFans: { team1: number; team2: number } }) => void;
   toggleReRoll: (team: 'team1' | 'team2') => void;
   loadState: (state: GameState) => void;
+  // Service methods
+  connectToGame: (gameId: number, teamId?: number, spectate?: boolean, fumbblUsername?: string) => Promise<void>;
+  connectAsSpectator: (gameId: number, fumbblUsername?: string) => Promise<void>;
+  disconnect: () => void;
+  sendChatMessage: (message: string) => void;
+  requestReroll: () => void;
+  confirmDecision: (decision: boolean, param?: string) => void;
+  declineDecision: (param?: string) => void;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -246,24 +201,89 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 // Provider
 // -----------------------------------------------------------------------------
 
-export function GameProvider({ children }: { children: ReactNode }) {
-  const [gameState, dispatch] = useReducer(gameReducer, null, createInitialState);
+interface GameProviderProps {
+  children: ReactNode;
+  serviceConfig?: FumbblServiceConfig;
+}
 
-  // Memoized action creators
-  const setState = useCallback((payload: Partial<GameState>) => dispatch({ type: 'SET_STATE', payload }), []);
-  const selectPlayer = useCallback((player: Player | null) => dispatch({ type: 'SELECT_PLAYER', payload: player }), []);
-  const selectTeam = useCallback((team: 'team1' | 'team2') => dispatch({ type: 'SELECT_TEAM', payload: team }), []);
-  const sendAction = useCallback((action: BloodBowlAction, playerId: number) => dispatch({ type: 'SEND_ACTION', payload: { action, playerId } }), []);
-  const addDiceLog = useCallback((entry: DiceLogEntry) => dispatch({ type: 'ADD_DICE_LOG', payload: entry }), []);
-  const clearDiceLog = useCallback(() => dispatch({ type: 'CLEAR_DICE_LOG' }), []);
-  const addChatMessage = useCallback((message: ChatMessage) => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: message }), []);
-  const clearChat = useCallback(() => dispatch({ type: 'CLEAR_CHAT' }), []);
-  const updateTimer = useCallback((timer: number) => dispatch({ type: 'UPDATE_TIMER', payload: timer }), []);
-  const updateScore = useCallback((score: { team1: number; team2: number }) => dispatch({ type: 'UPDATE_SCORE', payload: score }), []);
-  const updateTurn = useCallback((turn: number) => dispatch({ type: 'UPDATE_TURN', payload: turn }), []);
-  const updateFanAttendance = useCallback((fa: FanAttendance) => dispatch({ type: 'UPDATE_FAN_ATTENDANCE', payload: fa }), []);
-  const toggleReRoll = useCallback((team: 'team1' | 'team2') => dispatch({ type: 'TOGGLE_REROLL', payload: team }), []);
-  const loadState = useCallback((state: GameState) => dispatch({ type: 'LOAD_STATE', payload: state }), []);
+export function GameProvider({ children, serviceConfig }: GameProviderProps) {
+  const [gameState, dispatch] = useReducer(gameReducer, null, createInitialState);
+  const fumbblServiceRef = useRef<FumbblService | null>(null);
+  const [isServiceConnected, setIsServiceConnected] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Initialize FUMBBL service
+  useEffect(() => {
+    fumbblServiceRef.current = new FumbblService(serviceConfig);
+
+    // Set up callbacks
+    const service = fumbblServiceRef.current;
+    service.setCallbacks({
+      onConnectionChange: (connected) => {
+        setIsServiceConnected(connected);
+      },
+      onError: (error) => {
+        console.error('[GameContext] Service error:', error);
+      },
+      onStateUpdate: (updatedState) => {
+        console.log('[GameContext] onStateUpdate received:', {
+          team1Name: updatedState.team1?.name,
+          team2Name: updatedState.team2?.name,
+          team1Players: updatedState.team1Players?.length,
+          team2Players: updatedState.team2Players?.length,
+          turn: updatedState.turn,
+          phase: updatedState.phase,
+          timer: updatedState.timer,
+          score: updatedState.score,
+        });
+        // Sync the updated state to the reducer
+        dispatch({ type: 'SYNC_STATE', payload: updatedState });
+      },
+      onModelChanges: (changes) => {
+        console.log('[GameContext] Model changes received:', changes.length, 'changes');
+        // Model changes are already applied to the GameModel inside the WebSocket
+        // We sync the updated state from the GameModel
+        const gameModel = fumbblServiceRef.current?.getGameModel();
+        if (gameModel) {
+          const updatedGameState = gameModel.toGameState() as GameState;
+          console.log('[GameContext] Syncing state from model changes:', {
+            team1Name: updatedGameState.team1?.name,
+            team2Name: updatedGameState.team2?.name,
+            team1Players: updatedGameState.team1Players?.length,
+            team2Players: updatedGameState.team2Players?.length,
+            turn: updatedGameState.turn,
+            phase: updatedGameState.phase,
+          });
+          dispatch({ type: 'SYNC_STATE', payload: updatedGameState });
+        }
+      },
+    });
+
+    // Set up auth change callback
+    service.setAuthCallback((isAuth) => {
+      setIsAuthenticated(isAuth);
+    });
+
+    // Initialize the service (authenticate & connect if configured)
+    fumbblServiceRef.current.initialize().catch(err => {
+      console.error('[GameContext] Failed to initialize FUMBBL service:', err);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (fumbblServiceRef.current) {
+        fumbblServiceRef.current.disconnect();
+      }
+    };
+  }, []); // Only run once on mount
+
+  // Update auth status when service state changes
+  useEffect(() => {
+    if (fumbblServiceRef.current) {
+      const state = fumbblServiceRef.current.getState();
+      setIsAuthenticated(state.isAuthenticated);
+    }
+  }, [fumbblServiceRef.current?.getState()?.isAuthenticated]);
 
   // Timer countdown effect (when game is live)
   useEffect(() => {
@@ -274,13 +294,95 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [gameState.isLive, gameState.timer]);
 
+  // Memoized action creators
+  const setState = useCallback((payload: Partial<GameState>) => dispatch({ type: 'SET_STATE', payload }), []);
+  const selectPlayer = useCallback((player: Player | null) => dispatch({ type: 'SELECT_PLAYER', payload: player }), []);
+  const selectTeam = useCallback((team: 'team1' | 'team2') => dispatch({ type: 'SELECT_TEAM', payload: team }), []);
+  const sendAction = useCallback((action: BloodBowlAction, playerId: number) => dispatch({ type: 'SEND_ACTION', payload: { action, playerId } }), []);
+  const addDiceLog = useCallback((entry: DiceLogEntry) => dispatch({ type: 'ADD_DICE_LOG', payload: entry }), []);
+  const addDiceLogs = useCallback((entries: DiceLogEntry[]) => dispatch({ type: 'ADD_DICE_LOGS', payload: entries }), []);
+  const clearDiceLog = useCallback(() => dispatch({ type: 'CLEAR_DICE_LOG' }), []);
+  const addChatMessage = useCallback((message: ChatMessage) => dispatch({ type: 'ADD_CHAT_MESSAGE', payload: message }), []);
+  const clearChat = useCallback(() => dispatch({ type: 'CLEAR_CHAT' }), []);
+  const updateTimer = useCallback((timer: number) => dispatch({ type: 'UPDATE_TIMER', payload: timer }), []);
+  const updateScore = useCallback((score: { team1: number; team2: number }) => dispatch({ type: 'UPDATE_SCORE', payload: score }), []);
+  const updateTurn = useCallback((turn: number) => dispatch({ type: 'UPDATE_TURN', payload: turn }), []);
+  const updateFanAttendance = useCallback((fa: { total: number; dedicatedFans: { team1: number; team2: number } }) => dispatch({ type: 'UPDATE_FAN_ATTENDANCE', payload: fa }), []);
+  const toggleReRoll = useCallback((team: 'team1' | 'team2') => dispatch({ type: 'TOGGLE_REROLL', payload: team }), []);
+  const loadState = useCallback((state: GameState) => dispatch({ type: 'LOAD_STATE', payload: state }), []);
+
+  // FUMBBL service methods
+  const connectToGame = useCallback(async (gameId: number, teamId?: number, spectate?: boolean, fumbblUsername?: string) => {
+    if (fumbblServiceRef.current) {
+      if (spectate) {
+        await fumbblServiceRef.current.connectAsSpectator(gameId, fumbblUsername);
+      } else {
+        await fumbblServiceRef.current.connectToGame(gameId, teamId, fumbblUsername);
+      }
+    }
+  }, []);
+
+  const connectAsSpectator = useCallback(async (gameId: number, fumbblUsername?: string) => {
+    if (fumbblServiceRef.current) {
+      await fumbblServiceRef.current.connectAsSpectator(gameId, fumbblUsername);
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    if (fumbblServiceRef.current) {
+      fumbblServiceRef.current.disconnect();
+      setIsServiceConnected(false);
+    }
+  }, []);
+
+  const sendChatMessage = useCallback((message: string) => {
+    if (fumbblServiceRef.current) {
+      fumbblServiceRef.current.sendChatMessage(message);
+    }
+  }, []);
+
+  const requestReroll = useCallback(() => {
+    if (fumbblServiceRef.current) {
+      fumbblServiceRef.current.requestReroll();
+    }
+  }, []);
+
+  const confirmDecision = useCallback((decision: boolean, param?: string) => {
+    if (fumbblServiceRef.current) {
+      fumbblServiceRef.current.confirmDecision(decision, param);
+    }
+  }, []);
+
+  const declineDecision = useCallback((param?: string) => {
+    if (fumbblServiceRef.current) {
+      fumbblServiceRef.current.declineDecision(param);
+    }
+  }, []);
+
+  // Set OAuth2 credentials and authenticate
+  const setCredentials = useCallback(async (clientId: string, clientSecret: string) => {
+    if (!fumbblServiceRef.current) {
+      throw new Error('FumbblService not initialized');
+    }
+    try {
+      await fumbblServiceRef.current.authenticateWithCredentials(clientId, clientSecret);
+    } catch (error) {
+      throw error;
+    }
+  }, []);
+
   const value: GameContextType = {
     gameState,
+    fumbblService: fumbblServiceRef.current,
+    isServiceConnected,
+    isAuthenticated,
     setState,
+    setCredentials,
     selectPlayer,
     selectTeam,
     sendAction,
     addDiceLog,
+    addDiceLogs,
     clearDiceLog,
     addChatMessage,
     clearChat,
@@ -290,6 +392,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     updateFanAttendance,
     toggleReRoll,
     loadState,
+   connectToGame,
+   connectAsSpectator,
+   disconnect,
+    sendChatMessage,
+    requestReroll,
+    confirmDecision,
+    declineDecision,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

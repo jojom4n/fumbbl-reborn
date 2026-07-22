@@ -10,7 +10,7 @@ interface TeamRosterProps {
   teamName: string;
   teamColor: string;
   onPlayerSelect: (player: Player) => void;
-  selectedPlayerId?: number;
+  selectedPlayerId?: string | number;
 }
 
 // Skill badge display
@@ -75,7 +75,7 @@ export default function TeamRoster({
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
         {activePlayers.map((player) => {
           const status = STATUS_ICONS[player.status] || STATUS_ICONS.active;
-          const isSelected = selectedPlayerId === player.id;
+          const isSelected = String(selectedPlayerId) === String(player.id);
 
           return (
             <button
@@ -92,23 +92,23 @@ export default function TeamRoster({
               `}
             >
               {/* Number */}
-              <span className="w-6 text-center text-xs text-gray-400 font-mono">
+              <span key={`num-${player.id}`} className="w-6 text-center text-xs text-gray-400 font-mono">
                 {player.number}
               </span>
 
               {/* Name + Status */}
-              <div className="flex-1 min-w-0">
+              <div key={`name-${player.id}`} className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
-                  <span className={`text-xs font-medium truncate ${status.bg}`}>
+                  <span key={`status-${player.id}`} className={`text-xs font-medium truncate ${status.bg}`}>
                     {status.icon}
                   </span>
-                  <span className="text-xs text-white truncate">{player.name}</span>
+                  <span key={`name-text-${player.id}`} className="text-xs text-white truncate">{player.name}</span>
                 </div>
                 {/* Skills */}
                 <div className="flex items-center gap-0.5 flex-wrap">
                   {player.skills.slice(0, 3).map((skill, i) => (
                     <span
-                      key={i}
+                      key={`${i}-${player.id}`}
                       className={`text-[9px] font-bold ${SKILL_DISPLAY[skill]?.color || 'text-gray-400'}`}
                     >
                       {SKILL_DISPLAY[skill]?.label || skill}
@@ -118,7 +118,7 @@ export default function TeamRoster({
               </div>
 
               {/* Strength */}
-              <span className="w-5 text-center text-[10px] text-gray-400">
+              <span key={`st-${player.id}`} className="w-5 text-center text-[10px] text-gray-400">
                 {player.st}
               </span>
             </button>
@@ -138,7 +138,7 @@ export default function TeamRoster({
                 className={`
                   w-full flex items-center px-2 py-1.5 border-b border-gray-800
                   transition-colors text-left hover:bg-gray-800/30
-                  ${selectedPlayerId === player.id
+                  ${String(selectedPlayerId) === String(player.id)
                     ? 'bg-gray-700/30 border-l-2 border-l-gray-400'
                     : 'border-l-2 border-l-transparent'
                   }
@@ -147,10 +147,10 @@ export default function TeamRoster({
                 <span className="w-6 text-center text-xs text-gray-500 font-mono">
                   {player.number}
                 </span>
-                <span className="flex-1 text-xs text-gray-400 truncate">
+                <span key={`sub-name-${player.id}`} className="flex-1 text-xs text-gray-400 truncate">
                   {player.name}
                 </span>
-                <span className="w-5 text-center text-[10px] text-gray-500">
+                <span key={`sub-st-${player.id}`} className="w-5 text-center text-[10px] text-gray-500">
                   {player.st}
                 </span>
               </button>

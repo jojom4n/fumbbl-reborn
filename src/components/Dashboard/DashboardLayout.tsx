@@ -4,6 +4,16 @@
 // =============================================================================
 
 import { useReducer } from 'react';
+
+// -----------------------------------------------------------------------------
+// Unique ID generator (avoids Date.now() duplicates)
+// -----------------------------------------------------------------------------
+let _chatIdCounter = 0;
+const generateChatId = (): number => {
+  _chatIdCounter += 1;
+  return Number(`${Date.now()}${String(_chatIdCounter).padStart(6, '0')}`);
+};
+
 import Header from './Header';
 import GameField from './GameField';
 import RadialMenu from './RadialMenu';
@@ -31,7 +41,12 @@ const DEFAULT_RADIAL_ITEMS: Omit<RadialMenuItem, 'angle' | 'available'>[] = [
   { action: 'special', hotkey: 'E', label: 'Special' },
 ];
 
-export default function DashboardLayout() {
+interface DashboardLayoutProps {
+  onToggleDebug?: () => void;
+  isDebugEnabled?: boolean;
+}
+
+export default function DashboardLayout({ onToggleDebug, isDebugEnabled }: DashboardLayoutProps) {
   const { gameState, selectPlayer, sendAction, addChatMessage, clearDiceLog } = useGameState();
 
   // Radial menu state — stores field position for correct placement
@@ -69,7 +84,7 @@ export default function DashboardLayout() {
   // Handle radial menu action
   const handleActionSelect = (action: BloodBowlAction) => {
     if (radialMenu.player) {
-      sendAction(action, radialMenu.player.id);
+      sendAction(action, Number(radialMenu.player.id));
     }
   };
 
@@ -92,6 +107,20 @@ export default function DashboardLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex gap-2 p-2 overflow-hidden min-h-0">
+        {/* Debug Toggle Button */}
+        {onToggleDebug && (
+          <button
+            onClick={onToggleDebug}
+            className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+              isDebugEnabled
+                ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            }`}
+            title="Toggle Debug Panel"
+          >
+            {isDebugEnabled ? '🔧 Debug ON' : '🔧 Debug'}
+          </button>
+        )}
         {/* Left Sidebar — Team 1 Roster */}
         <TeamRoster
           team={gameState.team1Players}
@@ -148,13 +177,14 @@ export default function DashboardLayout() {
         <Chat
           messages={gameState.chatMessages}
           onSend={(text) => {
+            const now = Date.now();
             addChatMessage({
-              id: Date.now(),
+              id: generateChatId(),
               sender: 'You',
               senderColor: 'text-blue-400',
               text,
-              timestamp: Date.now(),
-              type: 'general',
+              timestamp: now,
+              type: 'general' as const,
             });
           }}
         />
