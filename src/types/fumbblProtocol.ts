@@ -96,7 +96,9 @@ export interface ClientReady extends FumbblCommand {
 
 /** Client sends a ping to keep the connection alive (matches ClientCommandPing from official ffbclient)
  *  The server responds with serverPong and updates the last ping time.
- *  The official client sends pings every 30 seconds via ClientPingTask.
+ *  CRITICAL: The official client sends pings every 2 seconds (client.ping.interval=2000 in client.ini).
+ *  The server SessionTimeoutTask closes connections where lastPing + 10000ms < current time.
+ *  With a 2-second ping interval, we have a 5x safety margin against the 10-second timeout.
  */
 export interface ClientPing extends FumbblCommand {
   netCommandId: 'clientPing';

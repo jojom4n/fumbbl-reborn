@@ -158,121 +158,222 @@ export class FumbblGameModel {
 
   private modelChangeHandlers: Record<string, (key: string, value: any) => boolean>;
 
-  constructor() {
-    this.modelChangeHandlers = {
-      // ACTING_PLAYER handlers (20 IDs) - COPIED from official client
-      'actingPlayerSetCurrentMove': this.hActCurMove.bind(this),
-      'actingPlayerSetDodging': this.hActDodging.bind(this),
-      'actingPlayerSetGoingForIt': this.hActGFI.bind(this),
-      'actingPlayerSetHasBlocked': this.hActBlocked.bind(this),
-      'actingPlayerSetHasFed': this.hActFed.bind(this),
-      'actingPlayerSetHasFouled': this.hActFouled.bind(this),
-      'actingPlayerSetHasJumped': this.hActJumped.bind(this),
-      'actingPlayerSetHasMoved': this.hActMoved.bind(this),
-      'actingPlayerSetHasPassed': this.hActPassed.bind(this),
-      'actingPlayerSetHasTriggeredEffect': this.hActTriggered.bind(this),
-      'actingPlayerSetJumping': this.hActJumping.bind(this),
-      'actingPlayerSetStandingUp': this.hActStanding.bind(this),
-      'actingPlayerSetStrength': this.hActStrength.bind(this),
-      'actingPlayerSetSufferingAnimosity': this.hActAnimosity.bind(this),
-      'actingPlayerSetSufferingBloodLust': this.hActBloodLust.bind(this),
-      'actingPlayerSetPlayerAction': this.hActAction.bind(this),
-      'actingPlayerSetPlayerId': this.hActPlayerId.bind(this),
-      'actingPlayerMarkSkillUsed': this.hActSkillUsed.bind(this),
-      'actingPlayerSetOldPlayerState': this.hActOldState.bind(this),
-      'actingPlayerSetInitialAdjacentPartnerIds': this.hActPartnerIds.bind(this),
+   constructor() {
+     // Build handlers exactly matching the official ModelChangeId.java names
+     // Reference: ffb-common/.../model/change/ModelChangeId.java
+     this.modelChangeHandlers = {
+       // ============================================================
+       // ACTING_PLAYER handlers (27 total from official client)
+       // ============================================================
+       'actingPlayerMarkSkillUsed': this.hActSkillUsed.bind(this),
+       'actingPlayerMarkSkillUnused': this.hActSkillUnused.bind(this),
+       'actingPlayerSetCurrentMove': this.hActCurMove.bind(this),
+       'actingPlayerSetDodging': this.hActDodging.bind(this),
+       'actingPlayerSetGoingForIt': this.hActGFI.bind(this),
+       'actingPlayerSetHasBlocked': this.hActBlocked.bind(this),
+       'actingPlayerSetHasFed': this.hActFed.bind(this),
+       'actingPlayerSetHasFouled': this.hActFouled.bind(this),
+       'actingPlayerSetHasJumped': this.hActJumped.bind(this),
+       'actingPlayerSetHasTriggeredEffect': this.hActTriggered.bind(this),
+       'actingPlayerSetHasMoved': this.hActMoved.bind(this),
+       'actingPlayerSetHasPassed': this.hActPassed.bind(this),
+       'actingPlayerSetJumping': this.hActJumping.bind(this),
+       'actingPlayerSetOldPlayerState': this.hActOldState.bind(this),
+       'actingPlayerSetPlayerAction': this.hActAction.bind(this),
+       'actingPlayerSetPlayerId': this.hActPlayerId.bind(this),
+       'actingPlayerSetStandingUp': this.hActStanding.bind(this),
+       'actingPlayerSetStrength': this.hActStrength.bind(this),
+       'actingPlayerSetSufferingAnimosity': this.hActAnimosity.bind(this),
+       'actingPlayerSetSufferingBloodLust': this.hActBloodLust.bind(this),
+       'actingPlayerSetJumpsWithoutModifiers': this.hNoOp.bind(this),
+       'actingPlayerSetHeldInPlace': this.hNoOp.bind(this),
+       'actingPlayerSetMustCompleteAction': this.hNoOp.bind(this),
+       'actingPlayerSetFellFromRush': this.hNoOp.bind(this),
+       'actingPlayerSetInitialAdjacentPartnerIds': this.hActPartnerIds.bind(this),
 
-      // FIELD_MODEL handlers - COPIED from official client
-      'fieldModelSetBallCoordinate': this.hBallCoord.bind(this),
-      'fieldModelSetBallInPlay': this.hBallInPlay.bind(this),
-      'fieldModelSetBallMoving': this.hBallMoving.bind(this),
-      'fieldModelSetBombCoordinate': this.hBombCoord.bind(this),
-      'fieldModelSetBombMoving': this.hBombMoving.bind(this),
-      'fieldModelSetPlayerCoordinate': this.hPlayerCoord.bind(this),
-      'fieldModelSetPlayerState': this.hPlayerState.bind(this),
-      'fieldModelAddFieldMarker': this.hNoOp.bind(this),
-      'fieldModelRemoveFieldMarker': this.hNoOp.bind(this),
-      'fieldModelAddMoveSquare': this.hNoOp.bind(this),
-      'fieldModelRemoveMoveSquare': this.hNoOp.bind(this),
-      'fieldModelAddPlayerMarker': this.hNoOp.bind(this),
-      'fieldModelRemovePlayerMarker': this.hNoOp.bind(this),
-      'fieldModelRemovePlayer': this.hRemovePlayer.bind(this),
-      'fieldModelSetWeather': this.hWeather.bind(this),
-      'fieldModelSetRangeRuler': this.hNoOp.bind(this),
-      'fieldModelAddBloodSpot': this.hNoOp.bind(this),
-      'fieldModelAddDiceDecoration': this.hNoOp.bind(this),
-      'fieldModelAddCard': this.hNoOp.bind(this),
-      'fieldModelRemoveCard': this.hNoOp.bind(this),
-      'fieldModelAddCardEffect': this.hNoOp.bind(this),
-      'fieldModelRemoveCardEffect': this.hNoOp.bind(this),
-      'fieldModelSetTargetSelectionState': this.hNoOp.bind(this),
-      'fieldModelSetOutOfBounds': this.hNoOp.bind(this),
-      'fieldModelSetBlitzState': this.hNoOp.bind(this),
+       // ============================================================
+       // FIELD_MODEL handlers (38 total from official client)
+       // ============================================================
+       'fieldModelAddBloodSpot': this.hNoOp.bind(this),
+       'fieldModelAddCard': this.hNoOp.bind(this),
+       'fieldModelAddCardEffect': this.hNoOp.bind(this),
+       'fieldModelAddDiceDecoration': this.hNoOp.bind(this),
+       'fieldModelAddEnhancements': this.hNoOp.bind(this),
+       'fieldModelAddFieldMarker': this.hNoOp.bind(this),
+       'fieldModelAddHatred': this.hNoOp.bind(this),
+       'fieldModelAddIntensiveTraining': this.hNoOp.bind(this),
+       'fieldModelAddMoveSquare': this.hNoOp.bind(this),
+       'fieldModelAddPlayerMarker': this.hNoOp.bind(this),
+       'fieldModelAddPrayer': this.hNoOp.bind(this),
+       'fieldModelAddPushbackSquare': this.hNoOp.bind(this),
+       'fieldModelAddSkillEnhancements': this.hNoOp.bind(this),
+       'fieldModelAddTrackNumber': this.hNoOp.bind(this),
+       'fieldModelAddTrapDoor': this.hNoOp.bind(this),
+       'fieldModelAddWisdom': this.hNoOp.bind(this),
+       'fieldModelKeepDeactivatedCard': this.hNoOp.bind(this),
+       'fieldModelRemoveCard': this.hNoOp.bind(this),
+       'fieldModelRemoveCardEffect': this.hNoOp.bind(this),
+       'fieldModelRemoveDiceDecoration': this.hNoOp.bind(this),
+       'fieldModelRemoveFieldMarker': this.hNoOp.bind(this),
+       'fieldModelRemoveMoveSquare': this.hNoOp.bind(this),
+       'fieldModelRemovePlayer': this.hRemovePlayer.bind(this),
+       'fieldModelRemovePlayerMarker': this.hNoOp.bind(this),
+       'fieldModelRemovePrayer': this.hNoOp.bind(this),
+       'fieldModelRemovePushbackSquare': this.hNoOp.bind(this),
+       'fieldModelRemoveSkillEnhancements': this.hNoOp.bind(this),
+       'fieldModelRemoveTrackNumber': this.hNoOp.bind(this),
+       'fieldModelRemoveTrapDoor': this.hNoOp.bind(this),
+       'fieldModelSetBallCoordinate': this.hBallCoord.bind(this),
+       'fieldModelSetBallInPlay': this.hBallInPlay.bind(this),
+       'fieldModelSetBallMoving': this.hBallMoving.bind(this),
+       'fieldModelSetBlitzState': this.hNoOp.bind(this),
+       'fieldModelSetBombCoordinate': this.hBombCoord.bind(this),
+       'fieldModelSetBombMoving': this.hBombMoving.bind(this),
+       'fieldModelSetPlayerCoordinate': this.hPlayerCoord.bind(this),
+       'fieldModelSetPlayerState': this.hPlayerState.bind(this),
+       'fieldModelSetRangeRuler': this.hNoOp.bind(this),
+       'fieldModelSetTargetSelectionState': this.hNoOp.bind(this),
+       'fieldModelSetWeather': this.hWeather.bind(this),
+       'fieldModelOutOfBounds': this.hNoOp.bind(this),
+       'fieldModelAddChomp': this.hNoOp.bind(this),
+       'fieldModelRemoveChomp': this.hNoOp.bind(this),
 
-      // GAME handlers - COPIED from official client
-      'gameSetHomePlaying': this.hHomePlaying.bind(this),
-      'gameSetTurnMode': this.hTurnMode.bind(this),
-      'gameSetLastTurnMode': this.hNoOp.bind(this),
-      'gameSetTimeoutPossible': this.hNoOp.bind(this),
-      'gameSetTimeoutEnforced': this.hNoOp.bind(this),
-      'gameSetConcessionPossible': this.hNoOp.bind(this),
-      'gameSetDefenderId': this.hNoOp.bind(this),
-      'gameSetLastDefenderId': this.hNoOp.bind(this),
-      'gameSetThrowerId': this.hNoOp.bind(this),
-      'gameSetHalf': this.hHalf.bind(this),
-      'gameSetSetupOffense': this.hNoOp.bind(this),
-      'gameSetId': this.hNoOp.bind(this),
-      'gameSetTesting': this.hNoOp.bind(this),
-      'gameSetAdminMode': this.hNoOp.bind(this),
-      'gameSetConcededLegally': this.hNoOp.bind(this),
-      'gameSetWaitingForOpponent': this.hNoOp.bind(this),
-      'gameSetPassCoordinate': this.hPassCoord.bind(this),
-      'gameSetDefenderAction': this.hNoOp.bind(this),
-      'gameSetThrowerAction': this.hNoOp.bind(this),
-      'gameSetHomeFirstOffense': this.hNoOp.bind(this),
-      'gameOptionsAddOption': this.hNoOp.bind(this),
+       // ============================================================
+       // GAME handlers (24 total from official client)
+       // ============================================================
+       'gameSetAdminMode': this.hNoOp.bind(this),
+       'gameSetConcededLegally': this.hNoOp.bind(this),
+       'gameSetConcessionPossible': this.hNoOp.bind(this),
+       'gameSetDefenderAction': this.hNoOp.bind(this),
+       'gameSetDefenderId': this.hNoOp.bind(this),
+       'gameSetDialogParameter': this.hNoOp.bind(this),
+       'gameSetFinished': this.hNoOp.bind(this),
+       'gameSetHalf': this.hHalf.bind(this),
+       'gameSetHomeFirstOffense': this.hNoOp.bind(this),
+       'gameSetHomePlaying': this.hHomePlaying.bind(this),
+       'gameSetId': this.hNoOp.bind(this),
+       'gameSetLastDefenderId': this.hNoOp.bind(this),
+       'gameSetLastTurnMode': this.hNoOp.bind(this),
+       'gameSetPassCoordinate': this.hPassCoord.bind(this),
+       'gameSetScheduled': this.hNoOp.bind(this),
+       'gameSetSetupOffense': this.hNoOp.bind(this),
+       'gameSetStarted': this.hNoOp.bind(this),
+       'gameSetTesting': this.hNoOp.bind(this),
+       'gameSetThrowerId': this.hNoOp.bind(this),
+       'gameSetThrowerAction': this.hNoOp.bind(this),
+       'gameSetTimeoutEnforced': this.hNoOp.bind(this),
+       'gameSetTimeoutPossible': this.hNoOp.bind(this),
+       'gameSetTurnMode': this.hTurnMode.bind(this),
+       'gameSetWaitingForOpponent': this.hNoOp.bind(this),
+       'gameOptionsAddOption': this.hNoOp.bind(this),
 
-      // TEAM_RESULT handlers - COPIED from official client
-      'teamResultSetScore': this.hScore.bind(this),
-      'teamResultSetConceded': this.hNoOp.bind(this),
-      'teamResultSetFame': this.hNoOp.bind(this),
-      'teamResultSetFanFactor': this.hNoOp.bind(this),
-      'teamResultSetSpectators': this.hNoOp.bind(this),
-      'teamResultSetTeamValue': this.hNoOp.bind(this),
-      'teamResultSetWinnings': this.hNoOp.bind(this),
-      'teamResultSetPenaltyScore': this.hNoOp.bind(this),
-      'teamResultSetSeriousInjurySuffered': this.hNoOp.bind(this),
-      'teamResultSetRipSuffered': this.hNoOp.bind(this),
+       // ============================================================
+       // INDUCEMENT_SET handlers (10 total from official client)
+       // ============================================================
+       'inducementSetActivateCard': this.hNoOp.bind(this),
+       'inducementSetAddAvailableCard': this.hNoOp.bind(this),
+       'inducementSetAddInducement': this.hNoOp.bind(this),
+       'inducementSetCardChoices': this.hNoOp.bind(this),
+       'inducementSetDeactivateCard': this.hNoOp.bind(this),
+       'inducementSetRemoveAvailableCard': this.hNoOp.bind(this),
+       'inducementSetRemoveInducement': this.hNoOp.bind(this),
+       'inducementSetAddPrayer': this.hNoOp.bind(this),
+       'inducementSetRemovePrayer': this.hNoOp.bind(this),
 
-      // TURN_DATA handlers - COPIED from official client
-      'turnDataSetTurnNr': this.hTurnNr.bind(this),
-      'turnDataSetReRolls': this.hNoOp.bind(this),
-      'turnDataSetReRollUsed': this.hNoOp.bind(this),
-      'turnDataSetBlitzUsed': this.hNoOp.bind(this),
-      'turnDataSetPassUsed': this.hNoOp.bind(this),
-      'turnDataSetBombUsed': this.hNoOp.bind(this),
-      'turnDataSetHandOverUsed': this.hNoOp.bind(this),
-      'turnDataSetFoulUsed': this.hNoOp.bind(this),
-      'turnDataSetApothecaries': this.hNoOp.bind(this),
-      'turnDataSetTurnStarted': this.hNoOp.bind(this),
-      'turnDataSetTtmUsed': this.hNoOp.bind(this),
-      'turnDataSetKtmUsed': this.hNoOp.bind(this),
-      'turnDataSetSecureTheBallUsed': this.hNoOp.bind(this),
-      'turnDataSetPuntUsed': this.hNoOp.bind(this),
+       // ============================================================
+       // PLAYER handlers (2 total from official client)
+       // ============================================================
+       'playerMarkSkillUsed': this.hNoOp.bind(this),
+       'playerMarkSkillUnused': this.hNoOp.bind(this),
 
-      // PLAYER_RESULT handlers - COPIED from official client
-      'playerResultSetBlocks': this.hNoOp.bind(this),
-      'playerResultSetCasualties': this.hNoOp.bind(this),
-      'playerResultSetTouchdowns': this.hNoOp.bind(this),
-      'playerResultSetInterceptions': this.hNoOp.bind(this),
-      'playerResultSetCompletions': this.hNoOp.bind(this),
-      'playerResultSetPassing': this.hNoOp.bind(this),
-      'playerResultSetRushing': this.hNoOp.bind(this),
-      'playerResultSetFouls': this.hNoOp.bind(this),
-      'playerResultSetSeriousInjury': this.hNoOp.bind(this),
-      'playerResultSetTurnsPlayed': this.hNoOp.bind(this),
-    };
-  }
+       // ============================================================
+       // PLAYER_RESULT handlers (20 total from official client)
+       // ============================================================
+       'playerResultSetBlocks': this.hNoOp.bind(this),
+       'playerResultSetCasualties': this.hNoOp.bind(this),
+       'playerResultSetCasualtiesWithAdditionalSpp': this.hNoOp.bind(this),
+       'playerResultSetCatchesWithAdditionalSpp': this.hNoOp.bind(this),
+       'playerResultSetCompletions': this.hNoOp.bind(this),
+       'playerResultSetCompletionsWithAdditionalSpp': this.hNoOp.bind(this),
+       'playerResultSetCurrentSpps': this.hNoOp.bind(this),
+       'playerResultSetDefecting': this.hNoOp.bind(this),
+       'playerResultSetFouls': this.hNoOp.bind(this),
+       'playerResultSetHasUsedSecretWeapon': this.hNoOp.bind(this),
+       'playerResultSetInterceptions': this.hNoOp.bind(this),
+       'playerResultSetDeflections': this.hNoOp.bind(this),
+       'playerResultSetPassing': this.hNoOp.bind(this),
+       'playerResultSetPlayerAwards': this.hNoOp.bind(this),
+       'playerResultSetRushing': this.hNoOp.bind(this),
+       'playerResultSetSendToBoxByPlayerId': this.hNoOp.bind(this),
+       'playerResultSetSendToBoxHalf': this.hNoOp.bind(this),
+       'playerResultSetSendToBoxReason': this.hNoOp.bind(this),
+       'playerResultSetSendToBoxTurn': this.hNoOp.bind(this),
+       'playerResultSetSeriousInjury': this.hNoOp.bind(this),
+       'playerResultSetSeriousInjuryDecay': this.hNoOp.bind(this),
+       'playerResultSetTouchdowns': this.hNoOp.bind(this),
+       'playerResultSetTurnsPlayed': this.hNoOp.bind(this),
+       'playerResultSetLandings': this.hNoOp.bind(this),
+
+       // ============================================================
+       // SKETCH handler (1 from official client)
+       // ============================================================
+       'sketchUpdate': this.hNoOp.bind(this),
+
+       // ============================================================
+       // TARGET_SELECTION handler (1 from official client)
+       // ============================================================
+       'targetSelectionCommitted': this.hNoOp.bind(this),
+
+       // ============================================================
+       // TEAM_RESULT handlers (16 total from official client)
+       // ============================================================
+       'teamResultSetConceded': this.hNoOp.bind(this),
+       'teamResultDedicatedFansModifier': this.hNoOp.bind(this),
+       'teamResultSetFame': this.hNoOp.bind(this),
+       'teamResultSetFanFactor': this.hNoOp.bind(this),
+       'teamResultSetBadlyHurtSuffered': this.hNoOp.bind(this),
+       'teamResultSetFanFactorModifier': this.hNoOp.bind(this),
+       'teamResultSetPenaltyScore': this.hNoOp.bind(this),
+       'teamResultSetPettyCashTransferred': this.hNoOp.bind(this),
+       'teamResultSetPettyCashUsed': this.hNoOp.bind(this),
+       'teamResultSetRaisedDead': this.hNoOp.bind(this),
+       'teamResultSetRipSuffered': this.hNoOp.bind(this),
+       'teamResultSetScore': this.hScore.bind(this),
+       'teamResultSetSeriousInjurySuffered': this.hNoOp.bind(this),
+       'teamResultSetSpectators': this.hNoOp.bind(this),
+       'teamResultSetSpirallingExpenses': this.hNoOp.bind(this),
+       'teamResultSetTeamValue': this.hNoOp.bind(this),
+       'teamResultSetWinnings': this.hNoOp.bind(this),
+
+       // ============================================================
+       // TURN_DATA handlers (25 total from official client)
+       // ============================================================
+       'turnDataSetApothecaries': this.hNoOp.bind(this),
+       'turnDataSetBlitzUsed': this.hNoOp.bind(this),
+       'turnDataSetBombUsed': this.hNoOp.bind(this),
+       'turnDataSetFirstTurnAfterKickoff': this.hNoOp.bind(this),
+       'turnDataSetFoulUsed': this.hNoOp.bind(this),
+       'turnDataSetHandOverUsed': this.hNoOp.bind(this),
+       'turnDataSetLeaderState': this.hNoOp.bind(this),
+       'turnDataSetPassUsed': this.hNoOp.bind(this),
+       'turnDataSetTtmUsed': this.hNoOp.bind(this),
+       'turnDataSetKtmUsed': this.hNoOp.bind(this),
+       'turnDataSetSecureTheBallUsed': this.hNoOp.bind(this),
+       'turnDataPuntUsed': this.hNoOp.bind(this),
+       'turnDataSetReRolls': this.hNoOp.bind(this),
+       'turnDataSetReRollsBrilliantCoachingOneDrive': this.hNoOp.bind(this),
+       'turnDataSetReRollsPumpUpTheCrowdOneDrive': this.hNoOp.bind(this),
+       'turnDataSetReRollsShowStarOneDrive': this.hNoOp.bind(this),
+       'turnDataSetReRollsSingleUse': this.hNoOp.bind(this),
+       'turnDataSetReRollUsed': this.hNoOp.bind(this),
+       'turnDataSetTurnNr': this.hTurnNr.bind(this),
+       'turnDataSetTurnStarted': this.hNoOp.bind(this),
+       'turnDataSetCoachBanned': this.hNoOp.bind(this),
+       'turnDataSetWanderingApothecaries': this.hNoOp.bind(this),
+       'turnDataSetPlagueDoctors': this.hNoOp.bind(this),
+       'turnDataSetCheeringFansBlockAssist': this.hNoOp.bind(this),
+     };
+   }
 
   // =========================================================================
   // INITIALIZATION - COPIED from official client Game.java
@@ -476,6 +577,7 @@ export class FumbblGameModel {
     return true;
   };
   private hActSkillUsed = () => true;
+  private hActSkillUnused = () => true;
   private hActOldState = () => true;
   private hActPartnerIds = () => true;
 

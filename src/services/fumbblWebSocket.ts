@@ -4,7 +4,7 @@
 // Based on ffbclient core/network.ts (OFFICIAL CLIENT - uses LZString compression)
 // =============================================================================
 
-import { decompressFromUTF16, decompressFromUint8Array, compressToUTF16 } from 'lz-string';
+import { decompressFromUTF16, compressToUTF16 } from 'lz-string';
 
 import {
   FumbblWebSocketConfig,
@@ -279,27 +279,23 @@ export class FumbblWebSocket {
     let decompressed: string;
     try {
       if (rawData instanceof Blob) {
-        // BLOB: Read blob as text first, then try UTF16 decompression (ffbclient pattern)
         const text = await rawData.text();
         decompressed = decompressFromUTF16(text);
         if (!decompressed || decompressed.length === 0) {
           decompressed = text;
         }
       } else if (typeof rawData === 'string') {
-        // STRING: Try decompressing from UTF16 (ffbclient official format)
         decompressed = decompressFromUTF16(rawData);
         if (!decompressed || decompressed.length === 0) {
           decompressed = rawData;
         }
       } else if (rawData instanceof ArrayBuffer) {
-        // ArrayBuffer: Convert to Uint8Array for decompressFromUint8Array
         const uint8Array = new Uint8Array(rawData);
-        decompressed = decompressFromUint8Array(uint8Array);
+        const decoder = new TextDecoder('utf-8');
+        const text = decoder.decode(uint8Array);
+        decompressed = decompressFromUTF16(text);
         if (!decompressed || decompressed.length === 0) {
-          console.error('[FumbblWebSocket] ArrayBuffer decompression failed');
-          const err = new Error('ArrayBuffer decompression failed');
-          this.callbacks.onError?.(err);
-          return;
+          decompressed = text;
         }
       } else {
         console.error('[FumbblWebSocket] Unsupported message type:', typeof rawData);
@@ -449,7 +445,9 @@ export class FumbblWebSocket {
   }
 
   /**
-   * Send a raw JSON message (LZString compressed with UTF16 encoding)
+   * Send a raw JSON message (LZString compressed with UTF16 encoding).
+   * The fumbbl.com production server uses compression.
+   * Evidence: Original log shows server responds ONLY when compressed messages are sent.
    */
   sendRaw(message: ProtocolMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocketState.OPEN) {
@@ -557,23 +555,27 @@ export class FumbblWebSocket {
   /**
    * Start the ping timer to keep the connection alive.
    * The FFB server requires periodic clientPing messages.
-   * Based on official ffbclient: ClientPingTask is scheduled with delay=0 (immediate first ping).
-   * Default interval: 30000ms (30 seconds) matches the official client default.
    *
-   * CRITICAL: The official Java client uses Timer.schedule(task, 0, interval) which sends
-   * the FIRST ping IMMEDIATELY (delay=0), then every 30 seconds. JavaScript setInterval
+   * CRITICAL: The official ffbclient uses client.ping.interval=2000 (2 seconds) from client.ini!
+   * The server SessionTimeoutTask closes connections where lastPing + 10000ms < now.
+   * With a 2-second ping interval, we're well within the 10-second timeout.
+   *
+   * The official Java client uses Timer.schedule(task, 0, interval) which sends
+   * the FIRST ping IMMEDIATELY (delay=0), then every 2 seconds. JavaScript setInterval
    * does NOT fire immediately, so we must call sendPing() once after setting up the interval.
    */
   private startPingTimer(): void {
     this.stopPingTimer();
-    const pingInterval = 30000; // 30 seconds - matches official FFB client default
+    // OFFICIAL CLIENT VALUE: client.ping.interval=2000 from client.ini
+    // Server timeout is 10000ms, so 2000ms ping interval gives us 5x safety margin
+    const pingInterval = 2000; // 2 seconds - EXACT match with official ffbclient
     this.pingTimer = window.setInterval(() => {
       this.sendPing();
     }, pingInterval);
-    // PING IMMEDIATO - matches official client Timer.schedule(task, 0, interval) behavior
+    // IMMEDIATE FIRST PING - matches official client Timer.schedule(task, 0, interval) behavior
     // The first ping must be sent immediately after connection to prevent server timeout
     this.sendPing();
-    console.log(`[FumbblWebSocket] Ping timer started (interval: ${pingInterval}ms)`);
+    console.log(`[FumbblWebSocket] Ping timer started (interval: ${pingInterval}ms, matches official client.ini)`);
   }
 }
 

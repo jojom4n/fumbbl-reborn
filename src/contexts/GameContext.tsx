@@ -14,14 +14,16 @@ import {
 import { FumbblService, FumbblServiceConfig } from '../services/fumbblService';
 
 // -----------------------------------------------------------------------------
-// Unique ID generator (avoids Date.now() duplicates)
-// Uses timestamp + counter, returns number for DiceLogEntry/ChatMessage compatibility
+// Unique ID generator (avoids duplicates)
+// Uses simple counter to stay within JavaScript safe integer range.
+// Date.now() concatenated with counter creates numbers too large for safe Number representation,
+// causing precision loss and duplicate IDs (e.g., 1785112287757000000 for all calls).
 // -----------------------------------------------------------------------------
 let _idCounter = 0;
 const generateUniqueId = (): number => {
   _idCounter += 1;
-  // Use timestamp with counter offset to avoid duplicates within same millisecond
-  return Number(`${Date.now()}${String(_idCounter).padStart(6, '0')}`);
+  // Simple counter-based ID - always unique, always within safe integer range
+  return _idCounter;
 };
 
 // -----------------------------------------------------------------------------

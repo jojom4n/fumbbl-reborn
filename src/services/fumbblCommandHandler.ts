@@ -74,6 +74,10 @@ export class FumbblCommandHandler {
       'serverSketchSetLabel': this.handleSketchSetLabel.bind(this),
       'serverSetPreventSketching': this.handleSetPreventSketching.bind(this),
       'serverSocketClosed': this.handleSocketClosed.bind(this),
+
+      // Ping/Pong handlers (keepalive)
+      'serverPong': this.handlePong.bind(this),
+      'serverPing': this.handleServerPing.bind(this),
     };
   }
 
@@ -452,5 +456,22 @@ export class FumbblCommandHandler {
   private handleSocketClosed(data: any): void {
     console.log('[FumbblCommandHandler] Processing socket closed command');
     this.callbacks.onSocketClosed(data);
+  }
+
+  /**
+   * Handles serverPong - Response to our clientPing
+   * Based on ffbclient ClientCommandHandlerPong
+   * The server echoes back the timestamp we sent in clientPing.
+   */
+  private handlePong(data: any): void {
+    console.log('[FumbblCommandHandler] serverPong received, timestamp:', data.timestamp);
+  }
+
+  /**
+   * Handles serverPing - Server initiated ping (rare, but possible)
+   * We respond by doing nothing since the server primarily uses pong responses.
+   */
+  private handleServerPing(data: any): void {
+    console.log('[FumbblCommandHandler] serverPing received, timestamp:', data.timestamp);
   }
 }
