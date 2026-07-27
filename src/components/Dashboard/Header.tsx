@@ -2,16 +2,17 @@
 // Header — Top bar with team logos, score, turn, re-rolls, timer, weather, Fan Attendance
 // =============================================================================
 
-import { Settings } from 'lucide-react';
+import { Settings, LogOut } from 'lucide-react';
 import FanAttendance from './FanAttendance';
 import { GameState } from '../../types/bloodbowl';
 
 interface HeaderProps {
   gameState: GameState;
   onSettingsClick?: () => void;
+  username?: string;
 }
 
-export default function Header({ gameState, onSettingsClick }: HeaderProps) {
+export default function Header({ gameState, onSettingsClick, username }: HeaderProps) {
   const { score, turn, reRolls, timer, weather, fanAttendance, team1, team2 } = gameState;
 
   // Format timer as MM:SS
@@ -81,13 +82,33 @@ export default function Header({ gameState, onSettingsClick }: HeaderProps) {
         team2Name={team2.name}
       />
 
-      {/* Settings Button */}
-      <button
-        onClick={onSettingsClick}
-        className="ml-auto p-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 hover:text-white transition-colors"
-      >
-        <Settings size={20} />
-      </button>
+      {/* Username Display */}
+      {username && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 rounded-lg border border-gray-600">
+          <span className="text-lg">👤</span>
+          <span className="text-sm text-gray-300 font-medium">{username}</span>
+        </div>
+      )}
+
+      {/* Logout Button */}
+      {onSettingsClick && (
+        <button
+          onClick={onSettingsClick}
+          className="ml-auto p-2 rounded-lg bg-gray-800 hover:bg-red-900/50 border border-gray-600 hover:border-red-700 text-gray-400 hover:text-red-400 transition-colors"
+          title="Esci"
+        >
+          <LogOut size={18} />
+        </button>
+      )}
+
+      {/* Settings Button (hidden when logout is available, logout replaces it) */}
+      {!onSettingsClick && (
+        <button
+          className="ml-auto p-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 hover:text-white transition-colors"
+        >
+          <Settings size={20} />
+        </button>
+      )}
     </header>
   );
 }

@@ -153,6 +153,11 @@ export class FumbblAuthService {
     return this.sessionToken;
   }
 
+  /** Set the username manually (e.g., from user input at login) */
+  setUsername(username: string): void {
+    this._username = username;
+  }
+
   /** Get the username from OAuth2 identity */
   getUsername(): string {
     return this._username;

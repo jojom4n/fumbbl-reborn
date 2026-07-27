@@ -127,7 +127,6 @@ export function FumbblDebugPanel() {
     isServiceConnected,
     isAuthenticated,
     setState,
-    setCredentials,
     connectToGame,
     disconnect,
     sendChatMessage,
@@ -137,20 +136,20 @@ export function FumbblDebugPanel() {
   } = useGameState();
 
   // Form state
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [fumbblUsername, setFumbblUsername] = useState('');
   const [gameId, setGameId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [spectate, setSpectate] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
+  // Pre-fill username from the auth service if available
+  const [fumbblUsername, setFumbblUsername] = useState(() => {
+    return fumbblService?.getAuthUsername() ?? '';
+  });
 
   // Simulation state
   const [simulatedGameState, setSimulatedGameState] = useState(false);
 
   // Collapsible sections
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
-    auth: true,
     connection: true,
     gameState: true,
     actions: true,
@@ -199,20 +198,6 @@ export function FumbblDebugPanel() {
 
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  const handleAuthenticate = async () => {
-    if (!clientId || !clientSecret) {
-      addLog('clientId e clientSecret richiesti', 'error');
-      return;
-    }
-    try {
-      addLog(`Autenticazione in corso...`, 'info');
-      await setCredentials(clientId, clientSecret);
-      addLog('Autenticazione OAuth2 completata con successo', 'success');
-    } catch (error) {
-      addLog(`Errore autenticazione: ${(error as Error).message}`, 'error');
-    }
   };
 
   const handleConnect = async () => {
@@ -334,65 +319,18 @@ export function FumbblDebugPanel() {
         <h2 className="text-base font-bold text-yellow-400 flex items-center gap-2">
           <span>🔧</span> FUMBBL Debug Panel
         </h2>
+        <div className="flex gap-2">
+        <span className={`text-xs px-2 py-0.5 rounded ${isAuthenticated ? 'bg-blue-900 text-blue-300' : 'bg-gray-900 text-gray-400'}`}>
+          {isAuthenticated ? '🔐 AUTENTICATO' : '🔓 NON AUTENTICATO'}
+        </span>
         <span className={`text-xs px-2 py-0.5 rounded ${isServiceConnected ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
           {isServiceConnected ? '● CONNESSO' : '● DISCONNESSO'}
         </span>
       </div>
+      </div>
 
       {/* Collapsible Sections */}
       <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar">
-        {/* Auth Section */}
-        <div className="bg-gray-800 border border-gray-700 rounded">
-          <button
-            onClick={() => toggleSection('auth')}
-            className="w-full flex items-center justify-between px-3 py-2 text-left text-sm"
-          >
-            <span className="text-yellow-300 font-bold">🔐 Autenticazione OAuth2</span>
-            <span className="text-xs text-gray-400">{sectionArrow('auth')}</span>
-          </button>
-          {!collapsedSections.auth && (
-            <div className="px-3 pb-3 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="clientId (da fumbbl.com/settings)"
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
-                  className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-gray-200 text-xs"
-                />
-                <input
-                  type="password"
-                  placeholder="clientSecret (da fumbbl.com/settings)"
-                  value={clientSecret}
-                  onChange={e => setClientSecret(e.target.value)}
-                  className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-gray-200 text-xs"
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  placeholder="Username FUMBBL (il tuo account coach)"
-                  value={fumbblUsername}
-                  onChange={e => setFumbblUsername(e.target.value)}
-                  className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-gray-200 text-xs w-full"
-                />
-                <span className="text-[10px] text-gray-500">Questo è il tuo username FUMBBL, usato come "coach" nel clientJoin</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleAuthenticate}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition-colors"
-                >
-                  Autentic OAuth2
-                </button>
-                <span className={`text-xs self-center ${isAuthenticated ? 'text-green-400' : 'text-gray-500'}`}>
-                  {isAuthenticated ? '✓ OAuth2' : 'Non autenticato'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Connection Section */}
         <div className="bg-gray-800 border border-gray-700 rounded">
           <button
@@ -404,6 +342,15 @@ export function FumbblDebugPanel() {
           </button>
           {!collapsedSections.connection && (
             <div className="px-3 pb-3 space-y-2">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Username FUMBBL (il tuo coach)"
+                  value={fumbblUsername}
+                  onChange={e => setFumbblUsername(e.target.value)}
+                  className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-gray-200 text-xs w-full"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
@@ -421,11 +368,6 @@ export function FumbblDebugPanel() {
                   className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-gray-200 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
-              {fumbblUsername && (
-                <div className="text-xs text-green-400">
-                  Username FUMBBL: <span className="font-bold">{fumbblUsername}</span> (usato come "coach" nel clientJoin)
-                </div>
-              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"

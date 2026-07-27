@@ -31,6 +31,8 @@ export interface FumbblServiceConfig {
   /** OAuth2 credentials */
   clientId?: string;
   clientSecret?: string;
+  /** Username provided at login */
+  username?: string;
   /** Game ID to connect to */
   gameId?: number;
   /** Team ID to join as */
@@ -81,6 +83,20 @@ export class FumbblService {
     return this.websocket?.getGameModel() ?? null;
   }
 
+  /**
+   * Get the authenticated username
+   */
+  getAuthUsername(): string {
+    return this.auth.getUsername();
+  }
+
+  /**
+   * Set the username manually (e.g., from user input at login)
+   */
+  setUsername(username: string): void {
+    this.auth.setUsername(username);
+  }
+
   constructor(config?: FumbblServiceConfig) {
     this.config = config || {};
     this.auth = new FumbblAuthService();
@@ -111,6 +127,10 @@ export class FumbblService {
     this.setState({ isLoading: true });
 
     try {
+      // Set username if provided
+      if (this.config.username) {
+        this.auth.setUsername(this.config.username);
+      }
       // Try to authenticate if credentials provided
       if (this.config.clientId && this.config.clientSecret) {
         await this.authenticate();

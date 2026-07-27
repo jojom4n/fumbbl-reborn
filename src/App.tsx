@@ -2,13 +2,19 @@
 // App — Entry point with authentication and debug support
 // =============================================================================
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from './components/Dashboard/DashboardLayout';
 import { FumbblDebugPanel } from './components/Debug/FumbblDebugPanel';
 import { GameProvider } from './contexts/GameContext';
+import { LoginScreen } from './components/Auth/LoginScreen';
 
 // -----------------------------------------------------------------------------
 // Storage abstraction: Tauri Store -> localStorage fallback
+// Platform-specific paths are handled automatically by Tauri:
+//   - Windows: %APPDATA%\com.saruman.fumbbl-reborn\fumbbl-credentials.json
+//   - macOS:   ~/Library/Application Support/com.saruman.fumbbl-reborn/fumbbl-credentials.json
+//   - Linux:   ~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json
+//   - Browser: localStorage
 // -----------------------------------------------------------------------------
 
 async function getStorage() {
@@ -16,7 +22,7 @@ async function getStorage() {
   const isTauri = typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
 
   if (isTauri) {
-    console.log('[App] Using Tauri Store');
+    console.log('[App] Using Tauri Store (platform-specific path)');
     const { Store } = await import('@tauri-apps/plugin-store');
     const store = await Store.load('fumbbl-credentials.json');
     return {
@@ -29,6 +35,7 @@ async function getStorage() {
       },
       delete: async (key: string): Promise<void> => {
         await store.delete(key);
+        await store.save();
       },
     };
   }
@@ -55,13 +62,22 @@ async function getStorage() {
 interface Credentials {
   clientId: string;
   clientSecret: string;
+  username: string;
+}
+
+interface ConnectResult {
+  credentials: Credentials;
+  saveCredentials: boolean;
 }
 
 // -----------------------------------------------------------------------------
-// Authentication
+// OAuth2 Authentication
 // -----------------------------------------------------------------------------
 
-async function authenticateFumbbl(clientId: string, clientSecret: string, storage: { set: (key: string, value: unknown) => Promise<void> }) {
+async function authenticateFumbbl(
+  clientId: string,
+  clientSecret: string
+): Promise<{ accessToken: string; sessionToken: string } | null> {
   const tokenUrl = "https://fumbbl.com/api/oauth/token";
   const formData = new URLSearchParams();
   formData.append("grant_type", "client_credentials");
@@ -75,11 +91,12 @@ async function authenticateFumbbl(clientId: string, clientSecret: string, storag
       body: formData.toString(),
     });
 
-    if (!response.ok) throw new Error("Errore prima chiamata API");
+    if (!response.ok) throw new Error("OAuth2 token request failed");
 
     const data = await response.json();
     const accessToken = data.access_token;
 
+    // Get session token
     const sessionUrl = "https://fumbbl.com/api/auth/getToken";
     const sessionResponse = await fetch(sessionUrl, {
       method: "POST",
@@ -89,16 +106,21 @@ async function authenticateFumbbl(clientId: string, clientSecret: string, storag
       }
     });
 
-    if (!sessionResponse.ok) throw new Error("Errore seconda chiamata API");
+    if (!sessionResponse.ok) throw new Error("Session token request failed");
 
-    // Save credentials via storage
-    await storage.set('fumbbl_credentials', { clientId, clientSecret });
+    const tokenText = await sessionResponse.text();
+    // CRITICAL: API returns JSON-encoded string, must parse
+    let sessionToken: string;
+    try {
+      sessionToken = JSON.parse(tokenText);
+    } catch {
+      sessionToken = tokenText.trim();
+    }
 
-    return true;
+    return { accessToken, sessionToken };
   } catch (error) {
-    console.error("Errore autenticazione:", error);
-    alert("Errore: " + error);
-    return false;
+    console.error("[App] Errore autenticazione:", error);
+    return null;
   }
 }
 
@@ -120,12 +142,11 @@ export function isDebugEnabled(): boolean {
 // -----------------------------------------------------------------------------
 
 function App() {
-  const [credentials, setCredentials] = useState<Credentials>({
-    clientId: '',
-    clientSecret: ''
-  });
+  const [savedCredentials, setSavedCredentials] = useState<Credentials | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [storage, setStorage] = useState<{
     get: <T,>(key: string) => Promise<T | null>;
@@ -139,7 +160,7 @@ function App() {
     setShowDebug(params.get('debug') === 'true');
   }, []);
 
-  // Detect storage and load credentials
+  // Detect storage and load saved credentials
   useEffect(() => {
     const init = async () => {
       const s = await getStorage();
@@ -148,11 +169,11 @@ function App() {
       try {
         const saved = await s.get<Credentials>('fumbbl_credentials');
         if (saved) {
-          setCredentials(saved);
-          setIsAuthenticated(true);
+          console.log('[App] Credenziali salvate trovate');
+          setSavedCredentials(saved);
         }
       } catch (e) {
-        console.error("Errore caricamento credenziali", e);
+        console.error("[App] Errore caricamento credenziali", e);
       } finally {
         setIsLoading(false);
       }
@@ -160,36 +181,88 @@ function App() {
     init();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!storage) return;
-    const success = await authenticateFumbbl(credentials.clientId, credentials.clientSecret, storage);
-    if (success) {
+  const handleConnect = useCallback(async (result: ConnectResult): Promise<boolean> => {
+    const { credentials, saveCredentials } = result;
+    setIsConnecting(true);
+    setAuthError(null);
+
+    try {
+      // Step 1: Validate OAuth2 credentials
+      const authResult = await authenticateFumbbl(credentials.clientId, credentials.clientSecret);
+      if (!authResult) {
+        setAuthError('Autenticazione OAuth2 fallita. Verifica Client ID e Client Secret.');
+        return false;
+      }
+
+      // Step 2: Save credentials only if user opted in
+      if (storage && saveCredentials) {
+        await storage.set('fumbbl_credentials', credentials);
+        console.log('[App] Credenziali salvate con successo');
+      } else if (!saveCredentials) {
+        console.log('[App] Credenziali NON salvate (scelta utente)');
+      }
+
+      // Step 3: Update state
+      setSavedCredentials(credentials);
       setIsAuthenticated(true);
+      return true;
+    } catch (error) {
+      setAuthError((error as Error).message || 'Errore durante la connessione');
+      return false;
+    } finally {
+      setIsConnecting(false);
     }
-  };
+  }, [storage]);
+
+  const handleClearCredentials = useCallback(async () => {
+    if (storage) {
+      await storage.delete('fumbbl_credentials');
+      console.log('[App] Credenziali rimosse');
+    }
+    setSavedCredentials(null);
+    setIsAuthenticated(false);
+  }, [storage]);
 
   const handleToggleDebug = () => {
+    // Use history API to avoid page reload that resets React state
     setShowDebug(prev => {
       const next = !prev;
-      const params = new URLSearchParams(window.location.search);
-      params.set('debug', next.toString());
-      window.location.search = params.toString();
+      const url = new URL(window.location.href);
+      url.searchParams.set('debug', next.toString());
+      window.history.pushState({ debug: next.toString() }, '', url);
       return next;
     });
   };
 
-  if (isLoading) return <div className="h-screen w-screen bg-[#121212] flex items-center justify-center text-white">Caricamento...</div>;
+  // Pass credentials to GameProvider via serviceConfig (including username)
+  const serviceConfig = savedCredentials ? {
+    clientId: savedCredentials.clientId,
+    clientSecret: savedCredentials.clientSecret,
+    username: savedCredentials.username,
+  } : {};
 
-  // FUMBBL service config for GameProvider
-  const serviceConfig = {};
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#121212] flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="text-4xl mb-3">🏈</div>
+          <div className="text-gray-500 text-sm">Caricamento...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <GameProvider serviceConfig={serviceConfig}>
       <div className="h-screen w-screen bg-[#121212] overflow-hidden flex flex-col">
         {isAuthenticated ? (
           <>
-            <DashboardLayout onToggleDebug={handleToggleDebug} isDebugEnabled={showDebug} />
+            <DashboardLayout
+              onToggleDebug={handleToggleDebug}
+              isDebugEnabled={showDebug}
+              onLogout={handleClearCredentials}
+              username={savedCredentials?.username}
+            />
             {/* Debug panel as bottom overlay (doesn't affect main layout) */}
             {showDebug && (
               <div className="absolute bottom-0 left-0 right-0 z-50 max-h-[50vh] overflow-y-auto">
@@ -198,67 +271,13 @@ function App() {
             )}
           </>
         ) : (
-        <div className="h-full flex items-center justify-center bg-[#0f0f0f]">
-          <div className="w-full max-w-md bg-[#1a1a1a] p-8 rounded-xl border border-white/10 shadow-2xl">
-            <h1 className="text-3xl font-bold text-white mb-2 text-center">FUMBBL Reborn</h1>
-            <p className="text-gray-400 text-center mb-6">Client Desktop Ufficiale</p>
-
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Client ID</label>
-                  <input
-                    type="text"
-                    value={credentials.clientId}
-                    onChange={(e) => setCredentials({ ...credentials, clientId: e.target.value })}
-                    className="w-full bg-[#0f0f0f] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Client Secret</label>
-                  <input
-                    type="password"
-                    value={credentials.clientSecret}
-                    onChange={(e) => setCredentials({ ...credentials, clientSecret: e.target.value })}
-                    className="w-full bg-[#0f0f0f] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-lg mt-6"
-              >
-                CONNETTI E SALVA
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  if (storage) {
-                    await storage.delete('fumbbl_credentials');
-                  }
-                  setCredentials({ clientId: '', clientSecret: '' });
-                  alert("Credenziali cancellate.");
-                }}
-                className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 text-sm py-2 px-4 rounded transition duration-200 mt-2"
-              >
-                CANCELLA CREDENZIALI SALVATE
-              </button>
-            </form>
-
-            <p className="text-gray-500 text-xs mt-6 text-center">
-              Ottieni le chiavi su <a href="https://fumbbl.com/p/oauth" target="_blank" className="text-blue-500 hover:underline">fumbbl.com/p/oauth</a>
-            </p>
-
-            {/* Debug mode hint */}
-            <div className="mt-4 p-2 bg-gray-800/50 rounded text-xs text-gray-500 text-center">
-              <p>Aggiungi <code className="bg-gray-700 px-1 rounded">?debug=true</code> all'URL per aprire il pannello debug</p>
-            </div>
-          </div>
-        </div>
+          <LoginScreen
+            onConnect={handleConnect}
+            onClearCredentials={handleClearCredentials}
+            savedCredentials={savedCredentials}
+            isLoading={isConnecting}
+            error={authError}
+          />
         )}
       </div>
     </GameProvider>

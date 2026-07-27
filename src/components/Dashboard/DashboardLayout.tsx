@@ -44,9 +44,11 @@ const DEFAULT_RADIAL_ITEMS: Omit<RadialMenuItem, 'angle' | 'available'>[] = [
 interface DashboardLayoutProps {
   onToggleDebug?: () => void;
   isDebugEnabled?: boolean;
+  onLogout?: () => void;
+  username?: string;
 }
 
-export default function DashboardLayout({ onToggleDebug, isDebugEnabled }: DashboardLayoutProps) {
+export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogout, username }: DashboardLayoutProps) {
   const { gameState, selectPlayer, sendAction, addChatMessage, clearDiceLog } = useGameState();
 
   // Radial menu state — stores field position for correct placement
@@ -103,7 +105,7 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled }: Dashb
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
       {/* Header */}
-      <Header gameState={gameState} />
+      <Header gameState={gameState} onSettingsClick={onLogout} username={username} />
 
       {/* Main Content */}
       <div className="flex-1 flex gap-2 p-2 overflow-hidden min-h-0">
