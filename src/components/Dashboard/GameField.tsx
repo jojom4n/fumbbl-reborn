@@ -34,7 +34,7 @@ interface GameFieldProps {
   team2Players: Player[];
   ballPosition: FieldPosition;
   selectedPlayer: Player | null;
-  onPlayerSelect: (player: Player) => void;
+  onPlayerSelect: (player: Player, position: FieldPosition) => void;
   onFieldClick?: (position: FieldPosition) => void;
 }
 
@@ -119,13 +119,13 @@ export default function GameField({
                   )}
 
                   {/* Player token */}
-                  {player && (
-                    <button
-                      key={`player-btn-${player.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPlayerSelect(player);
-                      }}
+                   {player && (
+                     <button
+                       key={`player-btn-${player.id}`}
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         onPlayerSelect(player, { x: col, y: row });
+                       }}
                       className={`
                         relative w-5 h-5 rounded-full border flex items-center justify-center
                         text-[8px] font-bold transition-all duration-150 z-10

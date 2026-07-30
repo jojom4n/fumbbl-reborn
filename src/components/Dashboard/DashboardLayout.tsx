@@ -29,9 +29,14 @@ import Chat from './Chat';
 import { useGameState } from '../../contexts/GameContext';
 import {
   BloodBowlAction,
+  FieldPosition,
   Player,
   RadialMenuItem,
 } from '../../types/bloodbowl';
+
+// Blood Bowl field dimensions
+const FIELD_WIDTH = 26;
+const FIELD_HEIGHT = 15;
 
 // Default radial menu items (BB2025 actions)
 const DEFAULT_RADIAL_ITEMS: Omit<RadialMenuItem, 'angle' | 'available'>[] = [
@@ -58,17 +63,17 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
 
   // Radial menu state — stores field position for correct placement
   type RadialAction =
-    | { type: 'show'; player: Player; fieldX: number; fieldY: number }
+    | { type: 'show'; player: Player; position: FieldPosition }
     | { type: 'hide' }
     | { type: 'select'; action: BloodBowlAction };
 
   const [radialMenu, setRadialMenu] = useReducer(
-    (state: { visible: boolean; player: Player | null; fieldX: number; fieldY: number }, action: RadialAction) => {
+    (state: { visible: boolean; player: Player | null; position: FieldPosition }, action: RadialAction) => {
       switch (action.type) {
         case 'show':
-          return { visible: true, player: action.player, fieldX: action.fieldX, fieldY: action.fieldY };
+          return { visible: true, player: action.player, position: action.position };
         case 'hide':
-          return { visible: false, player: null, fieldX: 0, fieldY: 0 };
+          return { visible: false, player: null, position: { x: 0, y: 0 } };
         case 'select':
           // Handle action selection (radial menu stays open for multiple actions)
           return state;
@@ -76,16 +81,18 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
           return state;
       }
     },
-    { visible: false, player: null, fieldX: 0, fieldY: 0 } as { visible: boolean; player: Player | null; fieldX: number; fieldY: number }
+    { visible: false, player: null, position: { x: 0, y: 0 } } as { visible: boolean; player: Player | null; position: FieldPosition }
   );
 
-  // Handle player selection from field or roster
-  const handlePlayerSelect = (player: Player) => {
+  // Handle player selection from field — shows radial menu
+  const handleFieldPlayerSelect = (player: Player, position: FieldPosition) => {
     selectPlayer(player);
-    // Use field position if available, otherwise default to player's number-based position
-    const fieldX = player.fieldX ?? 0;
-    const fieldY = player.fieldY ?? 0;
-    setRadialMenu({ type: 'show', player, fieldX, fieldY });
+    setRadialMenu({ type: 'show', player, position });
+  };
+
+  // Handle player selection from roster — only selects player, no radial menu
+  const handleRosterPlayerSelect = (player: Player) => {
+    selectPlayer(player);
   };
 
   // Handle radial menu action
@@ -133,7 +140,7 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
           team={gameState.team1Players}
           teamName={gameState.team1.name}
           teamColor={gameState.team1.color}
-          onPlayerSelect={handlePlayerSelect}
+          onPlayerSelect={handleRosterPlayerSelect}
           selectedPlayerId={gameState.selectedPlayer?.id}
         />
 
@@ -144,7 +151,7 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
             team2Players={gameState.team2Players}
             ballPosition={gameState.ballPosition}
             selectedPlayer={gameState.selectedPlayer}
-            onPlayerSelect={handlePlayerSelect}
+            onPlayerSelect={handleFieldPlayerSelect}
           />
 
           {/* Radial Menu (positioned over the selected player) */}
@@ -152,8 +159,8 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
             <div
               className="absolute z-30"
               style={{
-                left: `${((radialMenu.fieldX + 0.5) / 17) * 100}%`,
-                top: `${((radialMenu.fieldY + 0.5) / 10) * 100}%`,
+                left: `${((radialMenu.position.x + 0.5) / FIELD_WIDTH) * 100}%`,
+                top: `${((radialMenu.position.y + 0.5) / FIELD_HEIGHT) * 100}%`,
                 transform: 'translate(-50%, -50%)',
               }}
             >
@@ -172,7 +179,7 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
           team={gameState.team2Players}
           teamName={gameState.team2.name}
           teamColor={gameState.team2.color}
-          onPlayerSelect={handlePlayerSelect}
+          onPlayerSelect={handleRosterPlayerSelect}
           selectedPlayerId={gameState.selectedPlayer?.id}
         />
       </div>
