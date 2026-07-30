@@ -111,16 +111,20 @@ export default function GameField({
                           !
                         </span>
                       )}
-                      {/* Ball carrier indicator */}
+                      {/* Ball carrier indicator — prominent football emoji */}
                       {player.hasBall && (
-                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full border border-orange-200" />
+                        <span className="absolute -top-1 -right-1 text-[10px] drop-shadow-lg" title="Has ball">
+                          🏈
+                        </span>
                       )}
                     </button>
                   )}
 
-                  {/* Ball token */}
+                  {/* Ball token — visible when ball is on a square without a player */}
                   {!player && isBall && (
-                    <div className="w-4 h-4 rounded-full bg-orange-400 border-2 border-orange-200 shadow-lg z-10" />
+                    <div className="flex flex-col items-center justify-center z-10">
+                      <span className="text-lg drop-shadow-lg">🏈</span>
+                    </div>
                   )}
                 </div>
               );

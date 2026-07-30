@@ -11,6 +11,7 @@ import { FumbblGameModel } from './fumbblGameModel';
 export interface FumbblCommandHandlerCallbacks {
   onGameState: (gameState: any) => void;
   onModelSync: (changes: any[]) => void;
+  onReports: (reports: any[]) => void;
   onGameTime: (gameTime: number, turnTime: number) => void;
   onTalk: (message: any) => void;
   onSound: (sound: any) => void;
@@ -228,6 +229,11 @@ export class FumbblCommandHandler {
     // CRITICAL: Always call all callbacks to ensure complete UI update
     // This matches ffbclient: after serverModelSync, update UI with all changes
     this.callbacks.onModelSync(changes);
+    // Send reports to the callback for dice log parsing
+    if (reports.length > 0) {
+      console.log('[FumbblCommandHandler] Reports received:', reports.length, 'reports');
+      this.callbacks.onReports(reports);
+    }
     this.callbacks.onSound(sound);
     this.callbacks.onGameState(gameState);
   }

@@ -71,6 +71,7 @@ export class FumbblService {
   private callbacks: {
     onStateUpdate?: (state: GameState) => void;
     onModelChanges?: (changes: any[]) => void;
+    onReports?: (reports: any[]) => void;
     onConnectionChange?: (isConnected: boolean) => void;
     onAuthChange?: (isAuthenticated: boolean) => void;
     onError?: (error: string) => void;
@@ -744,6 +745,11 @@ export class FumbblService {
           gameState: newGameState,
         });
         this.callbacks.onStateUpdate?.(newGameState);
+      },
+      onReports: (reports: any[]) => {
+        // Forward reports from WebSocket to GameContext for dice log parsing
+        console.log('[FumbblService] Reports received, forwarding to callbacks:', reports.length);
+        this.callbacks.onReports?.(reports);
       },
       onChatMessage: (message, player) => {
         const chatMessage: ChatMessage = {

@@ -480,49 +480,53 @@ export class FumbblGameModel {
   // BUILD MERGED PLAYERS - COPIED from official client approach
   // =========================================================================
 
-  /**
-   * Build merged players list for UI display.
-   * COPIED from official client: merges roster data with field coordinates.
-   * Returns ALL players that have field coordinates (on-field players).
-   */
-  private buildMergedPlayers(): void {
-    this.mergedPlayers = {};
+   /**
+    * Build merged players list for UI display.
+    * COPIED from official client: merges roster data with field coordinates.
+    * Returns ALL players that have field coordinates (on-field players).
+    * Also computes hasBall by checking if a player is on the same square as the ball.
+    */
+   private buildMergedPlayers(): void {
+     this.mergedPlayers = {};
 
-    for (const pid in this.players) {
-      const rosterPlayer = this.players[pid];
-      const x = rosterPlayer.fieldX;
-      const y = rosterPlayer.fieldY;
+     for (const pid in this.players) {
+       const rosterPlayer = this.players[pid];
+       const x = rosterPlayer.fieldX;
+       const y = rosterPlayer.fieldY;
 
-      // Only include players that have field coordinates
-      if (x === undefined || y === undefined) continue;
+       // Only include players that have field coordinates
+       if (x === undefined || y === undefined) continue;
 
-      // Determine team side from player data
-      const teamSideRaw = (rosterPlayer as unknown as FFBPlayerType & { _side?: string })._side;
-      const teamSide: 'home' | 'away' = (teamSideRaw === 'home' || teamSideRaw === 'away') ? teamSideRaw : 'home';
+       // Determine team side from player data
+       const teamSideRaw = (rosterPlayer as unknown as FFBPlayerType & { _side?: string })._side;
+       const teamSide: 'home' | 'away' = (teamSideRaw === 'home' || teamSideRaw === 'away') ? teamSideRaw : 'home';
 
-      // COPIED: Use composite key for uniqueness (team + playerId)
-      const uniqueId = `${teamSide}_${pid}`;
+       // COPIED: Use composite key for uniqueness (team + playerId)
+       const uniqueId = `${teamSide}_${pid}`;
 
-      this.mergedPlayers[uniqueId] = {
-        id: uniqueId,
-        playerId: pid,
-        teamSide,
-        name: rosterPlayer.playerName || 'Unknown',
-        number: rosterPlayer.playerNr,
-        race: rosterPlayer.race || 'unknown',
-        position: this.mapPos(rosterPlayer.positionName),
-        status: this.mapSt(rosterPlayer.playerState),
-        skills: (rosterPlayer.skillArray || []).map((s: string) => s as SkillShorthand),
-        ma: rosterPlayer.movement,
-        st: rosterPlayer.strength,
-        ag: rosterPlayer.agility,
-        pa: 0,
-        av: rosterPlayer.armour,
-        hasBall: false,
-        fieldX: x,
-        fieldY: y,
-      };
-    }
+       // Compute hasBall: true when the player is on the same square as the ball
+       const hasBall = (x === this.ballCoordinate.x && y === this.ballCoordinate.y);
+
+       this.mergedPlayers[uniqueId] = {
+         id: uniqueId,
+         playerId: pid,
+         teamSide,
+         name: rosterPlayer.playerName || 'Unknown',
+         number: rosterPlayer.playerNr,
+         race: rosterPlayer.race || 'unknown',
+         position: this.mapPos(rosterPlayer.positionName),
+         status: this.mapSt(rosterPlayer.playerState),
+         skills: (rosterPlayer.skillArray || []).map((s: string) => s as SkillShorthand),
+         ma: rosterPlayer.movement,
+         st: rosterPlayer.strength,
+         ag: rosterPlayer.agility,
+         pa: 0,
+         av: rosterPlayer.armour,
+         hasBall,
+         fieldX: x,
+         fieldY: y,
+       };
+     }
 
     console.log('[FumbblGameModel] buildMergedPlayers:', {
       total: Object.keys(this.mergedPlayers).length,

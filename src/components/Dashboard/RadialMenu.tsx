@@ -39,7 +39,6 @@ const ACTION_HOTKEYS: Record<BloodBowlAction, string> = {
 };
 
 export default function RadialMenu({
-  player,
   items,
   onActionSelect,
   onClose,
@@ -77,30 +76,6 @@ export default function RadialMenu({
 
   return (
     <div ref={menuRef} className="absolute z-30">
-      {/* Center — Player Token */}
-      <div
-        className="absolute flex items-center justify-center"
-        style={{
-          width: 44,
-          height: 44,
-          left: `calc(50% - 22px)`,
-          top: `calc(50% - 22px)`,
-        }}
-      >
-        <div
-          className={`
-            w-11 h-11 rounded-full border-2 flex items-center justify-center
-            text-xs font-bold text-white shadow-xl
-            ${player.race === 'Orc'
-              ? 'bg-green-700 border-green-400'
-              : 'bg-yellow-600 border-yellow-400'
-            }
-          `}
-        >
-          {player.number}
-        </div>
-      </div>
-
       {/* Action Items */}
       {items.map((item, index) => {
         // Calculate position around the circle

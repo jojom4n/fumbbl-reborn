@@ -108,6 +108,10 @@ export class FumbblWebSocket {
       onUserSettings: (_settings) => {
         console.log('[FumbblWebSocket] User settings loaded');
       },
+      onReports: (reports) => {
+        console.log('[FumbblWebSocket] Reports received, forwarding to callbacks:', reports.length, 'reports');
+        this.callbacks.onReports?.(reports);
+      },
       onUnknownCommand: (commandId, _data) => {
         console.log('[FumbblWebSocket] Unknown command handled:', commandId);
       },

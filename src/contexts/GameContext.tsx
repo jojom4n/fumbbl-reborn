@@ -12,6 +12,7 @@ import {
 } from '../types/bloodbowl';
 
 import { FumbblService, FumbblServiceConfig } from '../services/fumbblService';
+import { parseReportsToDiceLogs } from '../services/reportParser';
 
 // -----------------------------------------------------------------------------
 // Unique ID generator (avoids duplicates)
@@ -167,6 +168,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       if (action.payload.reRolls && typeof action.payload.reRolls === 'object') {
         merged.reRolls = { ...state.reRolls, ...action.payload.reRolls };
       }
+      // Preserve UI-only state that the server does NOT send back:
+      // - selectedPlayer: local selection made by the user, server has no knowledge of it
+      //   (the GameModel.toGameState() always returns selectedPlayer:null, so we must preserve)
+      //   CRITICAL: Must refresh the reference to match the current player from updated arrays,
+      //   otherwise the PlayerInfo panel shows stale data (old position, hasBall, status, injuries)
+      //   or appears to "disappear" when the player object no longer matches the current game state.
+      if (state.selectedPlayer) {
+        const allPlayers = [
+          ...(action.payload.team1Players || []),
+          ...(action.payload.team2Players || []),
+        ];
+        const selectedId = String(state.selectedPlayer.id);
+        merged.selectedPlayer = allPlayers.find(
+          p => String(p.id) === selectedId
+        ) || state.selectedPlayer;
+      } else {
+        merged.selectedPlayer = null;
+      }
+      // - diceLog: local log of dice rolls and actions, accumulated client-side
+      // - chatMessages: local chat history, accumulated client-side
+      merged.diceLog = state.diceLog;
+      merged.chatMessages = state.chatMessages;
       return { ...merged, lastUpdate: Date.now() };
     default:
       return state;
@@ -271,6 +294,16 @@ export function GameProvider({ children, serviceConfig }: GameProviderProps) {
             phase: updatedGameState.phase,
           });
           dispatch({ type: 'SYNC_STATE', payload: updatedGameState });
+        }
+      },
+      onReports: (reports) => {
+        console.log('[GameContext] Reports received:', reports.length, 'reports');
+        // Parse FUMBBL server reports into DiceLogEntry objects
+        const turn = gameState.turn;
+        const diceEntries = parseReportsToDiceLogs(reports, turn);
+        if (diceEntries.length > 0) {
+          console.log('[GameContext] Adding', diceEntries.length, 'dice log entries from reports');
+          dispatch({ type: 'ADD_DICE_LOGS', payload: diceEntries });
         }
       },
     });
