@@ -23,7 +23,7 @@ let _diceLogIdCounter = 0;
  */
 export function parseReportToDiceLogs(report: any, turn: number = 0): DiceLogEntry[] {
   const entries: DiceLogEntry[] = [];
-  const reportId = report.id || '';
+  const reportId = report.reportId || '';
   const timestamp = Date.now();
 
   // Extract common fields

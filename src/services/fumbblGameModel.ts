@@ -798,22 +798,38 @@ export class FumbblGameModel {
     return m[n] || 'c';
   };
 
-  private mapSt = (s: number | undefined): PlayerStatus => {
-    if (s === undefined) return 'active';
-    return (
-      {
-        0: 'active',
-        1: 'active',
-        2: 'injured',
-        3: 'dead',
-        4: 'rotd',
-        5: 'doubtful',
-        6: 'missing',
-        7: 'injured',
-        8: 'missing',
-      } as Record<number, PlayerStatus>
-    )[s] || 'active';
-  };
+   // PlayerState mapping from official ffb PlayerState.java:
+   // 0=UNKNOWN, 1=STANDING, 2=MOVING, 3=PRONE, 4=STUNNED, 5=KNOCKED_OUT,
+   // 6=BADLY_HURT, 7=SERIOUS_INJURY, 8=RIP, 9=RESERVE, 10=MISSING,
+   // 11=FALLING, 12=BLOCKED, 13=BANNED, 14=EXHAUSTED, 15=BEING_DRAGGED,
+   // 16=PICKED_UP, 17=HIT_ON_GROUND, 18=SETUP_PREVENTED, 19=IN_THE_AIR
+   private mapSt = (s: number | undefined): PlayerStatus => {
+     if (s === undefined) return 'active';
+     return (
+       {
+         0: 'active',      // UNKNOWN → active (default)
+         1: 'active',      // STANDING → active
+         2: 'active',      // MOVING → active
+         3: 'active',      // PRONE → active (still on field, just on ground)
+         4: 'active',      // STUNNED → active (still on field)
+         5: 'ko',          // KNOCKED_OUT → ko
+         6: 'badly_hurt',  // BADLY_HURT → badly_hurt
+         7: 'si',          // SERIOUS_INJURY → si
+         8: 'rip',         // RIP → rip (dead)
+         9: 'reserve',     // RESERVE → reserve
+         10: 'missing',    // MISSING → missing
+         11: 'active',     // FALLING → active (still on field)
+         12: 'active',     // BLOCKED → active (still on field)
+         13: 'banned',     // BANNED → banned
+         14: 'active',     // EXHAUSTED → active (still on field)
+         15: 'active',     // BEING_DRAGGED → active (still on field)
+         16: 'active',     // PICKED_UP → active (still on field)
+         17: 'active',     // HIT_ON_GROUND → active (still on field)
+         18: 'active',     // SETUP_PREVENTED → active (still on field)
+         19: 'active',     // IN_THE_AIR → active (still on field)
+       } as Record<number, PlayerStatus>
+     )[s] || 'active';
+   };
 
   private mapWeather = (w: string) => {
     const m: Record<string, { type: WeatherType; icon: string; description: string }> = {

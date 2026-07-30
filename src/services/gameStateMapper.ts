@@ -63,18 +63,35 @@ function mapPhase(phase: string): GameState['phase'] {
 
 /**
  * Convert FUMBBL player status to our PlayerStatus
+ * Maps legacy status strings to new PlayerStatus types matching ffb PlayerState.java
  */
 function mapPlayerStatus(status: string): PlayerStatus {
+  const s = status.toLowerCase();
   const statusMap: Record<string, PlayerStatus> = {
     'active': 'active',
-    'injured': 'injured',
-    'dead': 'dead',
-    'rotd': 'rotd',
-    'doubtful': 'doubtful',
+    'standing': 'active',
+    'moving': 'active',
+    'prone': 'active',
+    'stunned': 'active',
+    'knocked_out': 'ko',
+    'knocked out': 'ko',
+    'ko': 'ko',
+    'badly_hurt': 'badly_hurt',
+    'badly hurt': 'badly_hurt',
+    'serious_injury': 'si',
+    'serious injury': 'si',
+    'si': 'si',
+    'rip': 'rip',
+    'dead': 'rip',
+    'reserve': 'reserve',
     'missing': 'missing',
-    'unconscious': 'injured',
+    'banned': 'banned',
+    'unconscious': 'ko',
+    'injured': 'badly_hurt',
+    'rotd': 'active',
+    'doubtful': 'active',
   };
-  return statusMap[status.toLowerCase()] || 'active';
+  return statusMap[s] || 'active';
 }
 
 /**

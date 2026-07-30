@@ -1,9 +1,12 @@
 // =============================================================================
-// TeamRoster — Generic team roster (position-independent)
-// Used for both left and right sidebars
+// TeamRoster — Generic team roster with full player state display
+// Shows ALL roster players grouped by status:
+//   - On Field (active players with field coordinates)
+//   - Reserve (players not yet set up)
+//   - Casualty (KO, Badly Hurt, SI, RIP, Banned)
 // =============================================================================
 
-import { Player } from '../../types/bloodbowl';
+import { Player, PlayerStatus } from '../../types/bloodbowl';
 
 interface TeamRosterProps {
   team: Player[];
@@ -13,7 +16,9 @@ interface TeamRosterProps {
   selectedPlayerId?: string | number;
 }
 
+// -----------------------------------------------------------------------------
 // Skill badge display
+// -----------------------------------------------------------------------------
 const SKILL_DISPLAY: Record<string, { label: string; color: string }> = {
   AG: { label: 'D', color: 'text-green-300' },
   D: { label: 'D', color: 'text-green-300' },
@@ -27,16 +32,152 @@ const SKILL_DISPLAY: Record<string, { label: string; color: string }> = {
   T: { label: 'T', color: 'text-red-300' },
 };
 
-// Status icon mapping
-const STATUS_ICONS: Record<string, { icon: string; bg: string }> = {
-  active: { icon: '●', bg: 'text-green-400' },
-  injured: { icon: '✕', bg: 'text-red-400' },
-  dead: { icon: '☠', bg: 'text-gray-500' },
-  rotd: { icon: 'D', bg: 'text-yellow-400' },
-  doubtful: { icon: '?', bg: 'text-orange-400' },
-  missing: { icon: '—', bg: 'text-gray-500' },
+// -----------------------------------------------------------------------------
+// Player status icons and styles
+// Mapped from official ffb PlayerState.java
+// -----------------------------------------------------------------------------
+const STATUS_CONFIG: Record<PlayerStatus, { icon: string; label: string; color: string; bg: string; opacity?: number }> = {
+  active: {
+    icon: '●',
+    label: 'Active',
+    color: 'text-green-400',
+    bg: 'bg-green-400/10',
+  },
+  ko: {
+    icon: '💫',
+    label: 'KO',
+    color: 'text-yellow-400',
+    bg: 'bg-yellow-400/10',
+  },
+  badly_hurt: {
+    icon: '🤕',
+    label: 'Badly Hurt',
+    color: 'text-orange-400',
+    bg: 'bg-orange-400/10',
+    opacity: 0.7,
+  },
+  si: {
+    icon: '🏥',
+    label: 'Serious Injury',
+    color: 'text-red-400',
+    bg: 'bg-red-400/10',
+    opacity: 0.6,
+  },
+  rip: {
+    icon: '💀',
+    label: 'RIP',
+    color: 'text-gray-500',
+    bg: 'bg-gray-500/10',
+    opacity: 0.5,
+  },
+  reserve: {
+    icon: '🔄',
+    label: 'Reserve',
+    color: 'text-blue-400',
+    bg: 'bg-blue-400/10',
+  },
+  missing: {
+    icon: '—',
+    label: 'Missing',
+    color: 'text-gray-500',
+    bg: 'bg-gray-500/10',
+    opacity: 0.5,
+  },
+  banned: {
+    icon: '🚫',
+    label: 'Banned',
+    color: 'text-red-500',
+    bg: 'bg-red-500/10',
+    opacity: 0.6,
+  },
 };
 
+// Status groups for section headers
+const STATUS_SECTIONS = [
+  { key: 'on-field', label: 'On Field', statuses: ['active'] as PlayerStatus[] },
+  { key: 'reserve', label: 'Reserve', statuses: ['reserve'] as PlayerStatus[] },
+  { key: 'casualty', label: 'Casualty', statuses: ['ko', 'badly_hurt', 'si', 'rip', 'banned', 'missing'] as PlayerStatus[] },
+];
+
+// -----------------------------------------------------------------------------
+// Player Row Component
+// -----------------------------------------------------------------------------
+function PlayerRow({
+  player,
+  isSelected,
+  onSelect,
+}: {
+  player: Player;
+  isSelected: boolean;
+  onSelect: (player: Player) => void;
+}) {
+  const status = STATUS_CONFIG[player.status] || STATUS_CONFIG.active;
+
+  return (
+    <button
+      onClick={() => onSelect(player)}
+      className={`
+        w-full flex items-center px-2 py-1.5 border-b border-gray-800
+        transition-colors text-left
+        ${isSelected
+          ? 'bg-gray-700/50 border-l-2 border-l-white'
+          : 'hover:bg-gray-800/50 border-l-2 border-l-transparent'
+        }
+        ${status.opacity !== undefined ? '' : ''}
+      `}
+      style={{ opacity: status.opacity }}
+      title={`${player.name} — ${status.label}`}
+    >
+      {/* Number */}
+      <span className="w-6 text-center text-xs text-gray-400 font-mono">
+        {player.number}
+      </span>
+
+      {/* Name + Status */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1">
+          <span className={`text-[10px] ${status.color}`} title={status.label}>
+            {status.icon}
+          </span>
+          <span className="text-xs text-white truncate">{player.name}</span>
+        </div>
+        {/* Skills */}
+        <div className="flex items-center gap-0.5 flex-wrap">
+          {player.skills.slice(0, 3).map((skill, i) => (
+            <span
+              key={i}
+              className={`text-[9px] font-bold ${SKILL_DISPLAY[skill]?.color || 'text-gray-400'}`}
+            >
+              {SKILL_DISPLAY[skill]?.label || skill}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Strength */}
+      <span className="w-5 text-center text-[10px] text-gray-400">
+        {player.st}
+      </span>
+    </button>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Section Header Component
+// -----------------------------------------------------------------------------
+function SectionHeader({ label, count }: { label: string; count: number }) {
+  if (count === 0) return null;
+  return (
+    <div className="flex items-center px-2 py-1 bg-gray-800/30 text-[10px] text-gray-500 uppercase tracking-wider">
+      <span className="flex-1">{label}</span>
+      <span>{count}</span>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Main TeamRoster Component
+// -----------------------------------------------------------------------------
 export default function TeamRoster({
   team,
   teamName,
@@ -44,9 +185,15 @@ export default function TeamRoster({
   onPlayerSelect,
   selectedPlayerId,
 }: TeamRosterProps) {
-  // Filter active players for main list
-  const activePlayers = team.filter(p => p.status === 'active' && p.position !== 'sub' && p.position !== 'coach');
-  const subPlayers = team.filter(p => p.position === 'sub');
+  // Group players by status category
+  const grouped: Record<string, Player[]> = {};
+  for (const section of STATUS_SECTIONS) {
+    grouped[section.key] = team.filter(p => section.statuses.includes(p.status));
+  }
+
+  // Count on-field players for header
+  const onFieldCount = grouped['on-field'].length;
+  const totalCount = team.length;
 
   return (
     <div className="w-52 bg-gray-900 border-r border-gray-700 flex flex-col rounded-lg overflow-hidden">
@@ -60,7 +207,7 @@ export default function TeamRoster({
           style={{ backgroundColor: teamColor }}
         />
         <span className="text-sm font-bold text-white">{teamName}</span>
-        <span className="text-[10px] text-gray-400 ml-auto">{activePlayers.length}/11</span>
+        <span className="text-[10px] text-gray-400 ml-auto">{onFieldCount}/11</span>
       </div>
 
       {/* Column Headers */}
@@ -71,91 +218,32 @@ export default function TeamRoster({
         <span className="w-5 text-center">St</span>
       </div>
 
-      {/* Player List */}
+      {/* Player List grouped by status */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
-        {activePlayers.map((player) => {
-          const status = STATUS_ICONS[player.status] || STATUS_ICONS.active;
-          const isSelected = String(selectedPlayerId) === String(player.id);
+        {STATUS_SECTIONS.map(section => {
+          const players = grouped[section.key];
+          if (players.length === 0) return null;
 
           return (
-            <button
-              key={player.id}
-              onClick={() => onPlayerSelect(player)}
-              className={`
-                w-full flex items-center px-2 py-1.5 border-b border-gray-800
-                transition-colors text-left
-                ${isSelected
-                  ? 'bg-gray-700/50 border-l-2 border-l-white'
-                  : 'hover:bg-gray-800/50 border-l-2 border-l-transparent'
-                }
-                ${player.status === 'injured' ? 'opacity-60' : ''}
-              `}
-            >
-              {/* Number */}
-              <span key={`num-${player.id}`} className="w-6 text-center text-xs text-gray-400 font-mono">
-                {player.number}
-              </span>
-
-              {/* Name + Status */}
-              <div key={`name-${player.id}`} className="flex-1 min-w-0">
-                <div className="flex items-center gap-1">
-                  <span key={`status-${player.id}`} className={`text-xs font-medium truncate ${status.bg}`}>
-                    {status.icon}
-                  </span>
-                  <span key={`name-text-${player.id}`} className="text-xs text-white truncate">{player.name}</span>
-                </div>
-                {/* Skills */}
-                <div className="flex items-center gap-0.5 flex-wrap">
-                  {player.skills.slice(0, 3).map((skill, i) => (
-                    <span
-                      key={`${i}-${player.id}`}
-                      className={`text-[9px] font-bold ${SKILL_DISPLAY[skill]?.color || 'text-gray-400'}`}
-                    >
-                      {SKILL_DISPLAY[skill]?.label || skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Strength */}
-              <span key={`st-${player.id}`} className="w-5 text-center text-[10px] text-gray-400">
-                {player.st}
-              </span>
-            </button>
+            <div key={section.key}>
+              <SectionHeader label={section.label} count={players.length} />
+              {players.map((player) => (
+                <PlayerRow
+                  key={player.id}
+                  player={player}
+                  isSelected={String(selectedPlayerId) === String(player.id)}
+                  onSelect={onPlayerSelect}
+                />
+              ))}
+            </div>
           );
         })}
 
-        {/* Substitutes Section */}
-        {subPlayers.length > 0 && (
-          <>
-            <div className="flex items-center px-2 py-1 bg-gray-800/30 text-[10px] text-gray-500 uppercase tracking-wider">
-              <span className="flex-1">Substitutes</span>
-            </div>
-            {subPlayers.map((player) => (
-              <button
-                key={player.id}
-                onClick={() => onPlayerSelect(player)}
-                className={`
-                  w-full flex items-center px-2 py-1.5 border-b border-gray-800
-                  transition-colors text-left hover:bg-gray-800/30
-                  ${String(selectedPlayerId) === String(player.id)
-                    ? 'bg-gray-700/30 border-l-2 border-l-gray-400'
-                    : 'border-l-2 border-l-transparent'
-                  }
-                `}
-              >
-                <span className="w-6 text-center text-xs text-gray-500 font-mono">
-                  {player.number}
-                </span>
-                <span key={`sub-name-${player.id}`} className="flex-1 text-xs text-gray-400 truncate">
-                  {player.name}
-                </span>
-                <span key={`sub-st-${player.id}`} className="w-5 text-center text-[10px] text-gray-500">
-                  {player.st}
-                </span>
-              </button>
-            ))}
-          </>
+        {/* Empty state */}
+        {totalCount === 0 && (
+          <div className="px-3 py-4 text-center text-xs text-gray-500">
+            No players loaded
+          </div>
         )}
       </div>
     </div>

@@ -5,15 +5,22 @@
 
 // -----------------------------------------------------------------------------
 // Player Status
+// Mapped from official ffb PlayerState.java constants:
+//   0=UNKNOWN, 1=STANDING, 2=MOVING, 3=PRONE, 4=STUNNED, 5=KNOCKED_OUT,
+//   6=BADLY_HURT, 7=SERIOUS_INJURY, 8=RIP, 9=RESERVE, 10=MISSING,
+//   11=FALLING, 12=BLOCKED, 13=BANNED, 14=EXHAUSTED, 15=BEING_DRAGGED,
+//   16=PICKED_UP, 17=HIT_ON_GROUND, 18=SETUP_PREVENTED, 19=IN_THE_AIR
 // -----------------------------------------------------------------------------
 
 export type PlayerStatus =
-  | 'active'        // Player is on the field and available
-  | 'injured'       // Player is injured (Dirt, Broken Leg, etc.)
-  | 'dead'          // Player is permanently dead
-  | 'rotd'          // Rest of Turn Down (concussion, etc.)
-  | 'doubtful'      // Player is doubtful (can play but risk injury)
-  | 'missing';      // Player is absent (suspension, etc.)
+  | 'active'        // On field and playable (STANDING, MOVING, PRONE, STUNNED, FALLING, BLOCKED, EXHAUSTED, BEING_DRAGGED, PICKED_UP, HIT_ON_GROUND, SETUP_PREVENTED, IN_THE_AIR)
+  | 'ko'            // Knocked Out (must stand up next turn or stay down)
+  | 'badly_hurt'    // Badly Hurt (removed from play for the drive)
+  | 'si'            // Serious Injury (out for the game, decay next game)
+  | 'rip'           // Rest In Pieces (permanently dead)
+  | 'reserve'       // In reserve (not yet set up on the field)
+  | 'missing'       // Missing the game (suspension, etc.)
+  | 'banned';       // Banned from the game (sent to box for rest of game)
 
 // -----------------------------------------------------------------------------
 // Blood Bowl 2025 Actions (9 official actions)
