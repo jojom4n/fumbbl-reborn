@@ -78,10 +78,13 @@ export class FumbblWebSocket {
       },
       onGameTime: (gameTime, turnTime) => {
         console.log('[FumbblWebSocket] Game time updated:', { gameTime, turnTime });
-        // Propagate timer to GameContext - convert milliseconds to seconds for display
-        const turnSeconds = Math.floor(turnTime / 1000);
-        console.log('[FumbblWebSocket] Propagating timer update:', turnSeconds, 'seconds (from', turnTime, 'ms)');
-        this.callbacks.onGameStateUpdate?.({ timer: turnSeconds } as any);
+        // CRITICAL: turnTime from server is ELAPSED time (increases from 0 to 30000ms per turn).
+        // The timer should show REMAINING time (countdown from 30 to 0).
+        // Blood Bowl turn timer max is 30 seconds (30000ms).
+        const elapsedSeconds = Math.floor(turnTime / 1000);
+        const remainingSeconds = Math.max(0, 30 - elapsedSeconds);
+        console.log('[FumbblWebSocket] Propagating timer update:', remainingSeconds, 'seconds remaining (elapsed:', elapsedSeconds, 'from', turnTime, 'ms)');
+        this.callbacks.onGameStateUpdate?.({ timer: remainingSeconds } as any);
       },
       onTalk: (message) => {
         if (message.message) {

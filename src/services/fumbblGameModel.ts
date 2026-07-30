@@ -678,7 +678,11 @@ export class FumbblGameModel {
       turn: this.turn,
       phase: this.mapPhase(this.turnMode),
       reRolls: { team1: homeTeam.reRolls ?? 2, team2: awayTeam.reRolls ?? 2 },
-      timer: this.turnTime ? Math.floor(this.turnTime / 1000) : 120,
+      // CRITICAL: Do NOT return timer here.
+      // The model's turnTime is NOT updated by serverModelSync handlers, so it becomes stale.
+      // When toGameState() is called after every model sync, the stale timer value overwrites
+      // the correct value from serverGameTime, causing the timer to jump randomly.
+      // Timer is managed exclusively by the serverGameTime handler in fumbblWebSocket.ts.
       weather: this.mapWeather(this.gameState.fieldModel?.weather?.name || 'clear'),
       fanAttendance: {
         total: this.gameState.fanAttendance || 0,
@@ -706,8 +710,10 @@ export class FumbblGameModel {
       ballPosition: this.ballCoordinate,
       selectedPlayer: null,
       selectedTeam: 'team1',
-      diceLog: [],
-      chatMessages: [],
+      // CRITICAL: Do NOT return diceLog/chatMessages here.
+      // These are managed by the GameContext and should NOT be overwritten
+      // with empty arrays on every server update. Returning them causes
+      // the SYNC_STATE reducer to wipe out existing logs/chat.
       isLive: this.turnMode !== 'setup' && this.turnMode !== 'ended' && this.turnMode !== '',
       lastUpdate: Date.now(),
     };
@@ -725,17 +731,19 @@ export class FumbblGameModel {
 
   /**
    * Map a single roster player for sidebar display
-   * Uses playerId-based unique ID
+   * Uses playerId-based unique ID (String, matching official ffbclient)
+   * Official client: Team.fPlayerById is Map<String, Player<?>> where key is the String playerId
    */
   private mapFFBPlayer(player: FFBPlayerType): FumbblPlayer | null {
     if (!player) return null;
     const coord = player.playerCoordinate;
     const x = player.fieldX ?? (Array.isArray(coord) ? coord[0] : -1);
     const y = player.fieldY ?? (Array.isArray(coord) ? coord[1] : -1);
-    // Use playerId for uniqueness (roster players have unique server IDs)
+    // Use playerId as String for uniqueness (matching official ffbclient architecture)
+    // Official: Team.getPlayerById(String pId) returns Player by String ID
     const pid = String(player.playerId);
     return {
-      id: Number(pid) || 0,
+      id: pid,
       name: player.playerName || 'Unknown',
       number: player.playerNr,
       race: player.race || 'unknown',
@@ -853,11 +861,12 @@ export class FumbblGameModel {
   public isGameInitialized = () => this.isInitialized;
   /**
    * Get merged players as Player[] for UI compatibility.
-   * Converts DisplayPlayer to Player format (uses playerId as numeric id).
+   * Converts DisplayPlayer to Player format (uses playerId as String id).
+   * Official client uses String playerId as the unique identifier throughout.
    */
   public getMergedPlayersAsPlayers(): FumbblPlayer[] {
     return Object.values(this.mergedPlayers).map(p => ({
-      id: Number(p.playerId) || Number(p.id) || 0,
+      id: p.id,  // Use composite string ID (e.g., "home_18109693") for uniqueness
       playerId: p.playerId,
       teamSide: p.teamSide,
       name: p.name,

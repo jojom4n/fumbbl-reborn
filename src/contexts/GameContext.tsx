@@ -152,8 +152,22 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'LOAD_STATE':
       return { ...action.payload, lastUpdate: Date.now() };
     case 'SYNC_STATE':
-      // Merge incoming state with defaults to ensure all fields exist
-      return { ...createInitialState(), ...action.payload, lastUpdate: Date.now() };
+      // Deep merge incoming partial state with current state.
+      // CRITICAL: Do NOT use createInitialState() as it resets ALL fields to defaults,
+      // which wipes out diceLog, chatMessages, etc. when receiving partial updates like {timer: 28}.
+      // Instead, merge the incoming payload into the existing state, preserving fields not present.
+      const merged = { ...state, ...action.payload };
+      // Deep merge nested objects that should be preserved when the payload has partial data
+      if (action.payload.score && typeof action.payload.score === 'object') {
+        merged.score = { ...state.score, ...action.payload.score };
+      }
+      if (action.payload.fanAttendance && typeof action.payload.fanAttendance === 'object') {
+        merged.fanAttendance = { ...state.fanAttendance, ...action.payload.fanAttendance };
+      }
+      if (action.payload.reRolls && typeof action.payload.reRolls === 'object') {
+        merged.reRolls = { ...state.reRolls, ...action.payload.reRolls };
+      }
+      return { ...merged, lastUpdate: Date.now() };
     default:
       return state;
   }
@@ -287,14 +301,18 @@ export function GameProvider({ children, serviceConfig }: GameProviderProps) {
     }
   }, [fumbblServiceRef.current?.getState()?.isAuthenticated]);
 
-  // Timer countdown effect (when game is live)
+  // Timer countdown effect: ONLY run local countdown when NOT connected to WebSocket.
+  // When connected, the server sends serverGameTime updates which handle the timer.
+  // Running both causes the timer to jump back and forth (local countdown vs server updates).
   useEffect(() => {
+    // Disable local countdown when WebSocket is connected - server handles timer
+    if (isServiceConnected) return;
     if (!gameState.isLive || gameState.timer <= 0) return;
     const interval = setInterval(() => {
       dispatch({ type: 'UPDATE_TIMER', payload: gameState.timer - 1 });
     }, 1000);
     return () => clearInterval(interval);
-  }, [gameState.isLive, gameState.timer]);
+  }, [gameState.isLive, gameState.timer, isServiceConnected]);
 
   // Memoized action creators
   const setState = useCallback((payload: Partial<GameState>) => dispatch({ type: 'SET_STATE', payload }), []);

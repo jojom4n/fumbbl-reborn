@@ -6,12 +6,17 @@
 import { useReducer } from 'react';
 
 // -----------------------------------------------------------------------------
-// Unique ID generator (avoids Date.now() duplicates)
+// Unique ID generator (safe, no precision loss)
+// CRITICAL: The previous implementation concatenated Date.now() + counter
+// into a 19-digit number then converted with Number(), which exceeds
+// Number.MAX_SAFE_INTEGER (2^53). This caused precision loss and React
+// duplicate key warnings like "Encountered two children with the same key".
+// Fix: Use a simple auto-incrementing counter that stays within safe range.
 // -----------------------------------------------------------------------------
 let _chatIdCounter = 0;
 const generateChatId = (): number => {
   _chatIdCounter += 1;
-  return Number(`${Date.now()}${String(_chatIdCounter).padStart(6, '0')}`);
+  return _chatIdCounter;
 };
 
 import Header from './Header';
