@@ -250,6 +250,8 @@ export function GameProvider({ children, serviceConfig }: GameProviderProps) {
   const fumbblServiceRef = useRef<FumbblService | null>(null);
   const [isServiceConnected, setIsServiceConnected] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Track whether initial auth was handled by the mount-time initialize()
+  const initialAuthDone = useRef(false);
 
   // Initialize FUMBBL service
   useEffect(() => {
@@ -318,6 +320,10 @@ export function GameProvider({ children, serviceConfig }: GameProviderProps) {
       console.error('[GameContext] Failed to initialize FUMBBL service:', err);
     });
 
+
+    // Mark that initial setup is complete (must be set before cleanup)
+    initialAuthDone.current = true;
+
     // Cleanup on unmount
     return () => {
       if (fumbblServiceRef.current) {
@@ -325,6 +331,43 @@ export function GameProvider({ children, serviceConfig }: GameProviderProps) {
       }
     };
   }, []); // Only run once on mount
+
+  // Re-authenticate when serviceConfig changes with new credentials.
+  // This is critical when the user logs in without saving credentials:
+  // the App sets savedCredentials after login, causing serviceConfig to update,
+  // but the FumbblService was initialized without credentials (empty serviceConfig).
+  // We must authenticate the service and set the username so that:
+  // - isAuthenticated becomes true in the debug panel
+  // - getAuthUsername() returns the correct coach name
+  // Skip if initialAuthDone.current is true — that means the service was already
+  // initialized with these credentials at mount time (saved credentials scenario).
+  useEffect(() => {
+    if (fumbblServiceRef.current && serviceConfig?.clientId && serviceConfig?.clientSecret) {
+      // If initial auth was already done at mount with these same credentials, skip
+      if (initialAuthDone.current) {
+        // Check if this is a credentials change (e.g., user re-logged in with different creds)
+        const currentState = fumbblServiceRef.current.getState();
+        if (currentState.isAuthenticated) {
+          // Already authenticated — just ensure username is set
+          if (serviceConfig.username) {
+            fumbblServiceRef.current.setUsername(serviceConfig.username);
+          }
+          return;
+        }
+      }
+      // Authenticate with the new credentials
+      fumbblServiceRef.current.authenticateWithCredentials(
+        serviceConfig.clientId,
+        serviceConfig.clientSecret
+      ).catch(err => {
+        console.error('[GameContext] Failed to authenticate with updated credentials:', err);
+      });
+      // Set username if provided
+      if (serviceConfig.username) {
+        fumbblServiceRef.current.setUsername(serviceConfig.username);
+      }
+    }
+  }, [serviceConfig?.clientId, serviceConfig?.clientSecret, serviceConfig?.username]);
 
   // Update auth status when service state changes
   useEffect(() => {

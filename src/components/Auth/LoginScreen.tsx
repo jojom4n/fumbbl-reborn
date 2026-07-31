@@ -176,7 +176,7 @@ export function LoginScreen({
                   className="w-4 h-4 accent-blue-500 rounded"
                 />
                 <span className="text-sm text-gray-300">
-                  {saveCredentials ? '💾 Salva credenziali per il prossimo avvio' : '🔒 Non salvare credenziali'}
+                  Salva credenziali
                 </span>
               </label>
             </div>
