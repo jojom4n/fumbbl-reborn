@@ -85,9 +85,13 @@ export default function GameField({
               const playerTeam = team1Ids.has(String(player?.id)) ? 'team1' : 'team2';
 
               // Field markings
-              const isEndZone = col <= 1 || col >= 24;
-              const isHomeEndZone = col <= 1;
-              const isAwayEndZone = col >= 24;
+              // Touchdown/End Zone: 1 column each (col 0 = home, col 25 = away)
+              // Playing field: 24 columns (col 1-24)
+              // Total: 1 + 24 + 1 = 26
+              const isEndZone = col === 0 || col === FIELD_WIDTH - 1;
+              const isHomeEndZone = col === 0;
+              const isAwayEndZone = col === FIELD_WIDTH - 1;
+              // Center of playing field (cols 1-24): between col 12 and 13
               const isCenterLine = col === 12 || col === 13;
               const isSideline = row === 0 || row === FIELD_HEIGHT - 1;
 
@@ -101,15 +105,15 @@ export default function GameField({
                     ${isSideline ? 'border-green-600/40' : ''}
                   `}
                 >
-                  {/* End zone labels */}
+                  {/* Touchdown/End Zone labels */}
                   {row === Math.floor(FIELD_HEIGHT / 2) && isHomeEndZone && (
                     <span className="absolute top-0.5 left-1/2 -translate-x-1/2 text-[6px] text-green-500/40 font-bold">
-                      EZ
+                      TD
                     </span>
                   )}
                   {row === Math.floor(FIELD_HEIGHT / 2) && isAwayEndZone && (
                     <span className="absolute top-0.5 left-1/2 -translate-x-1/2 text-[6px] text-green-500/40 font-bold">
-                      EZ
+                      TD
                     </span>
                   )}
 
