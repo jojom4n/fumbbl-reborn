@@ -1,4 +1,4 @@
-# # CRITICAL: Blood Bowl Field Dimensions
+# CRITICAL: Blood Bowl Field Dimensions
 
 ## Standard Blood Bowl Field: 26 × 15 SQUARES
 - **FIELD_WIDTH = 26** (X: 0 to 25)
