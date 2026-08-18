@@ -8,9 +8,15 @@
 //   3. The grid fills the whole window height (no dead space at the bottom)
 //   4. Drag & drop WORKS (synthetic mousedown/mousemove/mouseup on a title bar
 //      actually moves the panel — this catches the swallowed onMouseDown bug)
-//   5. Resize WORKS (synthetic mouse events on the SE handle grow the panel)
-//   6. The new layout is persisted (localStorage) and survives a reload
-//   7. Reset restores the default layout and clears persistence
+//   4b. Resize WORKS (synthetic mouse events on the SE handle) and STOPS at
+//       the neighbouring panel (never pushes panels off-screen)
+//   4a. Drag-onto-neighbour: the covered panel swaps into the vacated slot,
+//       everything stays inside the 12x16 grid (no overlap, nothing off-screen)
+//   4b2. Drag past the grid edge: panels are clamped on-screen (bounded)
+//   4c. Resize shrink+grow: the SE handle stops at neighbours/grid edge
+//   4d. Corrupted persisted layout (panel below the grid) is sanitized on load
+//   5. The new layout is persisted (localStorage) and survives a reload
+//   6. Reset restores the default layout and clears persistence
 //
 // Usage:  npm run build && node scripts/verify-dashboard.mjs
 // (Starts a static server on dist/ itself, on port 4199.)
@@ -62,6 +68,89 @@ function check(name, cond, detail = '') {
   }
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Dashboard grid dimensions (must match layoutConfig.ts)
+const COLS = 12;
+const ROWS = 16;
+const DEFAULT_COORDS = {
+  header: { x: 0, y: 0, w: 12, h: 2 },
+  team1: { x: 0, y: 2, w: 2, h: 10 },
+  field: { x: 2, y: 2, w: 8, h: 10 },
+  team2: { x: 10, y: 2, w: 2, h: 10 },
+  'player-info': { x: 0, y: 12, w: 3, h: 4 },
+  'dice-log': { x: 3, y: 12, w: 5, h: 4 },
+  chat: { x: 8, y: 12, w: 4, h: 4 },
+};
+
+// Read the persisted layout from localStorage (debounced save, 500ms)
+async function readLayout(page) {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('layout');
+    return raw ? JSON.parse(raw) : null;
+  });
+}
+
+// Every panel inside the COLS x ROWS grid (the "never off-screen" invariant)
+function inBounds(layout) {
+  return (
+    !!layout &&
+    Array.isArray(layout) &&
+    layout.length === 7 &&
+    layout.every(
+      (it) => it.x >= 0 && it.y >= 0 && it.x + it.w <= COLS && it.y + it.h <= ROWS
+    )
+  );
+}
+
+// No two panels overlap
+function noOverlap(layout) {
+  return (
+    !!layout &&
+    !layout.some(
+      (a, i) =>
+        layout.some(
+          (b, j) =>
+            i < j &&
+            a.x < b.x + b.w &&
+            b.x < a.x + a.w &&
+            a.y < b.y + b.h &&
+            b.y < a.y + a.h
+        )
+    )
+  );
+}
+
+function differsFromDefault(layout) {
+  return (
+    !!layout &&
+    layout.some(
+      (it) =>
+        !DEFAULT_COORDS[it.i] ||
+        it.x !== DEFAULT_COORDS[it.i].x ||
+        it.y !== DEFAULT_COORDS[it.i].y ||
+        it.w !== DEFAULT_COORDS[it.i].w ||
+        it.h !== DEFAULT_COORDS[it.i].h
+    )
+  );
+}
+
+// Pixel-level check: no panel rendered outside the grid container
+async function anyPanelOffScreen(page) {
+  return page.evaluate(() => {
+    const container = document.querySelector('div.react-grid-layout');
+    if (!container) return true;
+    const cr = container.getBoundingClientRect();
+    return [...document.querySelectorAll('div.react-grid-item')].some((el) => {
+      const r = el.getBoundingClientRect();
+      return (
+        r.bottom > cr.bottom + 1 ||
+        r.right > cr.right + 1 ||
+        r.top < cr.top - 1 ||
+        r.left < cr.left - 1
+      );
+    });
+  });
+}
 
 // Read a grid item's position by its title text (case-insensitive)
 async function getPanelRect(page, titleText) {
@@ -282,8 +371,6 @@ async function main() {
   check('panel actually moved right by ~180px', Math.abs(dragDx) >= 100, `dx=${dragDx.toFixed(1)}px`);
 
   console.log('\n4️⃣  Resize (real mouse events on the SE handle)');
-  const preW = draggedDice.width;
-  const preH = draggedDice.height;
   await mouseDrag(
     page,
     { root: 'div.react-grid-item', title: 'Dice Log', targetSel: '.react-resizable-handle-se' },
@@ -291,27 +378,138 @@ async function main() {
     60
   );
   const resizedDice = await getPanelRect(page, 'Dice Log');
-  const dw = resizedDice ? resizedDice.width - preW : NaN;
-  const dh = resizedDice ? resizedDice.height - preH : NaN;
-  check('panel grew wider by ~150px', dw >= 80, `dw=${dw.toFixed(1)}px`);
-  check('panel grew taller by ~60px', dh >= 30, `dh=${dh.toFixed(1)}px`);
+  check('resize interaction ran without errors (rect captured)', !!resizedDice);
+  // In the default tiling the dice-log's right neighbour (chat) sits inside
+  // the requested growth: the neighbour-stop constraint must clamp the resize
+  // at chat's left edge instead of pushing chat off-screen.
+  await sleep(900); // debounced save
+  const afterResize = await readLayout(page);
+  const diceA = afterResize.find((i) => i.i === 'dice-log');
+  const chatA = afterResize.find((i) => i.i === 'chat');
+  check(
+    'resize stopped at the neighbouring panel (dice-log right edge <= chat left edge)',
+    !!diceA && !!chatA && diceA.x + diceA.w <= chatA.x,
+    `dice=(${diceA?.x},${diceA?.w}) chat=(${chatA?.x},${chatA?.w})`
+  );
+  console.log('     state:', JSON.stringify(afterResize.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check('resize did not push any panel off the grid', inBounds(afterResize));
+  check('no panel rendered outside the container (after resize)', !(await anyPanelOffScreen(page)));
   await page.screenshot({ path: '/tmp/verify-dashboard-2-after-drag-resize.png' });
 
-  console.log('\n5️⃣  Persistence (debounced save → localStorage)');
-  await sleep(900); // save debounce is 500ms
-  const saved = await page.evaluate(() => {
+  console.log('\n4a) Collision: drag Field onto Team 2 (swap, stay in-grid)');
+  await mouseDrag(
+    page,
+    { root: 'div.react-grid-item', title: 'Field', targetSel: '.panel-title' },
+    600,
+    0
+  );
+  await sleep(900);
+  const afterSwap = await readLayout(page);
+  const fieldA = afterSwap.find((i) => i.i === 'field');
+  const team2A = afterSwap.find((i) => i.i === 'team2');
+  check('dragged field moved right', !!fieldA && fieldA.x > 2, `field.x=${fieldA?.x}`);
+  check(
+    'covered panel (team2) moved into the vacated slot',
+    !!team2A && team2A.x === 2 && team2A.y === 2,
+    JSON.stringify(team2A)
+  );
+  console.log('     state:', JSON.stringify(afterSwap.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check('after swap: all panels inside the 12x16 grid', inBounds(afterSwap));
+  check('after swap: no two panels overlap', noOverlap(afterSwap));
+  check('after swap: no panel rendered outside the container', !(await anyPanelOffScreen(page)));
+
+  console.log('\n4b) Bounded: drag header past the bottom edge (stays on-screen)');
+  await mouseDrag(
+    page,
+    { root: 'div.react-grid-item', title: 'Match', targetSel: '.panel-title' },
+    0,
+    800
+  );
+  await sleep(900);
+  const afterEdge = await readLayout(page);
+  const headerA = afterEdge.find((i) => i.i === 'header');
+  check(
+    'header clamped to the grid (y + h <= 16)',
+    !!headerA && headerA.y + headerA.h <= ROWS,
+    JSON.stringify(headerA)
+  );
+  console.log('     state:', JSON.stringify(afterEdge.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check('after edge-drag: all panels inside the 12x16 grid', inBounds(afterEdge));
+  check('after edge-drag: no panel rendered outside the container', !(await anyPanelOffScreen(page)));
+  await page.screenshot({ path: '/tmp/verify-dashboard-3-collision.png' });
+
+  console.log('\n4c) Neighbour stop: shrink field, then grow it back');
+  await mouseDrag(
+    page,
+    { root: 'div.react-grid-item', title: 'Field', targetSel: '.react-resizable-handle-se' },
+    -150,
+    -60
+  );
+  await sleep(900);
+  const shrunk = await readLayout(page);
+  const fieldS = shrunk.find((i) => i.i === 'field');
+  console.log('     state:', JSON.stringify(shrunk.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check(
+    'field actually shrank (w < 8 or h < 10)',
+    !!fieldS && (fieldS.w < 8 || fieldS.h < 10),
+    JSON.stringify(fieldS)
+  );
+  await mouseDrag(
+    page,
+    { root: 'div.react-grid-item', title: 'Field', targetSel: '.react-resizable-handle-se' },
+    400,
+    400
+  );
+  await sleep(900);
+  const grown = await readLayout(page);
+  const fieldG = grown.find((i) => i.i === 'field');
+  // NOTE: after 4b the header sits at the bottom, so the compactor pulled the
+  // bottom row up into the freed top rows — the field stops at the
+  // (pulled-up) neighbour's edge: exactly 8 wide (grid edge) and 9 tall
+  // (bottom row now at y10).
+  check(
+    'field grew back but stopped exactly at neighbours (8 wide x 9 tall)',
+    !!fieldG && fieldG.w === 8 && fieldG.h === 9,
+    JSON.stringify(fieldG)
+  );
+  console.log('     state:', JSON.stringify(grown.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check('after grow: all panels inside the 12x16 grid', inBounds(grown));
+  check('after grow: no two panels overlap', noOverlap(grown));
+  check('after grow: no panel rendered outside the container', !(await anyPanelOffScreen(page)));
+
+  console.log('\n4d) Corrupted persisted layout is sanitized on load');
+  await page.evaluate(() => {
     const raw = localStorage.getItem('layout');
-    if (!raw) return null;
     const arr = JSON.parse(raw);
-    return arr.find((i) => i.i === 'dice-log') || null;
+    const chat = arr.find((i) => i.i === 'chat');
+    chat.y = 20; // below the 16-row grid
+    localStorage.setItem('layout', JSON.stringify(arr));
   });
-  const defaultDice = { x: 3, y: 12, w: 5, h: 4 };
-  const changed =
-    !!saved &&
-    (saved.x !== defaultDice.x || saved.y !== defaultDice.y || saved.w !== defaultDice.w || saved.h !== defaultDice.h);
-  check('layout saved to localStorage with modified dice-log entry', changed, JSON.stringify(saved));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('button:has-text("Connetti")', { timeout: 15000 });
+  await page.click('button:has-text("Connetti")');
+  await page.waitForSelector('div.react-grid-item', { timeout: 20000 });
+  await sleep(900);
+  const sanitized = await readLayout(page);
+  const chatS = sanitized.find((i) => i.i === 'chat');
+  check(
+    'chat pulled back on-screen (y + h <= 16)',
+    !!chatS && chatS.y + chatS.h <= ROWS,
+    JSON.stringify(chatS)
+  );
+  console.log('     state:', JSON.stringify(sanitized.map((i) => [i.i, i.x, i.y, i.w, i.h])));
+  check('sanitized layout inside the grid', inBounds(sanitized));
+  check('after sanitize: no panel rendered outside the container', !(await anyPanelOffScreen(page)));
+
+  console.log('\n5️⃣  Persistence (debounced save → localStorage)');
+  await sleep(900);
+  const saved = await readLayout(page);
+  check('layout persisted with 7 panels', !!saved && saved.length === 7, `entries=${saved?.length}`);
+  check('persisted layout is valid (in bounds)', inBounds(saved));
+  check('persisted layout differs from the untouched default', differsFromDefault(saved));
 
   console.log('\n6️⃣  Persistence across reload');
+  const preReloadDice = await getPanelRect(page, 'Dice Log');
   await page.reload({ waitUntil: 'domcontentloaded' });
   // Auth state lives in memory — log in again (credentials are re-seeded by addInitScript)
   await page.waitForSelector('button:has-text("Connetti")', { timeout: 15000 });
@@ -320,10 +518,11 @@ async function main() {
   await sleep(400);
   const reloadedDice = await getPanelRect(page, 'Dice Log');
   check(
-    'dice-log restored at modified position after reload',
-    !!reloadedDice &&
-      Math.abs(reloadedDice.left - resizedDice.left) < 3 &&
-      Math.abs(reloadedDice.width - resizedDice.width) < 3,
+    'dice-log restored at its pre-reload position after reload',
+    !!preReloadDice &&
+      !!reloadedDice &&
+      Math.abs(reloadedDice.left - preReloadDice.left) < 3 &&
+      Math.abs(reloadedDice.width - preReloadDice.width) < 3,
     JSON.stringify(reloadedDice)
   );
 

@@ -5,7 +5,7 @@
 // and can be reset to the default arrangement.
 // =============================================================================
 
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { RotateCcw, Wrench } from 'lucide-react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import { Layout, LayoutItem } from 'react-grid-layout';
@@ -41,17 +41,21 @@ import {
 } from '../../types/bloodbowl';
 import {
   DEFAULT_LAYOUT,
+  DragSource,
+  GRID_COLS,
   LAYOUT_TOTAL_ROWS,
   loadLayout,
   saveLayout,
 } from './layoutConfig';
+import { createBoundedCompactor } from './compactor';
+import { dashboardConstraint } from './gridConstraints';
 
 // Blood Bowl field dimensions
 const FIELD_WIDTH = 26;
 const FIELD_HEIGHT = 15;
 
-// Grid configuration (fixed 12 columns — the window min-width keeps it usable)
-const GRID_COLS = 12;
+// Grid configuration (12 columns — see layoutConfig.GRID_COLS; the window
+// min-width keeps it usable)
 const GRID_MARGIN: [number, number] = [8, 8];
 // Row height fallback used before the container height is first measured
 const GRID_ROW_HEIGHT_FALLBACK = 36;
@@ -87,6 +91,15 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const layoutLoadedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Pre-drag position of the panel being dragged. The bounded compactor
+  // reads it so that a panel covered by the drag can swap back into the
+  // vacated slot (instead of being pushed off the grid).
+  const dragSourceRef = useRef<DragSource | null>(null);
+  const gridCompactor = useMemo(
+    () => createBoundedCompactor(GRID_COLS, LAYOUT_TOTAL_ROWS, dragSourceRef),
+    []
+  );
 
   // Load persisted layout once on mount
   useEffect(() => {
@@ -178,8 +191,27 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
 
   // Hide the radial menu as soon as a panel is dragged or resized (the field
   // panel moves and the menu anchor would become stale)
-  const handleGridDragStart = () => {
+  const handleGridDragStart = (
+    _layout: Layout,
+    oldItem: LayoutItem | null,
+    newItem: LayoutItem | null
+  ) => {
     setRadialMenu({ type: 'hide' });
+    // Remember where the panel started from: the bounded compactor uses this
+    // to swap a covered panel back into the vacated slot during the drag.
+    const source = oldItem ?? newItem;
+    if (source) {
+      dragSourceRef.current = {
+        i: source.i,
+        x: source.x,
+        y: source.y,
+        w: source.w,
+        h: source.h,
+      };
+    }
+  };
+  const handleGridDragStop = () => {
+    dragSourceRef.current = null;
   };
   const handleGridResizeStart = () => {
     setRadialMenu({ type: 'hide' });
@@ -305,11 +337,15 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
           cols={{ lg: GRID_COLS }}
           layouts={{ lg: layout }}
           rowHeight={rowHeight}
+          maxRows={LAYOUT_TOTAL_ROWS}
           margin={GRID_MARGIN}
           dragConfig={{ enabled: true, handle: '.panel-title' }}
           resizeConfig={{ enabled: true, handles: ['se'] }}
+          compactor={gridCompactor}
+          constraints={[dashboardConstraint]}
           onLayoutChange={handleLayoutChange}
           onDragStart={handleGridDragStart}
+          onDragStop={handleGridDragStop}
           onResizeStart={handleGridResizeStart}
           className="flex-1 min-h-0"
           style={{ height: '100%' }}
