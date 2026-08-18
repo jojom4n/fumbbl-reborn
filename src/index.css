@@ -24,3 +24,38 @@
   scrollbar-width: thin;
   scrollbar-color: #4b5563 #1f2937;
 }
+
+/* ============================================================================
+   react-grid-layout dark theme overrides (imported from the package CSS)
+   ========================================================================== */
+.react-grid-item.react-grid-placeholder {
+  background: #3b82f6;
+  opacity: 0.25;
+}
+
+/* ---------------------------------------------------------------------------
+   Resize handle visibility (dark theme)
+   Base sizing/positioning (20x20, absolute, bottom-right, se-resize cursor)
+   comes from react-resizable/css/styles.css (imported in main.tsx).
+   Panel renders {children} inside its content wrapper, so RGL's direct-child
+   (">") selectors do not reach the handle — use descendant selectors here.
+   ------------------------------------------------------------------------- */
+.react-grid-item .react-resizable-handle {
+  opacity: 0.55;
+}
+
+.react-grid-item:hover .react-resizable-handle,
+.react-grid-item.react-draggable-dragging .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-grid-item .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid rgba(255, 255, 255, 0.6);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.6);
+}

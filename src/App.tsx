@@ -7,53 +7,7 @@ import DashboardLayout from './components/Dashboard/DashboardLayout';
 import { FumbblDebugPanel } from './components/Debug/FumbblDebugPanel';
 import { GameProvider } from './contexts/GameContext';
 import { LoginScreen } from './components/Auth/LoginScreen';
-
-// -----------------------------------------------------------------------------
-// Storage abstraction: Tauri Store -> localStorage fallback
-// Platform-specific paths are handled automatically by Tauri:
-//   - Windows: %APPDATA%\com.saruman.fumbbl-reborn\fumbbl-credentials.json
-//   - macOS:   ~/Library/Application Support/com.saruman.fumbbl-reborn/fumbbl-credentials.json
-//   - Linux:   ~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json
-//   - Browser: localStorage
-// -----------------------------------------------------------------------------
-
-async function getStorage() {
-  // Check if Tauri is available
-  const isTauri = typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
-
-  if (isTauri) {
-    console.log('[App] Using Tauri Store (platform-specific path)');
-    const { Store } = await import('@tauri-apps/plugin-store');
-    const store = await Store.load('fumbbl-credentials.json');
-    return {
-      get: async <T,>(key: string): Promise<T | null> => {
-        return (await store.get<T>(key)) ?? null;
-      },
-      set: async (key: string, value: unknown): Promise<void> => {
-        await store.set(key, value);
-        await store.save();
-      },
-      delete: async (key: string): Promise<void> => {
-        await store.delete(key);
-        await store.save();
-      },
-    };
-  }
-
-  console.log('[App] Using localStorage (browser mode)');
-  return {
-    get: async <T,>(key: string): Promise<T | null> => {
-      const val = localStorage.getItem(key);
-      return val ? JSON.parse(val) : null;
-    },
-    set: async (key: string, value: unknown): Promise<void> => {
-      localStorage.setItem(key, JSON.stringify(value));
-    },
-    delete: async (key: string): Promise<void> => {
-      localStorage.removeItem(key);
-    },
-  };
-}
+import { getStorage, Storage } from './services/storage';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -148,11 +102,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [storage, setStorage] = useState<{
-    get: <T,>(key: string) => Promise<T | null>;
-    set: (key: string, value: unknown) => Promise<void>;
-    delete: (key: string) => Promise<void>;
-  } | null>(null);
+  const [storage, setStorage] = useState<Storage | null>(null);
 
   // Check for ?debug=true URL parameter
   useEffect(() => {

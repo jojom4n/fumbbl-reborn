@@ -5,6 +5,7 @@
 //   X=-5(rip), X=-6(banned), X=-7(missing), X=30-36(same for away team)
 // =============================================================================
 
+import { useEffect, useRef, useState } from 'react';
 import { FieldPosition, Player } from '../../types/bloodbowl';
 
 // Blood Bowl field dimensions (matching server FieldCoordinate.java)
@@ -45,6 +46,29 @@ export default function GameField({
   selectedPlayer,
   onPlayerSelect,
 }: GameFieldProps) {
+  // ---------------------------------------------------------------------------
+  // Letterbox fitting — keep the 26:15 field ratio with square cells at any
+  // panel size (the panel is resizable). A ResizeObserver recomputes the
+  // pixel size of the field box whenever the panel changes size.
+  // ---------------------------------------------------------------------------
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fieldSize, setFieldSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      const cell = Math.floor(Math.min(width / FIELD_WIDTH, height / FIELD_HEIGHT));
+      setFieldSize({
+        width: Math.max(0, cell * FIELD_WIDTH),
+        height: Math.max(0, cell * FIELD_HEIGHT),
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Filter players that are on the field (not in box coordinates)
   // Players with box coordinates are in reserve/KO/casualty and should NOT render on field
   const team1Active = team1Players.filter(isPlayerOnField);
@@ -57,7 +81,13 @@ export default function GameField({
 
 
   return (
-    <div className="relative bg-gray-900 rounded-lg overflow-hidden border border-gray-700 w-full h-full">
+    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center bg-gray-950 overflow-hidden">
+      {/* Sized field box (data-field-box is used by DashboardLayout to anchor the RadialMenu) */}
+      <div
+        data-field-box
+        className="relative bg-gray-900 rounded-lg overflow-hidden border border-gray-700"
+        style={{ width: fieldSize.width, height: fieldSize.height }}
+      >
       {/* Field background */}
       <div className="absolute inset-0 bg-linear-to-b from-green-900 via-green-800 to-green-900" />
 
@@ -191,6 +221,7 @@ export default function GameField({
           </>
         </div>
       )}
+      </div>
     </div>
   );
 }

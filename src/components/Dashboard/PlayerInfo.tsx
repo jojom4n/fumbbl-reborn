@@ -64,7 +64,7 @@ const SKILL_FULL_NAMES: Record<string, string> = {
 export default function PlayerInfo({ player }: PlayerInfoProps) {
   if (!player) {
     return (
-      <div className="w-1/3 bg-gray-900 border-r border-gray-700 flex items-center justify-center">
+      <div className="w-full h-full bg-gray-900 flex items-center justify-center">
         <div className="text-center text-gray-500">
           <div className="text-4xl mb-2">👤</div>
           <div className="text-sm">Select a player</div>
@@ -87,7 +87,7 @@ export default function PlayerInfo({ player }: PlayerInfoProps) {
   const statusLabel = player.status.charAt(0).toUpperCase() + player.status.slice(1);
 
   return (
-    <div className="w-1/3 bg-gray-900 border-r border-gray-700 flex flex-col rounded-lg overflow-hidden">
+    <div className="w-full h-full bg-gray-900 flex flex-col rounded-lg overflow-hidden">
       {/* Player Header */}
       <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-3">
         {/* Portrait placeholder */}

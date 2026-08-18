@@ -196,7 +196,7 @@ export default function TeamRoster({
   const totalCount = team.length;
 
   return (
-    <div className="w-52 bg-gray-900 border-r border-gray-700 flex flex-col rounded-lg overflow-hidden">
+    <div className="w-full h-full bg-gray-900 flex flex-col rounded-lg overflow-hidden">
       {/* Team Header */}
       <div
         className="px-3 py-2 border-b border-gray-700 flex items-center gap-2"
