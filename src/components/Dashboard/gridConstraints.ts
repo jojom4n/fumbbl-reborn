@@ -50,9 +50,15 @@ export const dashboardConstraint = {
     handle: ResizeHandleAxis,
     { cols, maxRows, layout }: ConstraintContextLike
   ): { w: number; h: number } {
-    // (1) cannot grow beyond the grid edges
-    const maxW =
-      handle === 'w' || handle === 'nw' || handle === 'sw' ? item.x + item.w : cols - item.x;
+    // (1) cannot grow beyond the grid edges. The anchor (static) is exempt
+    //     from the current-x width clamp: it may grow across the whole grid
+    //     — the sanitizer re-centers it (x = (cols - w) / 2) on every
+    //     compaction, so clamping to the current x would stall the growth.
+    const maxW = item.static
+      ? cols
+      : handle === 'w' || handle === 'nw' || handle === 'sw'
+        ? item.x + item.w
+        : cols - item.x;
     const maxH =
       handle === 'n' || handle === 'nw' || handle === 'ne' ? item.y + item.h : maxRows - item.y;
     let nw = Math.min(Math.max(1, w), Math.max(1, maxW));
@@ -69,11 +75,14 @@ export const dashboardConstraint = {
     //       shrinking back to the neighbour's edge);
     //     - bottom limit: items overlapping the (right-limited) column span
     //       stop the height at their top edge.
-    if (handle === 'se') {
+    //     Never applied to the anchor: it grows over the side regions and the
+    //     sanitizer refits the panels living there. Static panels count as
+    //     neighbours — the field's edge stops any other resize.
+    if (handle === 'se' && !item.static) {
       let rightLimit = Infinity;
       let bottomLimit = Infinity;
       for (const other of layout) {
-        if (other.i === item.i || other.static) continue;
+        if (other.i === item.i) continue;
         const rowsOverlap = other.y < item.y + item.h && item.y < other.y + other.h;
         const colsOverlap = other.x < item.x + nw && item.x < other.x + other.w;
         if (rowsOverlap && other.x >= item.x) {

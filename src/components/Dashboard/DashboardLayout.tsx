@@ -1,8 +1,13 @@
 // =============================================================================
 // DashboardLayout — Resizable/draggable dashboard (react-grid-layout v2)
 // Every panel can be dragged by its title bar and resized from the
-// bottom-right handle. The layout is persisted (Tauri Store / localStorage)
-// and can be reset to the default arrangement.
+// bottom-right handle, except the field: it is the grid's anchor — not
+// draggable and always horizontally centered, but resizable (the panels in
+// the side regions next to it grow/contract with it). A panel dragged into
+// a side region is fitted to the field's span (previewed live during the
+// drag); one dragged below the field is fitted to the bottom band. The
+// layout is persisted (Tauri Store / localStorage) and can be reset to the
+// default arrangement.
 // =============================================================================
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -40,10 +45,12 @@ import {
   RadialMenuItem,
 } from '../../types/bloodbowl';
 import {
+  AnchorState,
   DEFAULT_LAYOUT,
   DragSource,
   GRID_COLS,
   LAYOUT_TOTAL_ROWS,
+  PANEL_IDS,
   loadLayout,
   saveLayout,
 } from './layoutConfig';
@@ -96,8 +103,16 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
   // reads it so that a panel covered by the drag can swap back into the
   // vacated slot (instead of being pushed off the grid).
   const dragSourceRef = useRef<DragSource | null>(null);
+  // Monotonic id of the active drag: the post-drop clear is deferred to a
+  // timeout (see handleGridDragStop) and must never clear a source stored
+  // by a newer drag.
+  const dragSourceToken = useRef(0);
+  // Geometry of the field at the start of its resize: the side zones are
+  // detected against it (by the first mousemove the compactor has already
+  // displaced the side panels from their original slots).
+  const anchorRef = useRef<AnchorState | null>(null);
   const gridCompactor = useMemo(
-    () => createBoundedCompactor(GRID_COLS, LAYOUT_TOTAL_ROWS, dragSourceRef),
+    () => createBoundedCompactor(GRID_COLS, LAYOUT_TOTAL_ROWS, dragSourceRef, anchorRef),
     []
   );
 
@@ -199,8 +214,11 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
     setRadialMenu({ type: 'hide' });
     // Remember where the panel started from: the bounded compactor uses this
     // to swap a covered panel back into the vacated slot during the drag.
+    // (A drag never resizes the field, so the anchor state is cleared.)
+    anchorRef.current = null;
     const source = oldItem ?? newItem;
     if (source) {
+      dragSourceToken.current += 1;
       dragSourceRef.current = {
         i: source.i,
         x: source.x,
@@ -211,10 +229,36 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
     }
   };
   const handleGridDragStop = () => {
-    dragSourceRef.current = null;
+    // Clear AFTER the drop compactions have run: RGL compacts twice on
+    // mouseup and the second pass still needs the drag source to enforce
+    // the region target (side slot / band) on the final layout — a
+    // synchronous clear let that pass drop the snap. The token makes a
+    // stale timeout harmless if the user starts a new drag immediately.
+    const token = dragSourceToken.current;
+    setTimeout(() => {
+      if (dragSourceToken.current === token) dragSourceRef.current = null;
+    }, 0);
   };
-  const handleGridResizeStart = () => {
+  const handleGridResizeStart = (
+    _layout: Layout,
+    oldItem: LayoutItem | null,
+    _newItem: LayoutItem | null
+  ) => {
     setRadialMenu({ type: 'hide' });
+    // The field is the anchor: remember its pre-resize geometry so the
+    // side zones (and the side panels fitted to them) are detected against
+    // it while it grows/shrinks.
+    if (oldItem && oldItem.i === PANEL_IDS.field) {
+      anchorRef.current = {
+        x: oldItem.x,
+        y: oldItem.y,
+        w: oldItem.w,
+        h: oldItem.h,
+      };
+    }
+  };
+  const handleGridResizeStop = () => {
+    anchorRef.current = null;
   };
 
   // ---------------------------------------------------------------------------
@@ -347,6 +391,7 @@ export default function DashboardLayout({ onToggleDebug, isDebugEnabled, onLogou
           onDragStart={handleGridDragStart}
           onDragStop={handleGridDragStop}
           onResizeStart={handleGridResizeStart}
+          onResizeStop={handleGridResizeStop}
           className="flex-1 min-h-0"
           style={{ height: '100%' }}
         >
