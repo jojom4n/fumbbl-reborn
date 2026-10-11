@@ -1,25 +1,31 @@
-# C++ Client — Progress & Next Steps (as of 11/ott, branch `wxwidgets-cpp`)
+# Qt/C++ Client — Progress & Next Steps (as of 11/ott, branch `qt-cpp`)
 
-## ⚠️ TOOLKIT PIVOT (user decision, 11/ott)
-**We are switching from Qt to wxWidgets.** The branch has been renamed
-`qt-cpp` → `wxwidgets-cpp`. The Qt skeleton in `qt-client/` stays as the
-reference implementation; the UI layer will be rebuilt on wxWidgets
-(native menus via `wxMenuBar`, dockable panels via the wxAUI framework —
-the same Office/VS docking model, no QDockWidget). Everything
-**toolkit-independent** survives the switch and is the real asset:
-the LZString UTF16 codec (verified byte-identical), the protocol facts
-(ping 2s immediate, version→join sequence, no clientReady, one-time
-session tokens), the test vectors, the auth/WS/game-model logic
-(ported to `wxWebSocket`/`wxHTTP` or kept on a background thread with
-Boost.Beast/`cpp-httplib` + a WebSocket lib — decide at porting time),
-and the reference implementations in the TS client + /home/saruman/Projects/ffb.
+## ⚠️ FINAL DECISION (user, 11/ott): Qt 6 + QT Advanced Docking System (QDS)
+**Toolkit: C++ + Qt 6.12 (already on the dev machine), with docking
+provided by the QT Advanced Docking System (QDS)** — NOT plain QDockWidget
+and NOT wxWidgets (a wxWidgets pivot was decided then immediately
+reverted: branch went `qt-cpp` → `wxwidgets-cpp` → back to `qt-cpp`,
+2 docs-only commits in between).
 
-## Original decision (superseded re: toolkit, still valid re: C++/native)
+**QDS** = https://github.com/JanWLevy/qtsolutionsadvanceddocking (MIT,
+requires Qt ≥ 6.3): VS Code-grade docking for Qt — `Qds::DockWidget`
+(INHERITS QDockWidget, so it plugs into the existing QMainWindow
+skeleton with minimal change), `Qds::DockAreaTab`, `Qds::Splitter`,
+`Qds::DockManager`, real docking indicators, floating/tiling/splitting,
+and JSON serialization of the whole dock layout (better than
+QMainWindow saveState for our purposes).
+
+**Action when resuming:** vendor QDS (git submodule or FetchContent into
+qt-client/third_party/QDS), then swap the QDockWidget-based layout in
+`src/ui/mainwindow.cpp` for QDS (MainWindow + Qds::DockAreaTab +
+Qds::DockWidget per panel). Menus/toolbar/field/theme stay as built.
+
+## Original decision (valid)
 Abandon the Tauri+React dashboard as the UI direction. Build a **native
-C++ client** (dev machine has g++ 16, CMake 4.4, Ninja; Qt 6.12 was
-chosen first, then replaced by wxWidgets per the user). Rust+Qt
-(qmetaobject) was considered but rejected. SDL was rejected (not a GUI
-toolkit).
+C++/Qt 6 client** (Qt 6.12 + moc/uic/rcc, g++ 16, CMake 4.4, Ninja are
+installed). Rust+Qt (qmetaobject) was considered but rejected in favor
+of C++ (Qt's reference language, mature tooling, built-in
+QWebSocket/QtNetwork). SDL was rejected (not a GUI toolkit).
 
 Goal: Office/VS-style UI — native top menu bar, movable toolbars,
 drag-and-drop dockable panels, dark FUMBBL theme.
@@ -94,6 +100,13 @@ Credentials are auto-read from
 1. **Run the live smoke test** (above) and fix anything it reveals
    (most likely nothing — protocol facts were ported 1:1 and the codec is
    verified byte-identical).
+1.5. **Vendor QDS + swap the dock layer**: add the QT Advanced Docking
+   System (JanWLevy/qtsolutionsadvanceddocking, MIT, Qt ≥ 6.3) as a
+   submodule/FetchContent under `qt-client/third_party/`, then replace the
+   QDockWidget layout in `src/ui/mainwindow.cpp` with
+   `Qds::DockAreaTab` + `Qds::DockWidget` panels (Qds::DockWidget IS a
+   QDockWidget subclass, so the MainWindow/menus/toolbar/field stay as
+   built). Keep QDS's JSON layout serialization in mind for step 5.
 2. **GameModel port** (`src/core/gamemodel.{h,cpp}`): port the TS
    `fumbblGameModel.ts` — `initialize(game)` (teams, players map,
    fieldModel.playerDataArray coordinates, ball, half, turnMode, turn from
@@ -118,8 +131,9 @@ Credentials are auto-read from
 4. **Connect dialog** (File > Connect…): clientId/secret/username/gameId +
    "remember" (QSettings or the same JSON file), enable m_connectAction
    (currently disabled).
-5. **Layout persistence**: QSettings saveState()/restoreState() on
-   close/open (plumbing already in MainWindow::savedLayout/restoreLayout).
+5. **Layout persistence**: QDS layout serialization (DockManager
+   toJson/fromJson) into QSettings on close/open (plumbing already in
+   MainWindow::savedLayout/restoreLayout as a fallback).
 6. **PlayerInfo** real rendering (from the selected player: stats, skills,
    status) + field click selection.
 7. (Later, out of spectator scope) playing mode: clientAction wiring,
