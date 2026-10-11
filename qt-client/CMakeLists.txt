@@ -33,6 +33,12 @@ add_executable(fumbbl-qt
     # Core (protocol layer)
     src/core/lzstring.h
     src/core/lzstring.cpp
+    src/core/fumbblauth.h
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.h
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.h
+    src/core/spectatorsession.cpp
 
     # UI
     src/ui/mainwindow.h
@@ -57,6 +63,23 @@ target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
+# -----------------------------------------------------------------------------
+# Headless spectator smoke tool (live network verification)
+# -----------------------------------------------------------------------------
+add_executable(spectator_smoke
+    tools/spectator_smoke.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+)
+target_include_directories(spectator_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(spectator_smoke PRIVATE
+    Qt6::Core
     Qt6::Network
     Qt6::WebSockets
 )

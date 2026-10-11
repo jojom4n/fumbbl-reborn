@@ -1,5 +1,7 @@
-set(__QT_DEPLOY_TARGETS "lzstring_test;fumbbl-qt")
+set(__QT_DEPLOY_TARGETS "lzstring_test;fumbbl-qt;spectator_smoke")
 set(__QT_DEPLOY_TARGET_lzstring_test_FILE /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/lzstring_test)
 set(__QT_DEPLOY_TARGET_lzstring_test_TYPE EXECUTABLE)
 set(__QT_DEPLOY_TARGET_fumbbl-qt_FILE /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/fumbbl-qt)
 set(__QT_DEPLOY_TARGET_fumbbl-qt_TYPE EXECUTABLE)
+set(__QT_DEPLOY_TARGET_spectator_smoke_FILE /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/spectator_smoke)
+set(__QT_DEPLOY_TARGET_spectator_smoke_TYPE EXECUTABLE)

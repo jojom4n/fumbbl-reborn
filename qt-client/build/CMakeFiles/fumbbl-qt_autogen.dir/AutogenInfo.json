@@ -585,9 +585,27 @@
 	"HEADERS" : 
 	[
 		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/fumbblauth.h",
+			"Mu",
+			"PRMOGMWJPH/moc_fumbblauth.cpp",
+			null
+		],
+		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/fumbblws.h",
+			"Mu",
+			"PRMOGMWJPH/moc_fumbblws.cpp",
+			null
+		],
+		[
 			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.h",
 			"Mu",
 			"PRMOGMWJPH/moc_lzstring.cpp",
+			null
+		],
+		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/spectatorsession.h",
+			"Mu",
+			"PRMOGMWJPH/moc_spectatorsession.cpp",
 			null
 		],
 		[
@@ -703,7 +721,22 @@
 	"SOURCES" : 
 	[
 		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/fumbblauth.cpp",
+			"Mu",
+			null
+		],
+		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/fumbblws.cpp",
+			"Mu",
+			null
+		],
+		[
 			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.cpp",
+			"Mu",
+			null
+		],
+		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/spectatorsession.cpp",
 			"Mu",
 			null
 		],
