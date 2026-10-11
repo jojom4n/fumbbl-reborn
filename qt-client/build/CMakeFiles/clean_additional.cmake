@@ -6,5 +6,8 @@ if("${CONFIG}" STREQUAL "" OR "${CONFIG}" STREQUAL "RelWithDebInfo")
   "CMakeFiles/fumbbl-qt_autogen.dir/AutogenUsed.txt"
   "CMakeFiles/fumbbl-qt_autogen.dir/ParseCache.txt"
   "fumbbl-qt_autogen"
+  "tests/CMakeFiles/lzstring_test_autogen.dir/AutogenUsed.txt"
+  "tests/CMakeFiles/lzstring_test_autogen.dir/ParseCache.txt"
+  "tests/lzstring_test_autogen"
   )
 endif()

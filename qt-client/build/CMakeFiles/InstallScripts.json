@@ -1,7 +1,8 @@
 {
 	"InstallScripts" : 
 	[
-		"/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/cmake_install.cmake"
+		"/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/cmake_install.cmake",
+		"/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

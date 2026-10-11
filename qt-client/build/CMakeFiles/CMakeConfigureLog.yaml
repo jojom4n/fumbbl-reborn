@@ -7655,3 +7655,140 @@ events:
         - "/usr/lib/cmake/Qt6/3rdparty/extra-cmake-modules/find-modules"
         - "/usr/lib/cmake/Qt6/3rdparty/kwin"
 ...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "/usr/lib/cmake/Qt6/Qt6Config.cmake:267 (find_package)"
+      - "tests/CMakeLists.txt:4 (find_package)"
+    name: "Qt6Test"
+    configs:
+      -
+        filename: "Qt6Test.cps"
+        kind: "cps"
+      -
+        filename: "qt6test.cps"
+        kind: "cps"
+      -
+        filename: "Qt6TestConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "qt6test-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "optional"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "Qt6Test"
+      search_paths:
+        - "/usr/lib/cmake"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: false
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/Qt6TestConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/qt6test-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/lib/cps/Qt6Test.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/lib/cps/qt6test.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/share/cps/Qt6Test.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/pkgRedirects/share/cps/qt6test.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/Qt6TestConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/qt6test-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/Qt6TestPrivate/Qt6TestConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/Qt6TestPrivate/qt6test-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/Qt6TestInternalsPrivate/Qt6TestConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cmake/Qt6TestInternalsPrivate/qt6test-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found:
+      path: "/usr/lib/cmake/Qt6Test/Qt6TestConfig.cmake"
+      mode: "config"
+      version: "6.12.0"
+    search_context:
+      CMAKE_PREFIX_PATH:
+        - "/usr/lib/qt6"
+      ENV{PATH}:
+        - "/home/saruman/.pi/agent/bin"
+        - "/opt/rocm/bin"
+        - "/home/saruman/.npm-global/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/bin"
+        - "/opt/android-sdk/platform-tools"
+        - "/var/lib/flatpak/exports/bin"
+        - "/usr/lib/jvm/default/bin"
+        - "/usr/bin/site_perl"
+        - "/usr/bin/vendor_perl"
+        - "/usr/bin/core_perl"
+        - "/opt/rocm/bin"
+        - "/usr/lib/rustup/bin"
+        - "/home/saruman/.local/bin"
+        - "/home/saruman/.lmstudio/bin"
+        - "/opt/android-sdk/platform-tools"
+        - "/home/saruman/.local/bin"
+        - "/home/saruman/.lmstudio/bin"
+        - "/opt/android-sdk/platform-tools"
+        - "/opt/android-sdk/platform-tools"
+        - "/home/saruman/.lmstudio/bin"
+        - "/home/saruman/.cargo/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/usr"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...

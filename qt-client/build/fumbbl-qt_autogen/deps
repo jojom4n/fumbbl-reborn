@@ -3,6 +3,8 @@ fumbbl-qt_autogen/timestamp: \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/4.4.4/CMakeCXXCompiler.cmake \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/4.4.4/CMakeSystem.cmake \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/fumbbl-qt_autogen/moc_predefs.h \
+	/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.cpp \
+	/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.h \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/main.cpp \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/ui/chatwidget.cpp \
 	/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/ui/chatwidget.h \

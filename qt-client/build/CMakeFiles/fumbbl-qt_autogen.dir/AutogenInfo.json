@@ -585,6 +585,12 @@
 	"HEADERS" : 
 	[
 		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.h",
+			"Mu",
+			"PRMOGMWJPH/moc_lzstring.cpp",
+			null
+		],
+		[
 			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/ui/chatwidget.h",
 			"Mu",
 			"YPKJ5OE7LN/moc_chatwidget.cpp",
@@ -696,6 +702,11 @@
 	"SETTINGS_FILE" : "/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/fumbbl-qt_autogen.dir/AutogenUsed.txt",
 	"SOURCES" : 
 	[
+		[
+			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/core/lzstring.cpp",
+			"Mu",
+			null
+		],
 		[
 			"/home/saruman/Projects/FUMBBL-Reborn/qt-client/src/main.cpp",
 			"Mu",

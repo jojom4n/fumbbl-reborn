@@ -18,6 +18,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
 
+# Qt6CoreMacros may later force CMAKE_RUNTIME_OUTPUT_DIRECTORY; pin it up front
+# so both the app and the tests land in predictable locations.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
 
 # -----------------------------------------------------------------------------
@@ -25,6 +29,10 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
 # -----------------------------------------------------------------------------
 add_executable(fumbbl-qt
     src/main.cpp
+
+    # Core (protocol layer)
+    src/core/lzstring.h
+    src/core/lzstring.cpp
 
     # UI
     src/ui/mainwindow.h

@@ -1,5 +1,12 @@
 /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/fumbbl-qt.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/test.dir
 /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/edit_cache.dir
 /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/rebuild_cache.dir
 /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/fumbbl-qt_autogen_timestamp_deps.dir
 /home/saruman/Projects/FUMBBL-Reborn/qt-client/build/CMakeFiles/fumbbl-qt_autogen.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/lzstring_test.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/test.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/edit_cache.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/rebuild_cache.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/lzstring_test_autogen_timestamp_deps.dir
+/home/saruman/Projects/FUMBBL-Reborn/qt-client/build/tests/CMakeFiles/lzstring_test_autogen.dir
