@@ -1,12 +1,25 @@
-# Qt/C++ Client — Progress & Next Steps (as of 11/ott, branch `qt-cpp`)
+# C++ Client — Progress & Next Steps (as of 11/ott, branch `wxwidgets-cpp`)
 
-## Decision (user-approved)
+## ⚠️ TOOLKIT PIVOT (user decision, 11/ott)
+**We are switching from Qt to wxWidgets.** The branch has been renamed
+`qt-cpp` → `wxwidgets-cpp`. The Qt skeleton in `qt-client/` stays as the
+reference implementation; the UI layer will be rebuilt on wxWidgets
+(native menus via `wxMenuBar`, dockable panels via the wxAUI framework —
+the same Office/VS docking model, no QDockWidget). Everything
+**toolkit-independent** survives the switch and is the real asset:
+the LZString UTF16 codec (verified byte-identical), the protocol facts
+(ping 2s immediate, version→join sequence, no clientReady, one-time
+session tokens), the test vectors, the auth/WS/game-model logic
+(ported to `wxWebSocket`/`wxHTTP` or kept on a background thread with
+Boost.Beast/`cpp-httplib` + a WebSocket lib — decide at porting time),
+and the reference implementations in the TS client + /home/saruman/Projects/ffb.
+
+## Original decision (superseded re: toolkit, still valid re: C++/native)
 Abandon the Tauri+React dashboard as the UI direction. Build a **native
-C++/Qt 6 client** (Qt 6.12 is installed on the dev machine together with
-moc/uic/rcc, g++ 16, CMake 4.4, Ninja). Rust+Qt (qmetaobject) was
-considered but rejected in favor of C++ (Qt's reference language, mature
-tooling, built-in QWebSocket/QtNetwork, QDockWidget = the Office/VS
-docking model). SDL was rejected (not a GUI toolkit).
+C++ client** (dev machine has g++ 16, CMake 4.4, Ninja; Qt 6.12 was
+chosen first, then replaced by wxWidgets per the user). Rust+Qt
+(qmetaobject) was considered but rejected. SDL was rejected (not a GUI
+toolkit).
 
 Goal: Office/VS-style UI — native top menu bar, movable toolbars,
 drag-and-drop dockable panels, dark FUMBBL theme.
