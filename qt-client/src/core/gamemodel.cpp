@@ -1,0 +1,434 @@
+// =============================================================================
+// GameModel — implementation (see gamemodel.h for references)
+// =============================================================================
+#include "core/gamemodel.h"
+
+#include <QJsonDocument>
+
+namespace {
+
+// The server sends playerIds as strings ("18109690") but be tolerant of
+// numbers: normalize everything to a string key.
+QString playerIdKey(const QJsonValue &v)
+{
+    if (v.isDouble())
+        return QString::number(static_cast<qint64>(v.toDouble()));
+    return v.toString();
+}
+
+// Coordinate value: a JSON array [x, y] (integers). Returns false if the
+// value is not a 2-element numeric array (e.g. null = ball out of play).
+bool readCoords(const QJsonValue &value, int &x, int &y)
+{
+    if (!value.isArray())
+        return false;
+    const QJsonArray a = value.toArray();
+    if (a.size() < 2 || !a.at(0).isDouble() || !a.at(1).isDouble())
+        return false;
+    x = static_cast<int>(a.at(0).toDouble());
+    y = static_cast<int>(a.at(1).toDouble());
+    return true;
+}
+
+int readInt(const QJsonValue &v)
+{
+    if (v.isDouble())
+        return static_cast<int>(v.toDouble());
+    return v.toString().toInt();
+}
+
+} // namespace
+
+GameModel::GameModel(QObject *parent) : QObject(parent)
+{
+}
+
+// -----------------------------------------------------------------------------
+// Initialization (port of fumbblGameModel.ts initialize())
+// -----------------------------------------------------------------------------
+bool GameModel::initialize(const QJsonObject &game)
+{
+    // Reset live state.
+    m_initialized = false;
+    m_teamHomeName.clear();
+    m_teamAwayName.clear();
+    m_scoreHome = 0;
+    m_scoreAway = 0;
+    m_turn = 1;
+    m_half = 0;
+    m_turnMode = QStringLiteral("setup");
+    m_homePlaying = true;
+    m_playerIndex.clear();
+    m_players.clear();
+    m_rosterHomeIds.clear();
+    m_rosterAwayIds.clear();
+    m_activePlayerId.clear();
+    m_ballOnField = false;
+    m_ballX = -1;
+    m_ballY = -1;
+
+    const QJsonObject home = game.value(QStringLiteral("teamHome")).toObject();
+    const QJsonObject away = game.value(QStringLiteral("teamAway")).toObject();
+
+    if (home.isEmpty() && away.isEmpty())
+        return false; // not a game state
+
+    m_teamHomeName = home.value(QStringLiteral("teamName")).toString();
+    m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
+
+    parsePlayerArray(home.value(QStringLiteral("playerArray")).toArray(), true);
+    parsePlayerArray(away.value(QStringLiteral("playerArray")).toArray(), false);
+
+    // Field model sets coordinates + states for players on the field.
+    applyFieldModel(game.value(QStringLiteral("fieldModel")).toObject());
+
+    if (game.value(QStringLiteral("actingPlayer")).isObject())
+        m_activePlayerId = playerIdKey(
+            game.value(QStringLiteral("actingPlayer")).toObject().value(QStringLiteral("playerId")));
+
+    if (game.contains(QStringLiteral("half")))
+        m_half = readInt(game.value(QStringLiteral("half")));
+    if (game.contains(QStringLiteral("homePlaying")))
+        m_homePlaying = game.value(QStringLiteral("homePlaying")).toBool(true);
+
+    const QJsonObject turnModeObj = game.value(QStringLiteral("turnMode")).toObject();
+    if (turnModeObj.contains(QStringLiteral("name")))
+        m_turnMode = turnModeObj.value(QStringLiteral("name")).toString();
+    else if (game.value(QStringLiteral("turnMode")).isString())
+        m_turnMode = game.value(QStringLiteral("turnMode")).toString();
+
+    // Turn number: home's turnNr if set, else away's (TS reference).
+    const int turnNrHome = game.value(QStringLiteral("turnDataHome")).toObject().value(QStringLiteral("turnNr")).toInt(0);
+    const int turnNrAway = game.value(QStringLiteral("turnDataAway")).toObject().value(QStringLiteral("turnNr")).toInt(0);
+    m_turn = turnNrHome != 0 ? turnNrHome : (turnNrAway != 0 ? turnNrAway : 1);
+
+    // Score: top-level score object first, then per-team scores override.
+    const QJsonObject score = game.value(QStringLiteral("score")).toObject();
+    if (score.contains(QStringLiteral("team1")))
+        m_scoreHome = readInt(score.value(QStringLiteral("team1")));
+    if (score.contains(QStringLiteral("team2")))
+        m_scoreAway = readInt(score.value(QStringLiteral("team2")));
+    if (home.contains(QStringLiteral("score")))
+        m_scoreHome = readInt(home.value(QStringLiteral("score")));
+    if (away.contains(QStringLiteral("score")))
+        m_scoreAway = readInt(away.value(QStringLiteral("score")));
+
+    m_initialized = true;
+    emit stateUpdated();
+    return true;
+}
+
+void GameModel::parsePlayerArray(const QJsonArray &array, bool homeSide)
+{
+    for (const QJsonValue &pv : array) {
+        const QJsonObject p = pv.toObject();
+        if (p.isEmpty())
+            continue;
+
+        FFBPlayer player;
+        player.playerId = playerIdKey(p.value(QStringLiteral("playerId")));
+        player.name = p.value(QStringLiteral("playerName")).toString();
+        player.number = readInt(p.value(QStringLiteral("playerNr")));
+        player.race = p.value(QStringLiteral("race")).toString();
+        player.position = p.value(QStringLiteral("positionName")).toString();
+        player.ag = readInt(p.value(QStringLiteral("agility")));
+        player.st = readInt(p.value(QStringLiteral("strength")));
+        player.ma = readInt(p.value(QStringLiteral("movement")));
+        player.av = readInt(p.value(QStringLiteral("armour")));
+        for (const QJsonValue &s : p.value(QStringLiteral("skillArray")).toArray())
+            player.skills << s.toString();
+        player.sideHome = homeSide;
+
+        // Some payloads already carry the live coordinate/state in the
+        // roster entry itself; treat them like fieldModel data.
+        int x = -1, y = -1;
+        if (readCoords(p.value(QStringLiteral("playerCoordinate")), x, y)) {
+            player.fieldX = x;
+            player.fieldY = y;
+            player.hasCoords = true;
+        }
+        if (p.contains(QStringLiteral("playerState")))
+            player.state = readInt(p.value(QStringLiteral("playerState")));
+
+        if (!player.playerId.isEmpty() && !m_playerIndex.contains(player.playerId)) {
+            m_playerIndex.insert(player.playerId, m_players.size());
+            m_players.append(player);
+            (homeSide ? m_rosterHomeIds : m_rosterAwayIds) << player.playerId;
+        }
+    }
+}
+
+void GameModel::applyFieldModel(const QJsonObject &fieldModel)
+{
+    for (const QJsonValue &dv : fieldModel.value(QStringLiteral("playerDataArray")).toArray()) {
+        const QJsonObject pd = dv.toObject();
+        if (pd.isEmpty())
+            continue;
+        FFBPlayer *player = findPlayer(playerIdKey(pd.value(QStringLiteral("playerId"))));
+        if (!player)
+            continue;
+        int x = -1, y = -1;
+        if (readCoords(pd.value(QStringLiteral("playerCoordinate")), x, y)) {
+            player->fieldX = x;
+            player->fieldY = y;
+            player->hasCoords = true;
+        }
+        if (pd.contains(QStringLiteral("playerState")))
+            player->state = readInt(pd.value(QStringLiteral("playerState")));
+    }
+
+    int x = -1, y = -1;
+    if (readCoords(fieldModel.value(QStringLiteral("ballCoordinate")), x, y)) {
+        m_ballOnField = true;
+        m_ballX = x;
+        m_ballY = y;
+    } else {
+        m_ballOnField = false;
+        m_ballX = -1;
+        m_ballY = -1;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Model changes (port of fumbblGameModel.ts applyModelChanges())
+// -----------------------------------------------------------------------------
+void GameModel::applyModelChanges(const QJsonArray &changes)
+{
+    if (!m_initialized)
+        return; // ignore syncs before the first full state
+
+    for (const QJsonValue &cv : changes) {
+        const QJsonObject c = cv.toObject();
+        if (c.isEmpty())
+            continue;
+        const QString id = c.value(QStringLiteral("modelChangeId")).toString();
+        const QString key = c.value(QStringLiteral("modelChangeKey")).toString();
+        handleModelChange(id, key, c.value(QStringLiteral("modelChangeValue")));
+    }
+    emit stateUpdated();
+}
+
+void GameModel::handleModelChange(const QString &id, const QString &key, const QJsonValue &value)
+{
+    // ESSENTIAL handlers for a spectator (TS reference: fumbblGameModel.ts).
+    // Everything else is a no-op, exactly like the TS model.
+    if (id == QLatin1String("fieldModelSetBallCoordinate")) {
+        int x = -1, y = -1;
+        if (readCoords(value, x, y)) {
+            m_ballOnField = true;
+            m_ballX = x;
+            m_ballY = y;
+        } else {
+            m_ballOnField = false;
+            m_ballX = -1;
+            m_ballY = -1;
+        }
+        return;
+    }
+
+    if (id == QLatin1String("fieldModelSetPlayerCoordinate")) {
+        FFBPlayer *player = findPlayer(key);
+        if (player)
+            setPlayerCoords(player, value);
+        return;
+    }
+
+    if (id == QLatin1String("fieldModelSetPlayerState")) {
+        FFBPlayer *player = findPlayer(key);
+        if (player)
+            player->state = readInt(value);
+        return;
+    }
+
+    if (id == QLatin1String("fieldModelRemovePlayer")) {
+        const auto it = m_playerIndex.find(key);
+        if (it != m_playerIndex.end()) {
+            const int idx = it.value();
+            m_rosterHomeIds.removeAll(m_players.at(idx).playerId);
+            m_rosterAwayIds.removeAll(m_players.at(idx).playerId);
+            m_players.removeAt(idx);
+            // Reindex (cheap: rosters are small).
+            m_playerIndex.clear();
+            for (int i = 0; i < m_players.size(); ++i)
+                m_playerIndex.insert(m_players.at(i).playerId, i);
+        }
+        return;
+    }
+
+    if (id == QLatin1String("gameSetHalf")) {
+        m_half = readInt(value);
+        return;
+    }
+
+    if (id == QLatin1String("gameSetHomePlaying")) {
+        m_homePlaying = value.toBool(m_homePlaying);
+        return;
+    }
+
+    if (id == QLatin1String("gameSetTurnMode")) {
+        const QJsonObject obj = value.toObject();
+        m_turnMode = obj.contains(QStringLiteral("name"))
+                         ? obj.value(QStringLiteral("name")).toString()
+                         : value.toString();
+        return;
+    }
+
+    if (id == QLatin1String("gameSetPassCoordinate")) {
+        // The ball travels to the pass target coordinate.
+        int x = -1, y = -1;
+        if (readCoords(value, x, y)) {
+            m_ballOnField = true;
+            m_ballX = x;
+            m_ballY = y;
+        }
+        return;
+    }
+
+    if (id == QLatin1String("turnDataSetTurnNr")) {
+        // TS reference: only the "home" key updates the displayed turn.
+        if (key == QLatin1String("home"))
+            m_turn = readInt(value);
+        return;
+    }
+
+    if (id == QLatin1String("teamResultSetScore")) {
+        if (key == QLatin1String("home"))
+            m_scoreHome = readInt(value);
+        else if (key == QLatin1String("away"))
+            m_scoreAway = readInt(value);
+        return;
+    }
+
+    if (id == QLatin1String("actingPlayerSetPlayerId")) {
+        m_activePlayerId = playerIdKey(value);
+        return;
+    }
+
+    // ~130 remaining modelChangeIds: no-op (TS reference).
+}
+
+void GameModel::setPlayerCoords(FFBPlayer *player, const QJsonValue &value)
+{
+    int x = -1, y = -1;
+    if (readCoords(value, x, y)) {
+        player->fieldX = x;
+        player->fieldY = y;
+        player->hasCoords = true;
+    }
+}
+
+FFBPlayer *GameModel::findPlayer(const QString &playerId)
+{
+    const auto it = m_playerIndex.find(playerId);
+    if (it == m_playerIndex.end())
+        return nullptr;
+    return &m_players[it.value()];
+}
+
+// -----------------------------------------------------------------------------
+// Rosters / field tokens
+// -----------------------------------------------------------------------------
+QVector<FFBPlayer> GameModel::rosterHome() const
+{
+    QVector<FFBPlayer> result;
+    result.reserve(m_rosterHomeIds.size());
+    for (const QString &id : m_rosterHomeIds) {
+        const auto it = m_playerIndex.constFind(id);
+        if (it != m_playerIndex.constEnd())
+            result.append(m_players.at(it.value()));
+    }
+    return result;
+}
+
+QVector<FFBPlayer> GameModel::rosterAway() const
+{
+    QVector<FFBPlayer> result;
+    result.reserve(m_rosterAwayIds.size());
+    for (const QString &id : m_rosterAwayIds) {
+        const auto it = m_playerIndex.constFind(id);
+        if (it != m_playerIndex.constEnd())
+            result.append(m_players.at(it.value()));
+    }
+    return result;
+}
+
+QVector<FieldToken> GameModel::fieldTokens() const
+{
+    QVector<FieldToken> tokens;
+    tokens.reserve(m_players.size());
+    for (const FFBPlayer &p : m_players) {
+        if (!p.hasCoords || isBoxX(p.fieldX) || !isOnField(p.fieldX, p.fieldY))
+            continue;
+        FieldToken t;
+        t.playerId = p.playerId;
+        t.name = p.name;
+        t.number = p.number;
+        t.sideHome = p.sideHome;
+        t.x = p.fieldX;
+        t.y = p.fieldY;
+        t.state = p.state;
+        t.hasBall = m_ballOnField && p.fieldX == m_ballX && p.fieldY == m_ballY;
+        t.isActing = !m_activePlayerId.isEmpty() && p.playerId == m_activePlayerId;
+        tokens.append(t);
+    }
+    return tokens;
+}
+
+QVector<FieldToken> GameModel::boxTokens(bool homeSide) const
+{
+    QVector<FieldToken> tokens;
+    for (const FFBPlayer &p : m_players) {
+        if (p.sideHome != homeSide || !p.hasCoords || !isBoxX(p.fieldX))
+            continue;
+        FieldToken t;
+        t.playerId = p.playerId;
+        t.name = p.name;
+        t.number = p.number;
+        t.sideHome = p.sideHome;
+        t.x = p.fieldX;
+        t.y = p.fieldY;
+        t.state = p.state;
+        tokens.append(t);
+    }
+    return tokens;
+}
+
+bool GameModel::ballAt(int &x, int &y) const
+{
+    if (!m_ballOnField)
+        return false;
+    x = m_ballX;
+    y = m_ballY;
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// Coordinate / state helpers (ports of ffb-common)
+// -----------------------------------------------------------------------------
+bool GameModel::isOnField(int x, int y)
+{
+    return x >= 0 && x <= 25 && y >= 0 && y <= 14;
+}
+
+bool GameModel::isBoxX(int x)
+{
+    // Home box: -1 RSV, -2 KO, -3 BH, -4 SI, -5 RIP, -6 BAN, -7 MNG
+    // Away box: 30 RSV, 31 KO, 32 BH, 33 SI, 34 RIP, 35 BAN, 36 MNG
+    return (x >= -7 && x <= -1) || (x >= 30 && x <= 36);
+}
+
+QString GameModel::stateLabel(int state)
+{
+    switch (baseState(state)) {
+    case 5: return QStringLiteral("KO");    // KNOCKED_OUT
+    case 6: return QStringLiteral("BH");    // BADLY_HURT
+    case 7: return QStringLiteral("SI");    // SERIOUS_INJURY
+    case 8: return QStringLiteral("RIP");   // RIP (killed)
+    case 9: return QStringLiteral("RES");   // RESERVE
+    case 10: return QStringLiteral("MISS"); // MISSING
+    case 13: return QStringLiteral("BAN");  // BANNED
+    case 3: return QStringLiteral("PRN");   // PRONE
+    case 4: return QStringLiteral("STN");   // STUNNED
+    default: return QString(); // UNKNOWN/STANDING/MOVING/... on-field active states
+    }
+}

@@ -1,0 +1,786 @@
+{
+ "netCommandId": "serverGameState",
+ "game": {
+  "teamHome": {
+   "teamId": "9931",
+   "teamName": "Orcs United",
+   "coach": "saruman",
+   "race": "Orcs",
+   "reRolls": 2,
+   "fans": 12,
+   "dedicatedFans": 5,
+   "playerArray": [
+    {
+     "playerId": "18109690",
+     "playerName": "Player 0",
+     "playerNr": 1,
+     "playerType": "home",
+     "positionName": "Blocker",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      3,
+      2
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109691",
+     "playerName": "Player 1",
+     "playerNr": 2,
+     "playerType": "home",
+     "positionName": "Blitzer",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      4,
+      3
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109692",
+     "playerName": "Player 2",
+     "playerNr": 3,
+     "playerType": "home",
+     "positionName": "Stalker",
+     "race": "Orcs",
+     "agility": 4,
+     "strength": 5,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      5,
+      4
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109693",
+     "playerName": "Player 3",
+     "playerNr": 4,
+     "playerType": "home",
+     "positionName": "Running Back",
+     "race": "Orcs",
+     "agility": 5,
+     "strength": 2,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      6,
+      5
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "18109694",
+     "playerName": "Player 4",
+     "playerNr": 5,
+     "playerType": "home",
+     "positionName": "Wide Receiver",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      7,
+      6
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109695",
+     "playerName": "Player 5",
+     "playerNr": 6,
+     "playerType": "home",
+     "positionName": "Blocker",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      8,
+      7
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "18109696",
+     "playerName": "Player 6",
+     "playerNr": 7,
+     "playerType": "home",
+     "positionName": "Blitzer",
+     "race": "Orcs",
+     "agility": 4,
+     "strength": 5,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      9,
+      8
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109697",
+     "playerName": "Player 7",
+     "playerNr": 8,
+     "playerType": "home",
+     "positionName": "Stalker",
+     "race": "Orcs",
+     "agility": 5,
+     "strength": 2,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      10,
+      9
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109698",
+     "playerName": "Player 8",
+     "playerNr": 9,
+     "playerType": "home",
+     "positionName": "Running Back",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      11,
+      10
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109699",
+     "playerName": "Player 9",
+     "playerNr": 10,
+     "playerType": "home",
+     "positionName": "Wide Receiver",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      12,
+      11
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "181096910",
+     "playerName": "Player 10",
+     "playerNr": 11,
+     "playerType": "home",
+     "positionName": "Blocker",
+     "race": "Orcs",
+     "agility": 4,
+     "strength": 5,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      13,
+      12
+     ],
+     "playerState": 1
+    }
+   ],
+   "roster": {
+    "rosterId": "1",
+    "rosterName": "Orcs",
+    "apothecary": false
+   },
+   "score": 0
+  },
+  "teamAway": {
+   "teamId": "9932",
+   "teamName": "Dwarves FC",
+   "coach": "foobar",
+   "race": "Dwarves",
+   "reRolls": 1,
+   "fans": 9,
+   "dedicatedFans": 3,
+   "playerArray": [
+    {
+     "playerId": "181096911",
+     "playerName": "Player 11",
+     "playerNr": 12,
+     "playerType": "away",
+     "positionName": "Blitzer",
+     "race": "Orcs",
+     "agility": 5,
+     "strength": 2,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      14,
+      2
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "181096912",
+     "playerName": "Player 12",
+     "playerNr": 13,
+     "playerType": "away",
+     "positionName": "Stalker",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      15,
+      3
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096913",
+     "playerName": "Player 13",
+     "playerNr": 14,
+     "playerType": "away",
+     "positionName": "Running Back",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      16,
+      4
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096914",
+     "playerName": "Player 14",
+     "playerNr": 15,
+     "playerType": "away",
+     "positionName": "Wide Receiver",
+     "race": "Orcs",
+     "agility": 4,
+     "strength": 5,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      17,
+      5
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096915",
+     "playerName": "Player 15",
+     "playerNr": 16,
+     "playerType": "away",
+     "positionName": "Blocker",
+     "race": "Orcs",
+     "agility": 5,
+     "strength": 2,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      18,
+      6
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "181096916",
+     "playerName": "Player 16",
+     "playerNr": 17,
+     "playerType": "away",
+     "positionName": "Blitzer",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      19,
+      7
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096917",
+     "playerName": "Player 17",
+     "playerNr": 18,
+     "playerType": "away",
+     "positionName": "Stalker",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      20,
+      8
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "181096918",
+     "playerName": "Player 18",
+     "playerNr": 19,
+     "playerType": "away",
+     "positionName": "Running Back",
+     "race": "Orcs",
+     "agility": 4,
+     "strength": 5,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      21,
+      9
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096919",
+     "playerName": "Player 19",
+     "playerNr": 20,
+     "playerType": "away",
+     "positionName": "Wide Receiver",
+     "race": "Orcs",
+     "agility": 5,
+     "strength": 2,
+     "movement": 2,
+     "armour": 1,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      22,
+      10
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096920",
+     "playerName": "Player 20",
+     "playerNr": 21,
+     "playerType": "away",
+     "positionName": "Blocker",
+     "race": "Orcs",
+     "agility": 2,
+     "strength": 3,
+     "movement": 3,
+     "armour": 2,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      3,
+      11
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096921",
+     "playerName": "Player 21",
+     "playerNr": 22,
+     "playerType": "away",
+     "positionName": "Blitzer",
+     "race": "Orcs",
+     "agility": 3,
+     "strength": 4,
+     "movement": 1,
+     "armour": 0,
+     "skillArray": [
+      "Block",
+      "Dodge",
+      "Nimble",
+      "Loner",
+      "Hacksilver"
+     ],
+     "playerCoordinate": [
+      4,
+      12
+     ],
+     "playerState": 3
+    }
+   ],
+   "roster": {
+    "rosterId": "2",
+    "rosterName": "Dwarves",
+    "apothecary": true
+   },
+   "score": 0
+  },
+  "actingPlayer": {
+   "playerId": "18109690",
+   "currentMove": 0,
+   "goingForIt": false,
+   "hasBlocked": false,
+   "hasFed": false,
+   "hasFouled": false,
+   "hasMoved": false,
+   "hasPassed": false,
+   "standingUp": true,
+   "sufferingBloodlust": false,
+   "sufferingAnimosity": false,
+   "playerAction": {
+    "name": "MoveAction"
+   }
+  },
+  "fieldModel": {
+   "ballCoordinate": [
+    8,
+    5
+   ],
+   "ballInPlay": true,
+   "ballMoving": false,
+   "bombCoordinate": null,
+   "playerDataArray": [
+    {
+     "playerId": "18109690",
+     "playerCoordinate": [
+      3,
+      2
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109691",
+     "playerCoordinate": [
+      4,
+      3
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109692",
+     "playerCoordinate": [
+      5,
+      4
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109693",
+     "playerCoordinate": [
+      6,
+      5
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "18109694",
+     "playerCoordinate": [
+      7,
+      6
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109695",
+     "playerCoordinate": [
+      8,
+      7
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "18109696",
+     "playerCoordinate": [
+      9,
+      8
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109697",
+     "playerCoordinate": [
+      10,
+      9
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109698",
+     "playerCoordinate": [
+      11,
+      10
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "18109699",
+     "playerCoordinate": [
+      12,
+      11
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "181096910",
+     "playerCoordinate": [
+      13,
+      12
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096911",
+     "playerCoordinate": [
+      14,
+      2
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "181096912",
+     "playerCoordinate": [
+      15,
+      3
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096913",
+     "playerCoordinate": [
+      16,
+      4
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096914",
+     "playerCoordinate": [
+      17,
+      5
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096915",
+     "playerCoordinate": [
+      18,
+      6
+     ],
+     "playerState": 3
+    },
+    {
+     "playerId": "181096916",
+     "playerCoordinate": [
+      19,
+      7
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096917",
+     "playerCoordinate": [
+      20,
+      8
+     ],
+     "playerState": 9
+    },
+    {
+     "playerId": "181096918",
+     "playerCoordinate": [
+      21,
+      9
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096919",
+     "playerCoordinate": [
+      22,
+      10
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096920",
+     "playerCoordinate": [
+      3,
+      11
+     ],
+     "playerState": 1
+    },
+    {
+     "playerId": "181096921",
+     "playerCoordinate": [
+      4,
+      12
+     ],
+     "playerState": 3
+    }
+   ],
+   "weather": {
+    "name": "clear"
+   }
+  },
+  "turnMode": {
+   "name": "regular"
+  },
+  "turnDataHome": {
+   "turnNr": 7
+  },
+  "turnDataAway": {
+   "turnNr": 7
+  },
+  "turnTime": 12345,
+  "gameTime": 456789,
+  "half": 1,
+  "homePlaying": true
+ }
+}

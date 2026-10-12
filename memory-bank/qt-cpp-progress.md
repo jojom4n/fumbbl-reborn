@@ -106,7 +106,8 @@ per ora manteniamoci sempre sul fare gli spettatori, come debug").
   - `e0cf38e` phase 2 — LZString UTF16 codec (byte-identical to JS, 13/13 vectors)
   - `4571f04` phase 3 — network core (auth + WS spectator client) + live smoke tool
   - `c9c599a` chore — stop tracking qt-client/build/ artifacts (gitignore)
-  - phase 4 (QDS dock layer + layout persistence) — commit in progress 12/ott
+  - `72dba40` phase 4 — QDS docking layer (submodule @ v5.1.1) + layout persistence
+  - phase 5 — GameModel port (commit in progress 12/ott)
 
 ## What exists (qt-client/)
 ```
@@ -167,19 +168,19 @@ Credentials are auto-read from
    (most likely nothing — protocol facts were ported 1:1 and the codec is
    verified byte-identical). Needs a live match + the user's go-ahead.
 1.5. ✅ **DONE** — Vendor QDS + swap the dock layer (see "DONE 12/ott" above).
-2. **GameModel port** (`src/core/gamemodel.{h,cpp}`): port the TS
-   `fumbblGameModel.ts` — `initialize(game)` (teams, players map,
-   fieldModel.playerDataArray coordinates, ball, half, turnMode, turn from
-   turnDataHome/Away.turnNr, score from teamHome/Away.score) +
-   `applyModelChanges()` with the ESSENTIAL handlers for a spectator
-   (fieldModelSetBallCoordinate, fieldModelSetPlayerCoordinate,
-   fieldModelSetPlayerState, fieldModelRemovePlayer, gameSetHalf,
-   gameSetHomePlaying, gameSetTurnMode, gameSetPassCoordinate,
-   turnDataSetTurnNr, teamResultSetScore, actingPlayerSetPlayerId;
-   the remaining ~90 modelChangeIds = no-op, exactly like the TS model).
-   Reference: /home/saruman/Projects/ffb (ffb-client-logic = official TS
-   client, ffb-common = server model incl. ModelChangeId.java,
-   PlayerState.java).
+2. ✅ **DONE** GameModel port (`src/core/gamemodel.{h,cpp}`): QObject with
+   `initialize(QJsonObject game)` + `applyModelChanges(QJsonArray)` +
+   `stateUpdated()` signal. Essential handlers only (rest = no-op, like TS):
+   ball coord, player coord/state, removePlayer, half, homePlaying, turnMode
+   (object {name} or string), passCoordinate, turnNr (only "home" key, TS
+   faith), teamResultSetScore (home/away keys), actingPlayerSetPlayerId.
+   Statics: isOnField (x 0..25, y 0..14), isBoxX (-1..-7 / 30..36, exact
+   FieldCoordinate.java constants), baseState (& 0xFF, PlayerState bit
+   flags), stateLabel (KO/BH/SI/RIP/RES/MISS/BAN/PRN/STN). FieldTokens
+   computed on demand with hasBall/isActing. VERIFIED: gamemodel_test
+   (4 tests) against the REAL serverGameState capture (vector 6 of
+   lzstring_vectors.json, copied to tests/serverGameState_fixture.json —
+   Orcs United vs Dwarves FC, 22 field players).
 3. **Wire core -> UI**: MainWindow slots for gameState/modelSync/gameTime/
    talk/joined → setTeams/setScore/setTurn/setTimerSeconds/setSpectators,
    FieldView::setPlayers (filter box coords: x==-1..-7 or x>=30 → box),

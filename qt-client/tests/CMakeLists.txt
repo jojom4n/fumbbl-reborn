@@ -14,3 +14,15 @@ target_include_directories(lzstring_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(lzstring_test PRIVATE Qt6::Test Qt6::Core)
 add_test(NAME lzstring_test COMMAND $<TARGET_FILE:lzstring_test>)
 set_tests_properties(lzstring_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
+
+# -----------------------------------------------------------------------------
+# gamemodel_test — GameModel (port of the TS fumbblGameModel.ts)
+# -----------------------------------------------------------------------------
+add_executable(gamemodel_test
+    gamemodel_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/gamemodel.cpp
+)
+target_include_directories(gamemodel_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(gamemodel_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME gamemodel_test COMMAND $<TARGET_FILE:gamemodel_test>)
+set_tests_properties(gamemodel_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)

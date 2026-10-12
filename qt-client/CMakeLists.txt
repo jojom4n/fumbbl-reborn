@@ -48,6 +48,8 @@ add_executable(fumbbl-qt
     src/core/fumbblws.cpp
     src/core/spectatorsession.h
     src/core/spectatorsession.cpp
+    src/core/gamemodel.h
+    src/core/gamemodel.cpp
 
     # UI
     src/ui/mainwindow.h
