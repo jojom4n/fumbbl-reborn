@@ -48,8 +48,21 @@ int main(int argc, char *argv[])
 
     // --smoke: headless verification mode. Runs the UI offscreen for a short
     // while and quits with exit code 0 if the event loop stayed healthy.
-    if (app.arguments().contains("--smoke")) {
-        QTimer::singleShot(800, &app, &QApplication::quit);
+    // --screenshot <file>: saves a PNG of the window before quitting (used
+    // together with QT_QPA_PLATFORM=offscreen to verify the layout).
+    bool smoke = app.arguments().contains("--smoke");
+    QString screenshotPath;
+    const auto args = app.arguments();
+    const int shotIdx = args.indexOf("--screenshot");
+    if (shotIdx >= 0 && shotIdx + 1 < args.size())
+        screenshotPath = args.at(shotIdx + 1);
+
+    if (smoke || !screenshotPath.isEmpty()) {
+        QTimer::singleShot(1200, &app, [&app, &window, screenshotPath]() {
+            if (!screenshotPath.isEmpty())
+                window.grab().save(screenshotPath);
+            app.quit();
+        });
     }
 
     return app.exec();

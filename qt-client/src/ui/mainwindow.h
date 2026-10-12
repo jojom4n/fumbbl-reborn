@@ -11,17 +11,24 @@
 // =============================================================================
 #pragma once
 
+#include <QByteArray>
 #include <QMainWindow>
 
 class ChatWidget;
 class DiceLogWidget;
 class FieldView;
+class QCloseEvent;
 class QPlainTextEdit;
 class HeaderBar;
 class PlayerInfoWidget;
 class RosterWidget;
 class QLabel;
 class QAction;
+
+namespace ads {
+class CDockManager;
+class CDockWidget;
+}
 
 class MainWindow : public QMainWindow
 {
@@ -43,6 +50,7 @@ public:
     void appendProtocol(const QString &direction, const QString &text);
 
     // Restore/dock layout persistence (QSettings-backed, phase 3).
+    // Backed by QDS saveState()/restoreState() (XML layout serialization).
     QByteArray savedLayout() const;
     void restoreLayout(const QByteArray &state);
 
@@ -50,13 +58,20 @@ signals:
     void chatMessageSent(const QString &message);
     void connectionRequested();
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private:
     void createActions();
     void createMenus();
     void createToolbar();
+    void createDockManager();
     void createCentralWidget();
     void createDockWidgets();
     void createStatusBar();
+
+    // Dock layout persistence (QSettings-backed via QDS state).
+    void loadLayout();
 
     // Widgets
     HeaderBar *m_header = nullptr;
@@ -67,14 +82,21 @@ private:
     DiceLogWidget *m_diceLog = nullptr;
     ChatWidget *m_chat = nullptr;
 
-    // Docks
-    QDockWidget *m_homeRosterDock = nullptr;
-    QDockWidget *m_awayRosterDock = nullptr;
-    QDockWidget *m_playerInfoDock = nullptr;
-    QDockWidget *m_diceLogDock = nullptr;
-    QDockWidget *m_chatDock = nullptr;
-    QDockWidget *m_protocolDock = nullptr;
+    // Docking (QT Advanced Docking System)
+    ads::CDockManager *m_dockManager = nullptr; // central widget of the window
+
+    // Dock panels
+    ads::CDockWidget *m_fieldDock = nullptr; // central anchor (locked)
+    ads::CDockWidget *m_homeRosterDock = nullptr;
+    ads::CDockWidget *m_awayRosterDock = nullptr;
+    ads::CDockWidget *m_playerInfoDock = nullptr;
+    ads::CDockWidget *m_diceLogDock = nullptr;
+    ads::CDockWidget *m_chatDock = nullptr;
+    ads::CDockWidget *m_protocolDock = nullptr;
     QPlainTextEdit *m_protocolLog = nullptr;
+
+    // Default dock arrangement, remembered for the "Reset Layout" action.
+    QByteArray m_defaultLayout;
 
     // Actions
     QAction *m_connectAction = nullptr;

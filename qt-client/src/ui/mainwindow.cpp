@@ -1,7 +1,21 @@
 // =============================================================================
 // MainWindow — implementation
+//
+// Docking is provided by the QT Advanced Docking System (QDS, vendored in
+// third_party/QDS — used as-is, never modified):
+//   - ads::CDockManager is the central widget of the QMainWindow (it sets
+//     itself up automatically when its parent is a QMainWindow).
+//   - The Field is the central, LOCKED anchor (not closable/movable/floatable);
+//     its (empty) title bar is hidden via HideSingleCentralWidgetTitleBar.
+//   - Roster / Player Info / Dice Log / Chat / Protocol Log are regular
+//     CDockWidgets: dockable, floatable, tabbable, draggable.
+//   - Layout persistence uses QDS saveState()/restoreState() (XML).
 // =============================================================================
 #include "ui/mainwindow.h"
+
+#include "DockAreaWidget.h"
+#include "DockManager.h"
+#include "DockWidget.h"
 
 #include "ui/chatwidget.h"
 #include "ui/dicelogwidget.h"
@@ -12,13 +26,18 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QDockWidget>
+#include <QCloseEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QSettings>
 #include <QStatusBar>
+
+// Version of the serialized layout. Bump when the dock set changes
+// incompatibly; QDS refuses to restore a state saved with a different version.
+static const int kLayoutStateVersion = 1;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -28,10 +47,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     createActions();
     createToolbar();
+    createDockManager();
     createCentralWidget();
     createDockWidgets();
     createStatusBar();
     createMenus(); // after the docks: the View menu uses their toggleViewAction()
+
+    // Remember the default arrangement for the "Reset Layout" action, then
+    // restore the user's saved layout (if any) on top of it.
+    m_defaultLayout = m_dockManager->saveState(kLayoutStateVersion);
+    loadLayout();
 
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
@@ -58,24 +83,8 @@ void MainWindow::createActions()
     m_resetLayoutAction = new QAction(tr("Reset &Layout"), this);
     m_resetLayoutAction->setStatusTip(tr("Restore the default panel arrangement"));
     connect(m_resetLayoutAction, &QAction::triggered, this, [this]() {
-        this->setDockOptions({});
-        m_homeRosterDock->setDockLocation(Qt::LeftDockWidgetArea);
-        m_awayRosterDock->setDockLocation(Qt::RightDockWidgetArea);
-        m_playerInfoDock->setDockLocation(Qt::BottomDockWidgetArea);
-        m_diceLogDock->setDockLocation(Qt::BottomDockWidgetArea);
-        m_chatDock->setDockLocation(Qt::BottomDockWidgetArea);
-        m_protocolDock->setDockLocation(Qt::LeftDockWidgetArea);
-        this->splitDockWidget(m_playerInfoDock, m_diceLogDock, Qt::Horizontal);
-        this->splitDockWidget(m_diceLogDock, m_chatDock, Qt::Horizontal);
-        this->splitDockWidget(m_protocolDock, m_homeRosterDock, Qt::Horizontal);
-        this->setDockOptions(QMainWindow::AllowTabbedDocks | QMainWindow::AnimatedDocks |
-                             QMainWindow::GroupedDragging);
-        m_homeRosterDock->show();
-        m_awayRosterDock->show();
-        m_playerInfoDock->show();
-        m_diceLogDock->show();
-        m_chatDock->show();
-        m_protocolDock->show();
+        if (!m_defaultLayout.isEmpty())
+            m_dockManager->restoreState(m_defaultLayout, kLayoutStateVersion);
     });
 }
 
@@ -115,7 +124,7 @@ void MainWindow::createMenus()
 }
 
 // -----------------------------------------------------------------------------
-// Toolbar / Central / Docks
+// Toolbar / Dock manager / Central / Docks
 // -----------------------------------------------------------------------------
 void MainWindow::createToolbar()
 {
@@ -123,45 +132,56 @@ void MainWindow::createToolbar()
     addToolBar(Qt::TopToolBarArea, m_header);
 }
 
+void MainWindow::createDockManager()
+{
+    // CDockManager becomes the central widget of this QMainWindow itself.
+    m_dockManager = new ads::CDockManager(this);
+
+    // Follow the application's dark palette instead of ADS's built-in schemes.
+    m_dockManager->setColorSchemeMode(ads::CDockManager::ColorSchemeMode::FollowPalette);
+
+    // The field is the single central dock widget: hide its title bar
+    // (it has no title bar actions, so the bar would just be empty chrome).
+    ads::CDockManager::setConfigFlag(ads::CDockManager::HideSingleCentralWidgetTitleBar,
+                                     true);
+}
+
 void MainWindow::createCentralWidget()
 {
     m_field = new FieldView(this);
-    setCentralWidget(m_field);
+    m_fieldDock = new ads::CDockWidget(m_dockManager, tr("Field"), this);
+    m_fieldDock->setObjectName(QStringLiteral("dock_field"));
+    m_fieldDock->setWidget(m_field, ads::CDockWidget::ForceNoScrollArea);
+    // The field is the fixed anchor of the layout: not closable, not movable,
+    // not floatable (it only takes focus when clicked).
+    m_fieldDock->setFeatures(ads::CDockWidget::DockWidgetFocusable);
+    m_dockManager->setCentralWidget(m_fieldDock);
+}
+
+// Creates a CDockWidget wrapping `content` and registers it with the manager.
+static ads::CDockWidget *makeDock(ads::CDockManager *manager, const QString &title,
+                                  const QString &objectName, QWidget *content,
+                                  QWidget *parent)
+{
+    auto *dock = new ads::CDockWidget(manager, title, parent);
+    dock->setObjectName(objectName);
+    dock->setWidget(content);
+    return dock;
 }
 
 void MainWindow::createDockWidgets()
 {
+    // QDS split semantics: addDockWidget(area, w, targetArea) places w relative
+    // to targetArea; "Left/Right" areas split HORIZONTALLY (side by side),
+    // "Top/Bottom" areas split VERTICALLY (stacked).
+
+    // --- Left column: protocol log above the home roster --------------------
     m_homeRoster = new RosterWidget(this);
     m_homeRoster->setTeamColor(QColor(0x7c, 0xa8, 0x6f));
-    m_homeRosterDock = new QDockWidget(tr("Home Roster"), this);
-    m_homeRosterDock->setObjectName(QStringLiteral("dock_home_roster"));
-    m_homeRosterDock->setWidget(m_homeRoster);
-    m_homeRosterDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-
-    m_awayRoster = new RosterWidget(this);
-    m_awayRoster->setTeamColor(QColor(0xd8, 0xc0, 0x7a));
-    m_awayRosterDock = new QDockWidget(tr("Away Roster"), this);
-    m_awayRosterDock->setObjectName(QStringLiteral("dock_away_roster"));
-    m_awayRosterDock->setWidget(m_awayRoster);
-    m_awayRosterDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-
-    m_playerInfo = new PlayerInfoWidget(this);
-    m_playerInfoDock = new QDockWidget(tr("Player Info"), this);
-    m_playerInfoDock->setObjectName(QStringLiteral("dock_player_info"));
-    m_playerInfoDock->setWidget(m_playerInfo);
-    m_playerInfoDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-
-    m_diceLog = new DiceLogWidget(this);
-    m_diceLogDock = new QDockWidget(tr("Dice Log"), this);
-    m_diceLogDock->setObjectName(QStringLiteral("dock_dice_log"));
-    m_diceLogDock->setWidget(m_diceLog);
-    m_diceLogDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-
-    m_chat = new ChatWidget(this);
-    m_chatDock = new QDockWidget(tr("Chat"), this);
-    m_chatDock->setObjectName(QStringLiteral("dock_chat"));
-    m_chatDock->setWidget(m_chat);
-    m_chatDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    m_homeRosterDock =
+        makeDock(m_dockManager, tr("Home Roster"), QStringLiteral("dock_home_roster"),
+                 m_homeRoster, this);
+    auto homeArea = m_dockManager->addDockWidget(ads::LeftDockWidgetArea, m_homeRosterDock);
 
     m_protocolLog = new QPlainTextEdit(this);
     m_protocolLog->setReadOnly(true);
@@ -170,26 +190,37 @@ void MainWindow::createDockWidgets()
     mono.setStyleHint(QFont::TypeWriter);
     mono.setPointSize(8);
     m_protocolLog->setFont(mono);
-    m_protocolDock = new QDockWidget(tr("Protocol Log"), this);
-    m_protocolDock->setObjectName(QStringLiteral("dock_protocol"));
-    m_protocolDock->setWidget(m_protocolLog);
-    m_protocolDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::BottomDockWidgetArea);
+    m_protocolDock =
+        makeDock(m_dockManager, tr("Protocol Log"), QStringLiteral("dock_protocol"),
+                 m_protocolLog, this);
+    m_dockManager->addDockWidget(ads::TopDockWidgetArea, m_protocolDock, homeArea);
 
-    addDockWidget(Qt::LeftDockWidgetArea, m_homeRosterDock);
-    addDockWidget(Qt::RightDockWidgetArea, m_awayRosterDock);
-    addDockWidget(Qt::BottomDockWidgetArea, m_playerInfoDock);
-    addDockWidget(Qt::BottomDockWidgetArea, m_diceLogDock);
-    addDockWidget(Qt::BottomDockWidgetArea, m_chatDock);
-    addDockWidget(Qt::LeftDockWidgetArea, m_protocolDock);
+    // --- Right: away roster ---------------------------------------------------
+    m_awayRoster = new RosterWidget(this);
+    m_awayRoster->setTeamColor(QColor(0xd8, 0xc0, 0x7a));
+    m_awayRosterDock =
+        makeDock(m_dockManager, tr("Away Roster"), QStringLiteral("dock_away_roster"),
+                 m_awayRoster, this);
+    m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_awayRosterDock);
 
-    // Bottom band: player info | dice log | chat (side by side)
-    splitDockWidget(m_playerInfoDock, m_diceLogDock, Qt::Horizontal);
-    splitDockWidget(m_diceLogDock, m_chatDock, Qt::Horizontal);
-    // Left column: protocol log above home roster
-    splitDockWidget(m_protocolDock, m_homeRosterDock, Qt::Horizontal);
+    // --- Bottom band: player info | dice log | chat (side by side) ------------
+    m_playerInfo = new PlayerInfoWidget(this);
+    m_playerInfoDock =
+        makeDock(m_dockManager, tr("Player Info"), QStringLiteral("dock_player_info"),
+                 m_playerInfo, this);
+    auto playerInfoArea =
+        m_dockManager->addDockWidget(ads::BottomDockWidgetArea, m_playerInfoDock);
 
-    setDockOptions(DockOption::AllowTabbedDocks | DockOption::AnimatedDocks |
-                   DockOption::GroupedDragging);
+    m_diceLog = new DiceLogWidget(this);
+    m_diceLogDock =
+        makeDock(m_dockManager, tr("Dice Log"), QStringLiteral("dock_dice_log"),
+                 m_diceLog, this);
+    auto diceLogArea =
+        m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_diceLogDock, playerInfoArea);
+
+    m_chat = new ChatWidget(this);
+    m_chatDock = makeDock(m_dockManager, tr("Chat"), QStringLiteral("dock_chat"), m_chat, this);
+    m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_chatDock, diceLogArea);
 }
 
 void MainWindow::createStatusBar()
@@ -260,11 +291,32 @@ void MainWindow::appendProtocol(const QString &direction, const QString &text)
 
 QByteArray MainWindow::savedLayout() const
 {
-    return saveState();
+    return m_dockManager->saveState(kLayoutStateVersion);
 }
 
 void MainWindow::restoreLayout(const QByteArray &state)
 {
     if (!state.isEmpty())
-        restoreState(state);
+        m_dockManager->restoreState(state, kLayoutStateVersion);
+}
+
+// -----------------------------------------------------------------------------
+// Dock layout persistence (QSettings)
+// -----------------------------------------------------------------------------
+namespace {
+const QString kLayoutSettingsKey = QStringLiteral("mainwindow/dockLayout");
+} // namespace
+
+void MainWindow::loadLayout()
+{
+    QSettings settings;
+    const QByteArray state = settings.value(kLayoutSettingsKey).toByteArray();
+    restoreLayout(state);
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    QSettings settings;
+    settings.setValue(kLayoutSettingsKey, savedLayout());
+    QMainWindow::closeEvent(event);
 }

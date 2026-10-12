@@ -25,6 +25,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
 
 # -----------------------------------------------------------------------------
+# QT Advanced Docking System (QDS) — vendored in third_party/QDS
+# (https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git)
+# Built statically into the app: no runtime .so dependency.
+# -----------------------------------------------------------------------------
+set(BUILD_STATIC ON CACHE BOOL "Build QDS statically" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "Skip QDS demo/examples" FORCE)
+add_subdirectory(third_party/QDS QDS)
+
+# -----------------------------------------------------------------------------
 # Application
 # -----------------------------------------------------------------------------
 add_executable(fumbbl-qt
@@ -65,6 +74,7 @@ target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::WebSockets
+    ads::qtadvanceddocking
 )
 
 # -----------------------------------------------------------------------------

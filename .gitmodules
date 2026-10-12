@@ -1,0 +1,3 @@
+[submodule "qt-client/third_party/QDS"]
+	path = qt-client/third_party/QDS
+	url = https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git
