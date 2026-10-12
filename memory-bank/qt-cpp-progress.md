@@ -107,7 +107,8 @@ per ora manteniamoci sempre sul fare gli spettatori, come debug").
   - `4571f04` phase 3 — network core (auth + WS spectator client) + live smoke tool
   - `c9c599a` chore — stop tracking qt-client/build/ artifacts (gitignore)
   - `72dba40` phase 4 — QDS docking layer (submodule @ v5.1.1) + layout persistence
-  - phase 5 — GameModel port (commit in progress 12/ott)
+  - `4cedbf9` phase 5 — GameModel port (spectator)
+  - phase 6 — core→UI wiring + connect dialog + report parser (commit in progress 12/ott)
 
 ## What exists (qt-client/)
 ```
@@ -168,7 +169,8 @@ Credentials are auto-read from
    (most likely nothing — protocol facts were ported 1:1 and the codec is
    verified byte-identical). Needs a live match + the user's go-ahead.
 1.5. ✅ **DONE** — Vendor QDS + swap the dock layer (see "DONE 12/ott" above).
-2. ✅ **DONE** GameModel port (`src/core/gamemodel.{h,cpp}`): QObject with
+2. ✅ **DONE** GameModel port (`src/core/gamemodel.{h,cpp}`) + `findPlayerByNumber(
+   number, side)` helper: QObject with
    `initialize(QJsonObject game)` + `applyModelChanges(QJsonArray)` +
    `stateUpdated()` signal. Essential handlers only (rest = no-op, like TS):
    ball coord, player coord/state, removePlayer, half, homePlaying, turnMode
@@ -181,17 +183,43 @@ Credentials are auto-read from
    (4 tests) against the REAL serverGameState capture (vector 6 of
    lzstring_vectors.json, copied to tests/serverGameState_fixture.json —
    Orcs United vs Dwarves FC, 22 field players).
-3. **Wire core -> UI**: MainWindow slots for gameState/modelSync/gameTime/
-   talk/joined → setTeams/setScore/setTurn/setTimerSeconds/setSpectators,
-   FieldView::setPlayers (filter box coords: x==-1..-7 or x>=30 → box),
-   rosters (ALL playerArray players, state mapping 5=KO,6=BH,7=SI,8=RIP,
-   9=reserve, 13=banned), chat, dice log (port reportParser.ts 60+ reports —
-   can start with the common ones: blockRoll/dodgeRoll/passRoll/injury/
-   turnEnd). Timer: serverGameTime turnTime = ELAPSED ms; UI shows
-   30 - floor(turnTime/1000).
-4. **Connect dialog** (File > Connect…): clientId/secret/username/gameId +
-   "remember" (QSettings or the same JSON file), enable m_connectAction
-   (currently disabled).
+3. ✅ **DONE** Wire core -> UI: MainWindow now OWNS a `GameModel` +
+   `SpectatorSession` and wires session signals → model → UI. Controller
+   entry points are PUBLIC (called directly by tests, driven by session
+   signals in production): `onGameState`, `onModelSync`, `onGameTime`,
+   `onTalk`, `onJoined`, `applyModelToUi`, `onSessionProgress/Fatal`,
+   `onWsClosed`, `onConnectRequested`. `model()` accessor exposed.
+   - FieldView::setPlayers + setBall; box coords filtered by the MODEL
+     (isOnField/isBoxX) so the field only gets on-field tokens.
+   - Rosters: ALL playerArray players, `GameModel::stateLabel()` for
+     off-field states (KO/BH/SI/RIP/RES/MISS/BAN/PRN/STN).
+   - Chat (serverTalk coach+talks[], STAFF/DEV prefix), dice log via
+     the new `reportparser.{h,cpp}` (port of the TS reportParser.ts:
+     ~30 skill rolls + pass/blitz/block/injury/reroll/turn/system/etc.;
+     unknown reportIds → neutral line, nothing lost).
+   - Timer: serverGameTime turnTime = ELAPSED ms → header shows
+     `30 - floor(turnTime/1000)`, clamped ≥ 0.
+   - **Gotcha (Qt 6.12):** emitting a signal WITH arguments through the
+     meta-object is NOT a stable public API — `QMetaObject::activate(
+     sender, sigIdx, void**argv)` SEGFAULTS (null QJsonObject delivered),
+     and `QMetaMethod::invoke`+QGenericArgument / the template activate all
+     silently deliver nothing. So tests must drive the PUBLIC controller
+     methods directly, not emit session signals. (Session layer is covered
+     by the live spectator_smoke tool instead.)
+   - **Qt 6.12 gotchas (widgets):** member `QObject::findChild<T>(parent,
+     name)` 2-arg overload is GONE (use 1-arg by name, or the STATIC
+     `QObject::findChild<T>(&parent, name)`); `QDialogButtonBox::NoButton`
+     (singular); `QString::arg(int,QString)` 2-arg overload doesn't exist
+     (chain `.arg(a).arg(b)`); `QStringLiteral(var)` illegal (needs a
+     string literal — use a `const QString` constant); a signal and a
+     method with the SAME name (e.g. `joined()`) make `&Class::joined`
+     ambiguous in connect() — rename the accessor (`isJoined()`).
+4. ✅ **DONE** Connect dialog (File > Connect…): ConnectDialog collects
+   clientId/secret/username/gameId + "remember". Credentials saved to the
+   SAME JSON file the TS client + spectator_smoke use
+   (`~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json`,
+   key `fumbbl_credentials`, fallback read key `credentials`); last gameId
+   kept in QSettings `connect/lastGameId`. m_connectAction now ENABLED.
 5. **Layout persistence**: QDS layout serialization (DockManager
    toJson/fromJson) into QSettings on close/open (plumbing already in
    MainWindow::savedLayout/restoreLayout as a fallback).

@@ -12,16 +12,20 @@
 #pragma once
 
 #include <QByteArray>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QMainWindow>
 
 class ChatWidget;
 class DiceLogWidget;
 class FieldView;
+class GameModel;
 class QCloseEvent;
 class QPlainTextEdit;
 class HeaderBar;
 class PlayerInfoWidget;
 class RosterWidget;
+class SpectatorSession;
 class QLabel;
 class QAction;
 
@@ -54,6 +58,22 @@ public:
     QByteArray savedLayout() const;
     void restoreLayout(const QByteArray &state);
 
+    // --- Core (spectator) -----------------------------------------------------
+    // The game model (exposed for tests / tooling; the UI reads from it).
+    GameModel *model() const { return m_model; }
+
+    // Controller entry points for incoming match data. In production these are
+    // driven by the SpectatorSession signals; they are public so the core->UI
+    // path can be exercised directly (e.g. by tests) without a live network.
+    void applyModelToUi();
+    void onGameState(const QJsonObject &game);
+    void onModelSync(const QJsonArray &changes, const QJsonArray &reports);
+    void onGameTime(qint64 gameTimeMs, qint64 turnTimeMs);
+    void onTalk(const QJsonObject &payload);
+    void onJoined(const QJsonObject &payload);
+    void onSessionProgress(const QString &message);
+    void onSessionFatal(const QString &message);
+
 signals:
     void chatMessageSent(const QString &message);
     void connectionRequested();
@@ -72,6 +92,13 @@ private:
 
     // Dock layout persistence (QSettings-backed via QDS state).
     void loadLayout();
+    void onWsClosed(int code, const QString &reason);
+    void onConnectRequested();
+    void showPlayerInfo(int number, bool homeSide);
+
+    // Core
+    SpectatorSession *m_session = nullptr;
+    GameModel *m_model = nullptr;
 
     // Widgets
     HeaderBar *m_header = nullptr;

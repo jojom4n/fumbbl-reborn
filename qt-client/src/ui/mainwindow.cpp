@@ -17,7 +17,11 @@
 #include "DockManager.h"
 #include "DockWidget.h"
 
+#include "core/gamemodel.h"
+#include "core/reportparser.h"
+#include "core/spectatorsession.h"
 #include "ui/chatwidget.h"
+#include "ui/connectdialog.h"
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
 #include "ui/headerbar.h"
@@ -27,6 +31,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
@@ -58,6 +64,31 @@ MainWindow::MainWindow(QWidget *parent)
     m_defaultLayout = m_dockManager->saveState(kLayoutStateVersion);
     loadLayout();
 
+    // --- Core (spectator) wiring --------------------------------------------
+    m_model = new GameModel(this);
+    m_session = new SpectatorSession(this);
+
+    connect(m_session, &SpectatorSession::gameStateReceived, this, &MainWindow::onGameState);
+    connect(m_model, &GameModel::stateUpdated, this, &MainWindow::applyModelToUi);
+    connect(m_session, &SpectatorSession::modelSyncReceived, this, &MainWindow::onModelSync);
+    connect(m_session, &SpectatorSession::gameTimeReceived, this, &MainWindow::onGameTime);
+    connect(m_session, &SpectatorSession::talkReceived, this, &MainWindow::onTalk);
+    connect(m_session, &SpectatorSession::joined, this, &MainWindow::onJoined);
+    connect(m_session, &SpectatorSession::progress, this, &MainWindow::onSessionProgress);
+    connect(m_session, &SpectatorSession::fatal, this, &MainWindow::onSessionFatal);
+    connect(m_session, &SpectatorSession::wsClosed, this, &MainWindow::onWsClosed);
+    connect(m_session, &SpectatorSession::protocolSending, this,
+            [this](const QString &id, const QJsonObject &)
+            { this->appendProtocol(QStringLiteral(">> send "), id); });
+    connect(m_session, &SpectatorSession::protocolReceived, this,
+            [this](const QString &id, const QJsonObject &)
+            { this->appendProtocol(QStringLiteral("<< recv "), id); });
+
+    connect(m_homeRoster, &RosterWidget::playerSelected, this,
+            [this](int number) { this->showPlayerInfo(number, true); });
+    connect(m_awayRoster, &RosterWidget::playerSelected, this,
+            [this](int number) { this->showPlayerInfo(number, false); });
+
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
 }
@@ -70,7 +101,6 @@ void MainWindow::createActions()
     m_connectAction = new QAction(tr("&Connect…"), this);
     m_connectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+J")));
     m_connectAction->setStatusTip(tr("Connect to a FUMBBL match as spectator"));
-    m_connectAction->setEnabled(false); // enabled once the core network layer lands
 
     m_disconnectAction = new QAction(tr("&Disconnect"), this);
     m_disconnectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
@@ -177,6 +207,7 @@ void MainWindow::createDockWidgets()
 
     // --- Left column: protocol log above the home roster --------------------
     m_homeRoster = new RosterWidget(this);
+    m_homeRoster->setObjectName(QStringLiteral("roster_home"));
     m_homeRoster->setTeamColor(QColor(0x7c, 0xa8, 0x6f));
     m_homeRosterDock =
         makeDock(m_dockManager, tr("Home Roster"), QStringLiteral("dock_home_roster"),
@@ -197,6 +228,7 @@ void MainWindow::createDockWidgets()
 
     // --- Right: away roster ---------------------------------------------------
     m_awayRoster = new RosterWidget(this);
+    m_awayRoster->setObjectName(QStringLiteral("roster_away"));
     m_awayRoster->setTeamColor(QColor(0xd8, 0xc0, 0x7a));
     m_awayRosterDock =
         makeDock(m_dockManager, tr("Away Roster"), QStringLiteral("dock_away_roster"),
@@ -287,6 +319,164 @@ void MainWindow::appendChat(const QString &sender, const QString &text)
 void MainWindow::appendProtocol(const QString &direction, const QString &text)
 {
     m_protocolLog->appendPlainText(QStringLiteral("%1 %2").arg(direction, text));
+}
+
+// -----------------------------------------------------------------------------
+// Core -> UI wiring (spectator)
+// -----------------------------------------------------------------------------
+void MainWindow::onGameState(const QJsonObject &game)
+{
+    if (m_model->initialize(game))
+        setConnectionStatus(tr("Game state received"), true);
+}
+
+void MainWindow::applyModelToUi()
+{
+    if (!m_model || !m_model->isInitialized())
+        return;
+
+    setTeams(m_model->teamHomeName(), m_model->teamAwayName());
+    m_header->setScore(m_model->scoreHome(), m_model->scoreAway());
+    setTurn(m_model->turn());
+
+    // Field: split the model tokens by side (box players are already filtered
+    // out by the model).
+    QVector<FieldView::PlayerToken> homeTokens;
+    QVector<FieldView::PlayerToken> awayTokens;
+    for (const FieldToken &t : m_model->fieldTokens()) {
+        FieldView::PlayerToken pt;
+        pt.x = t.x;
+        pt.y = t.y;
+        pt.number = t.number;
+        pt.hasBall = t.hasBall;
+        pt.state = t.state;
+        pt.name = t.name;
+        (t.sideHome ? homeTokens : awayTokens).append(pt);
+    }
+    m_field->setPlayers(homeTokens, awayTokens);
+
+    int bx = -1, by = -1;
+    if (m_model->ballAt(bx, by))
+        m_field->setBall(bx, by, true);
+    else
+        m_field->setBall(-1, -1, false); // held / no coordinate: hidden
+
+    // Rosters: ALL roster players (the widget keeps its own order), with a
+    // short status label for off-field states (KO/BH/SI/RIP/RES/BAN/...).
+    m_homeRoster->clearRoster();
+    for (const FFBPlayer &p : m_model->rosterHome()) {
+        m_homeRoster->addPlayer(p.number, p.name, p.position, p.st, p.ag, p.ma, p.av,
+                                p.skills.join(QStringLiteral(" ")), GameModel::stateLabel(p.state));
+    }
+    m_awayRoster->clearRoster();
+    for (const FFBPlayer &p : m_model->rosterAway()) {
+        m_awayRoster->addPlayer(p.number, p.name, p.position, p.st, p.ag, p.ma, p.av,
+                                p.skills.join(QStringLiteral(" ")), GameModel::stateLabel(p.state));
+    }
+}
+
+void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
+{
+    if (changes.isEmpty() && reports.isEmpty())
+        return;
+    if (!changes.isEmpty())
+        m_model->applyModelChanges(changes); // emits stateUpdated -> applyModelToUi
+    for (const QJsonValue &rv : reports) {
+        const QJsonObject report = rv.toObject();
+        if (report.isEmpty())
+            continue;
+        for (const DiceLogLine &line : parseReport(report))
+            m_diceLog->appendEntry(line.text, line.color);
+    }
+}
+
+void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
+{
+    // serverGameTime.turnTime = ELAPSED ms of the 30s turn; UI shows the
+    // remaining seconds (TS reference).
+    const int remaining = qMax(0, 30 - static_cast<int>(turnTimeMs / 1000));
+    m_header->setTimerSeconds(remaining);
+}
+
+void MainWindow::onTalk(const QJsonObject &payload)
+{
+    const QString coach = payload.value(QStringLiteral("coach")).toString();
+    const QString mode = payload.value(QStringLiteral("talkMode")).toString();
+    QString sender = coach.isEmpty() ? QStringLiteral("?") : coach;
+    if (mode == QLatin1String("STAFF") || mode == QLatin1String("DEV"))
+        sender = QStringLiteral("[%1] %2").arg(mode).arg(coach);
+    for (const QJsonValue &t : payload.value(QStringLiteral("talks")).toArray())
+        m_chat->addMessage(sender, t.toString());
+}
+
+void MainWindow::onJoined(const QJsonObject &payload)
+{
+    m_header->setSpectators(payload.value(QStringLiteral("spectators")).toInt());
+    setConnectionStatus(tr("Spectating as %1")
+                            .arg(payload.value(QStringLiteral("coach")).toString()),
+                        true);
+}
+
+void MainWindow::onSessionProgress(const QString &message)
+{
+    setConnectionStatus(message, true);
+    appendProtocol(QStringLiteral("progress "), message);
+}
+
+void MainWindow::onSessionFatal(const QString &message)
+{
+    setConnectionStatus(message, false);
+    appendProtocol(QStringLiteral("FATAL "), message);
+}
+
+void MainWindow::onWsClosed(int code, const QString &reason)
+{
+    setConnectionStatus(tr("Connection closed (%1: %2)").arg(code).arg(reason), false);
+    appendProtocol(QStringLiteral("ws closed "), QStringLiteral("%1 %2").arg(code).arg(reason));
+}
+
+void MainWindow::onConnectRequested()
+{
+    ConnectDialog dialog(this);
+    // The dialog emits connectRequested() right before accept(); hook it up
+    // to the session so the flow starts as the dialog closes.
+    connect(&dialog, &ConnectDialog::connectRequested, this,
+            [this](const QString &clientId, const QString &clientSecret,
+                   const QString &username, int gameId)
+            { m_session->connectAsSpectator(clientId, clientSecret, username, gameId); });
+    dialog.exec();
+}
+
+void MainWindow::showPlayerInfo(int number, bool homeSide)
+{
+    const FFBPlayer *p = m_model->findPlayerByNumber(number, homeSide);
+    if (!p) {
+        m_playerInfo->showPlaceholder();
+        return;
+    }
+
+    QStringList lines;
+    lines << QStringLiteral("%1  (Nr %2)").arg(p->name).arg(p->number);
+    lines << QStringLiteral("%1  —  %2").arg(p->position).arg(p->race);
+    lines << QStringLiteral("ST %1   AG %2   MA %3   AV %4")
+                  .arg(p->st).arg(p->ag).arg(p->ma).arg(p->av);
+    if (!p->skills.isEmpty())
+        lines << tr("Skills: %1").arg(p->skills.join(QStringLiteral(", ")));
+
+    const QString status = GameModel::stateLabel(p->state);
+    if (!status.isEmpty())
+        lines << tr("Status: %1").arg(status);
+    else if (p->hasCoords && GameModel::isOnField(p->fieldX, p->fieldY))
+        lines << tr("On field at (%1, %2)").arg(p->fieldX).arg(p->fieldY);
+    else if (p->hasCoords)
+        lines << tr("Off field (box %1, %2)").arg(p->fieldX).arg(p->fieldY);
+    else
+        lines << tr("Not on the field yet");
+
+    if (p->playerId == m_model->activePlayerId())
+        lines << tr("⚡ Acting player");
+
+    m_playerInfo->showPlayerDetails(lines.join(QStringLiteral("\n")));
 }
 
 QByteArray MainWindow::savedLayout() const

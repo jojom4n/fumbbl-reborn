@@ -33,6 +33,10 @@ public:
     void setBall(int x, int y, bool inPlay);
     void setTurn(int turn);
 
+    // Telemetry (used by tests / debug): rendered token count and ball spot.
+    int playerCount() const { return m_homePlayers.size() + m_awayPlayers.size(); }
+    QPoint ballPosition() const { return m_ballInPlay ? QPoint(m_ballX, m_ballY) : QPoint(-1, -1); }
+
     QSize sizeHint() const override;
 
 protected:

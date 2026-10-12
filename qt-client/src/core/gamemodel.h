@@ -96,6 +96,9 @@ public:
     QVector<FFBPlayer> rosterHome() const;
     QVector<FFBPlayer> rosterAway() const;
 
+    // First player of a side with the given shirt number (nullptr if none).
+    const FFBPlayer *findPlayerByNumber(int number, bool homeSide) const;
+
     // --- Field ---------------------------------------------------------------
     // Players with a field coordinate (box coordinates excluded).
     QVector<FieldToken> fieldTokens() const;

@@ -34,7 +34,10 @@ public:
     void disconnect();
 
     FumbblWs *ws() const { return m_ws; }
-    bool joined() const { return m_joined; }
+    // Named isJoined() (NOT joined()) to avoid clashing with the joined()
+    // signal below — an overloaded name breaks &SpectatorSession::joined
+    // in connect().
+    bool isJoined() const { return m_joined; }
 
 signals:
     void progress(const QString &message);

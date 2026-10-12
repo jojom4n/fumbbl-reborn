@@ -19,6 +19,9 @@ public:
     void addMessage(const QString &sender, const QString &text);
     void clearChat();
 
+    // Telemetry (tests/debug): all messages, one per line.
+    QString toPlainText() const;
+
 signals:
     void messageSent(const QString &message);
 

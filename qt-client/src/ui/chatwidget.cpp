@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStringList>
 #include <QVBoxLayout>
 
 ChatWidget::ChatWidget(QWidget *parent)
@@ -49,4 +50,12 @@ void ChatWidget::addMessage(const QString &sender, const QString &text)
 void ChatWidget::clearChat()
 {
     m_messages->clear();
+}
+
+QString ChatWidget::toPlainText() const
+{
+    QStringList lines;
+    for (int i = 0; i < m_messages->count(); ++i)
+        lines << m_messages->item(i)->text();
+    return lines.join(QStringLiteral("\n"));
 }

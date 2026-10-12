@@ -131,13 +131,13 @@ int main(int argc, char *argv[])
         std::printf("\n--- summary (%.1f s) ----------------------------------------\n",
                     watch.elapsed() / 1000.0);
         std::printf("  serverVersion      : %s\n", gotVersion ? "yes" : "no");
-        std::printf("  serverJoin         : %s\n", session.joined() ? "yes" : "no");
+        std::printf("  serverJoin         : %s\n", session.isJoined() ? "yes" : "no");
         std::printf("  serverGameState    : %s\n", gotGameState ? "yes" : "no");
         std::printf("  serverModelSync    : %d\n", modelSyncs);
         std::printf("  serverTalk         : %d\n", talks);
         std::printf("  serverPong         : %d\n", pongs);
 
-        const bool ok = gotVersion && session.joined() && gotGameState;
+        const bool ok = gotVersion && session.isJoined() && gotGameState;
         std::printf("  RESULT: %s\n", ok ? "SPECTATOR FLOW OK" : "SPECTATOR FLOW INCOMPLETE");
         app.exit(ok ? 0 : 1);
     });

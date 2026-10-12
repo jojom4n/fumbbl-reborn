@@ -50,10 +50,14 @@ add_executable(fumbbl-qt
     src/core/spectatorsession.cpp
     src/core/gamemodel.h
     src/core/gamemodel.cpp
+    src/core/reportparser.h
+    src/core/reportparser.cpp
 
     # UI
     src/ui/mainwindow.h
     src/ui/mainwindow.cpp
+    src/ui/connectdialog.h
+    src/ui/connectdialog.cpp
     src/ui/fieldview.h
     src/ui/fieldview.cpp
     src/ui/rosterwidget.h

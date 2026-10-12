@@ -328,6 +328,20 @@ FFBPlayer *GameModel::findPlayer(const QString &playerId)
 // -----------------------------------------------------------------------------
 // Rosters / field tokens
 // -----------------------------------------------------------------------------
+const FFBPlayer *GameModel::findPlayerByNumber(int number, bool homeSide) const
+{
+    const QStringList &ids = homeSide ? m_rosterHomeIds : m_rosterAwayIds;
+    for (const QString &id : ids) {
+        const auto it = m_playerIndex.constFind(id);
+        if (it != m_playerIndex.constEnd()) {
+            const FFBPlayer &p = m_players.at(it.value());
+            if (p.number == number)
+                return &p;
+        }
+    }
+    return nullptr;
+}
+
 QVector<FFBPlayer> GameModel::rosterHome() const
 {
     QVector<FFBPlayer> result;
