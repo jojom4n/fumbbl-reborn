@@ -111,6 +111,9 @@ per ora manteniamoci sempre sul fare gli spettatori, come debug").
   - `e5d8ca2` phase 6 — core→UI wiring + connect dialog + report parser
   - `4fa9b2a` fix — live connection bugs (sender() in functor connect,
     binary WS frames) — see "LIVE VERIFIED" below
+  - `969a4a2` memory-bank update
+  - `bfc5576` phase 7 — field click-to-select + real Player Info panel
+    (see "DONE 13/ott pm" below)
 
 ## What exists (qt-client/)
 ```
@@ -218,6 +221,62 @@ Credentials are auto-read from
 `~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json`
 (key `fumbbl_credentials`, fallback `credentials`).
 
+## ✅ DONE 13/ott pm — phase 7: click-to-select + real Player Info (bfc5576)
+
+**Player selection:** left click on a field token (or roster row) selects
+the player: Player Info panel fills with real data + gold ring on the
+token. Empty-square click deselects. Selection is kept across model
+updates (panel refreshes; removal deselects). Path:
+FieldView::playerClicked(playerId) / RosterWidget::playerSelected(number)
+→ MainWindow::selectPlayer(id) → PlayerInfoWidget::showPlayer(PlayerInfoData).
+
+**GameModel extensions (live payload shape — verified against a REAL
+live capture):**
+- Live players carry: passing, playerStatus ("active"), playerType
+  ("Regular"/"Star"), positionId (NO positionName!), skillValuesMap
+  (e.g. Hatred→"treeman", Loner→"4"), usedSkills, lastingInjuries
+  (["Seriously Hurt (MNG)"]), recoveringInjury, urlPortrait/urlIconSet
+  (relative to https://cdn.fumbbl.com/).
+- Position name/shorthand/keywords are resolved via positionId against
+  teamX.roster.positionArray (e.g. 66250 → "Werewolf" / "W" /
+  [Blitzer,Undead,Werewolf]).
+- PlayerState encoding: base = id & 0xFF (1 STANDING, 2 MOVING, 3 PRONE,
+  4 STUNNED, 5 KO, 6 BH, 7 SI, 8 RIP, 9 RES, 10 MISS, 11 FALLING,
+  12 BLOCKED, 13 BAN, 14 EXH, 15 DRAGGED, 16 PICKED_UP, 17 HIT_ON_GROUND,
+  18 SETUP_PREVENTED, 19 IN_THE_AIR); flags: 0x100 ACTIVE, 0x200
+  CONFUSED, 0x400 ROOTED, 0x800 HYPNOTIZED, 0x1000 STAB_TARGET, 0x2000
+  USED_PRO, 0x4000 BLITZ_TARGET, 0x8000 BLOCK_TARGET, 0x10000
+  GAZE_TARGET, 0x20000 EYE_GOUGED, 0x40000 CHOMPED (e.g. 257 =
+  STANDING+ACTIVE). Ports: GameModel::stateText (getButtonText),
+  stateFlags.
+- fieldModel.playerDataArray entries: { playerCoordinate, playerId,
+  playerState, cards[], cardEffects[] } — 26 entries incl. box players.
+- actingPlayer.playerId can be NULL between turns (model handles it).
+- teamX.roster.positionArray = full roster definition (positionName,
+  shorthand, keywords, stats, urlIconSet/urlPortrait, cost, quantity).
+- turnDataHome/Away: apothecaries, blitzUsed, inducementSet (cardsActive),
+  turnNr, ... (turnNr: home wins if non-zero, else away).
+
+**New fixture:** tests/liveGameState_fixture.json (REAL capture, game
+1953034, Big Monsters Big Spooky vs OwaOgre, 13+13 players, 71KB) —
+produced with the new `spectator_smoke --dump-gamestate <file>` (one-shot
+raw serverGameState dump). The old serverGameState_fixture.json is a
+SYNTHETIC LZString vector (players carry positionName/playerCoordinate
+inline; still used for model-change tests).
+
+**--demo flag** (main.cpp): `--demo <fixture.json>` loads a serverGameState
+capture into the window + selects the acting (or first) player — pairs
+with --screenshot for visual verification of real-data rendering.
+
+**Roster row bug found+fixed:** the row format showed the POSITION with a
+hardcoded "-22s" suffix and never the player NAME (name param unused);
+also "P:" meant armour. Now: `# (status) Name (Position)  S: A: M: AV: [skills]`.
+
+**Verified:** ctest 3/3 (new: live-fixture parsing, stateText/Flags, click
+select/deselect/selection-follows-sync), offscreen screenshot with live
+data looks right, live spectator_smoke SPECTATOR FLOW OK (80 modelSyncs,
+1 spectator talk seen live).
+
 ## ✅ DONE 13/ott — live spectator verification
 See "LIVE VERIFIED" above. Also: the earlier old-credentials failure was
 a red herring on the curl side (encoding); the real blockers were the two
@@ -280,8 +339,12 @@ bugs in 4fa9b2a.
 5. **Layout persistence**: QDS layout serialization (DockManager
    toJson/fromJson) into QSettings on close/open (plumbing already in
    MainWindow::savedLayout/restoreLayout as a fallback).
-6. **PlayerInfo** real rendering (from the selected player: stats, skills,
-   status) + field click selection.
+6. ✅ **DONE** (phase 7, bfc5576) PlayerInfo real rendering + field click
+   selection — see "DONE 13/ott pm" above.
+6.5. Possible polish: portraits/icons from urlPortrait/urlIconSet
+   (relative to https://cdn.fumbbl.com/), skill tooltips, hover tooltip on
+   field tokens, team value/treasury in header, cards-in-play display
+   (fieldModel playerDataArray[].cards / turnDataX.inducementSet.cardsActive).
 7. (Later, out of spectator scope) playing mode: clientAction wiring,
    radial menu, turn-phase filtering — only after spectator is solid.
 
