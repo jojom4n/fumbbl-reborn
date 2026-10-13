@@ -28,6 +28,12 @@ FumbblWs::FumbblWs(QObject *parent)
     connect(m_ws, &QWebSocket::connected, this, &FumbblWs::handleOpen);
     connect(m_ws, &QWebSocket::disconnected, this, &FumbblWs::handleClose);
     connect(m_ws, &QWebSocket::textMessageReceived, this, &FumbblWs::handleMessage);
+    // CRITICAL: the FUMBBL server answers with *binary* frames (the official
+    // Java client exchanges binary). Decode UTF-8 and route to the same
+    // handler, exactly like the TS client (ArrayBuffer branch).
+    connect(m_ws, &QWebSocket::binaryMessageReceived, this, [this](const QByteArray &bytes) {
+        handleMessage(QString::fromUtf8(bytes));
+    });
     connect(m_ws, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
         emit errorOccurred(m_ws->errorString());
     });

@@ -39,9 +39,13 @@ signals:
     void sessionTokenReady(const QString &sessionToken);
     void failed(const QString &step, const QString &error);
 
-private slots:
-    void onTokenReplyFinished();
-    void onSessionReplyFinished();
+// NOTE: these are plain private methods (not slots) taking the reply
+// explicitly. The QNAM::finished connection is a *functor* connect, where
+// QObject::sender() is unreliable (it does not return the emitter), so the
+// reply pointer must be passed as an argument.
+private:
+    void onTokenReplyFinished(QNetworkReply *reply);
+    void onSessionReplyFinished(QNetworkReply *reply);
 
 private:
     QNetworkAccessManager *m_nam = nullptr;

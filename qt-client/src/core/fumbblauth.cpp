@@ -22,9 +22,9 @@ FumbblAuth::FumbblAuth(QObject *parent)
     connect(m_nam, &QNetworkAccessManager::finished, this, [this](QNetworkReply *reply) {
         if (reply == m_pendingReply) {
             if (m_sessionStep)
-                onSessionReplyFinished();
+                onSessionReplyFinished(reply);
             else
-                onTokenReplyFinished();
+                onTokenReplyFinished(reply);
         }
         reply->deleteLater();
     });
@@ -61,9 +61,8 @@ void FumbblAuth::fetchSessionToken()
     m_pendingReply = m_nam->post(req, QByteArray());
 }
 
-void FumbblAuth::onTokenReplyFinished()
+void FumbblAuth::onTokenReplyFinished(QNetworkReply *reply)
 {
-    QNetworkReply *reply = qobject_cast<QNetworkReply *>(sender());
     m_pendingReply = nullptr;
     if (!reply)
         return;
@@ -84,9 +83,8 @@ void FumbblAuth::onTokenReplyFinished()
     emit accessTokenReady(m_lastAccessToken);
 }
 
-void FumbblAuth::onSessionReplyFinished()
+void FumbblAuth::onSessionReplyFinished(QNetworkReply *reply)
 {
-    QNetworkReply *reply = qobject_cast<QNetworkReply *>(sender());
     m_pendingReply = nullptr;
     if (!reply)
         return;
