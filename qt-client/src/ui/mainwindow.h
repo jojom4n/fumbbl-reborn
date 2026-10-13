@@ -61,6 +61,11 @@ public:
     // --- Core (spectator) -----------------------------------------------------
     // The game model (exposed for tests / tooling; the UI reads from it).
     GameModel *model() const { return m_model; }
+    // The currently selected player (playerId, "" = none).
+    QString selectedPlayerId() const { return m_selectedPlayerId; }
+    // Select a model player (field highlight + Player Info panel). Public so
+    // tests can drive the same path the field/roster clicks take.
+    void selectPlayer(const QString &playerId);
 
     // Controller entry points for incoming match data. In production these are
     // driven by the SpectatorSession signals; they are public so the core->UI
@@ -95,6 +100,10 @@ private:
     void onWsClosed(int code, const QString &reason);
     void onConnectRequested();
     void showPlayerInfo(int number, bool homeSide);
+    // Field click: empty id = deselect.
+    void onFieldPlayerClicked(const QString &playerId);
+
+    QString m_selectedPlayerId; // the player shown in the Player Info panel
 
     // Core
     SpectatorSession *m_session = nullptr;

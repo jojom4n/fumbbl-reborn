@@ -52,6 +52,8 @@ bool GameModel::initialize(const QJsonObject &game)
     m_initialized = false;
     m_teamHomeName.clear();
     m_teamAwayName.clear();
+    m_teamHomeRace.clear();
+    m_teamAwayRace.clear();
     m_scoreHome = 0;
     m_scoreAway = 0;
     m_turn = 1;
@@ -62,6 +64,12 @@ bool GameModel::initialize(const QJsonObject &game)
     m_players.clear();
     m_rosterHomeIds.clear();
     m_rosterAwayIds.clear();
+    m_positionNameHome.clear();
+    m_positionNameAway.clear();
+    m_positionShortHome.clear();
+    m_positionShortAway.clear();
+    m_positionKeywordsHome.clear();
+    m_positionKeywordsAway.clear();
     m_activePlayerId.clear();
     m_ballOnField = false;
     m_ballX = -1;
@@ -75,6 +83,12 @@ bool GameModel::initialize(const QJsonObject &game)
 
     m_teamHomeName = home.value(QStringLiteral("teamName")).toString();
     m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
+    m_teamHomeRace = home.value(QStringLiteral("race")).toString();
+    m_teamAwayRace = away.value(QStringLiteral("race")).toString();
+
+    // Position lookup first: live players carry only the positionId.
+    parseRosterPositions(home, true);
+    parseRosterPositions(away, false);
 
     parsePlayerArray(home.value(QStringLiteral("playerArray")).toArray(), true);
     parsePlayerArray(away.value(QStringLiteral("playerArray")).toArray(), false);
@@ -118,6 +132,31 @@ bool GameModel::initialize(const QJsonObject &game)
     return true;
 }
 
+// Fills the positionId -> name/shorthand/keywords maps for one team, from
+// teamX.roster.positionArray (each: { positionId, positionName, shorthand,
+// keywords[] }).
+void GameModel::parseRosterPositions(const QJsonObject &team, bool homeSide)
+{
+    QHash<QString, QString> &names = homeSide ? m_positionNameHome : m_positionNameAway;
+    QHash<QString, QString> &shorts = homeSide ? m_positionShortHome : m_positionShortAway;
+    QHash<QString, QString> &kwds = homeSide ? m_positionKeywordsHome : m_positionKeywordsAway;
+
+    const QJsonArray positions =
+        team.value(QStringLiteral("roster")).toObject().value(QStringLiteral("positionArray")).toArray();
+    for (const QJsonValue &pv : positions) {
+        const QJsonObject pos = pv.toObject();
+        const QString id = playerIdKey(pos.value(QStringLiteral("positionId")));
+        if (id.isEmpty())
+            continue;
+        names.insert(id, pos.value(QStringLiteral("positionName")).toString());
+        shorts.insert(id, pos.value(QStringLiteral("shorthand")).toString());
+        QStringList keywords;
+        for (const QJsonValue &k : pos.value(QStringLiteral("keywords")).toArray())
+            keywords << k.toString();
+        kwds.insert(id, keywords.join(QStringLiteral(", ")));
+    }
+}
+
 void GameModel::parsePlayerArray(const QJsonArray &array, bool homeSide)
 {
     for (const QJsonValue &pv : array) {
@@ -131,13 +170,50 @@ void GameModel::parsePlayerArray(const QJsonArray &array, bool homeSide)
         player.number = readInt(p.value(QStringLiteral("playerNr")));
         player.race = p.value(QStringLiteral("race")).toString();
         player.position = p.value(QStringLiteral("positionName")).toString();
+        player.playerStatus = p.value(QStringLiteral("playerStatus")).toString();
+        player.playerType = p.value(QStringLiteral("playerType")).toString();
         player.ag = readInt(p.value(QStringLiteral("agility")));
         player.st = readInt(p.value(QStringLiteral("strength")));
         player.ma = readInt(p.value(QStringLiteral("movement")));
+        player.pa = readInt(p.value(QStringLiteral("passing")));
         player.av = readInt(p.value(QStringLiteral("armour")));
         for (const QJsonValue &s : p.value(QStringLiteral("skillArray")).toArray())
             player.skills << s.toString();
+        const QJsonObject skillValues = p.value(QStringLiteral("skillValuesMap")).toObject();
+        for (const QString &key : skillValues.keys())
+            if (!skillValues.value(key).toString().isEmpty())
+                player.skillValues.insert(key, skillValues.value(key).toString());
+        for (const QJsonValue &s : p.value(QStringLiteral("usedSkills")).toArray())
+            player.usedSkills << s.toString();
+        for (const QJsonValue &s : p.value(QStringLiteral("lastingInjuries")).toArray())
+            player.lastingInjuries << s.toString();
+        const QJsonObject recovering = p.value(QStringLiteral("recoveringInjury")).toObject();
+        if (!recovering.isEmpty())
+            player.recoveringInjury =
+                recovering.value(QStringLiteral("injuryName")).toString();
         player.sideHome = homeSide;
+
+        // Resolve the position name via positionId when the player itself
+        // doesn't carry it (live payloads carry only the id).
+        const QString positionId = playerIdKey(p.value(QStringLiteral("positionId")));
+        if (!player.position.isEmpty()) {
+            // keep the direct name, but enrich shorthand/keywords if possible
+            if (!positionId.isEmpty()) {
+                const auto &shorts = homeSide ? m_positionShortHome : m_positionShortAway;
+                const auto &kwds = homeSide ? m_positionKeywordsHome : m_positionKeywordsAway;
+                player.positionShorthand = shorts.value(positionId);
+                player.positionKeywords = kwds.value(positionId).split(QStringLiteral(", "),
+                                                                       Qt::SkipEmptyParts);
+            }
+        } else if (!positionId.isEmpty()) {
+            const auto &names = homeSide ? m_positionNameHome : m_positionNameAway;
+            const auto &shorts = homeSide ? m_positionShortHome : m_positionShortAway;
+            const auto &kwds = homeSide ? m_positionKeywordsHome : m_positionKeywordsAway;
+            player.position = names.value(positionId);
+            player.positionShorthand = shorts.value(positionId);
+            player.positionKeywords = kwds.value(positionId).split(QStringLiteral(", "),
+                                                                   Qt::SkipEmptyParts);
+        }
 
         // Some payloads already carry the live coordinate/state in the
         // roster entry itself; treat them like fieldModel data.
@@ -342,6 +418,24 @@ const FFBPlayer *GameModel::findPlayerByNumber(int number, bool homeSide) const
     return nullptr;
 }
 
+const FFBPlayer *GameModel::findPlayerById(const QString &playerId) const
+{
+    const auto it = m_playerIndex.constFind(playerId);
+    if (it == m_playerIndex.constEnd())
+        return nullptr;
+    return &m_players.at(it.value());
+}
+
+const FFBPlayer *GameModel::playerAt(int x, int y) const
+{
+    for (const FFBPlayer &p : m_players) {
+        if (p.hasCoords && p.fieldX == x && p.fieldY == y &&
+            isOnField(p.fieldX, p.fieldY) && !isBoxX(p.fieldX))
+            return &p;
+    }
+    return nullptr;
+}
+
 QVector<FFBPlayer> GameModel::rosterHome() const
 {
     QVector<FFBPlayer> result;
@@ -445,4 +539,42 @@ QString GameModel::stateLabel(int state)
     case 4: return QStringLiteral("STN");   // STUNNED
     default: return QString(); // UNKNOWN/STANDING/MOVING/... on-field active states
     }
+}
+
+// Port of PlayerState.getButtonText (ffb-common PlayerState.java).
+QString GameModel::stateText(int state)
+{
+    switch (baseState(state)) {
+    case 1: return QStringLiteral("Standing");      // STANDING
+    case 2: return QStringLiteral("Moving");        // MOVING
+    case 3: return QStringLiteral("Prone");         // PRONE
+    case 4: return QStringLiteral("has been stunned"); // STUNNED
+    case 5: return QStringLiteral("Knocked Out");   // KNOCKED_OUT
+    case 6: return QStringLiteral("Badly Hurt");    // BADLY_HURT
+    case 7: return QStringLiteral("Serious Injury"); // SERIOUS_INJURY
+    case 8: return QStringLiteral("Killed");        // RIP
+    case 9: return QStringLiteral("Reserve");       // RESERVE
+    case 10: return QStringLiteral("Missing");      // MISSING
+    case 11: return QStringLiteral("Falling Down"); // FALLING
+    case 12: return QStringLiteral("Blocked");      // BLOCKED
+    case 13: return QStringLiteral("Banned");       // BANNED
+    case 14: return QStringLiteral("Exhausted");    // EXHAUSTED
+    case 15: return QStringLiteral("Being Dragged"); // BEING_DRAGGED
+    case 16: return QStringLiteral("Picked Up");    // PICKED_UP
+    case 17: return QStringLiteral("Hit on the ground"); // HIT_ON_GROUND
+    case 18: return QStringLiteral("Can't be set up");   // SETUP_PREVENTED
+    case 19: return QStringLiteral("In the air");    // IN_THE_AIR
+    default: return QString(); // UNKNOWN
+    }
+}
+
+QStringList GameModel::stateFlags(int state)
+{
+    QStringList flags;
+    if (state & 0x00200) flags << QStringLiteral("Confused");
+    if (state & 0x00400) flags << QStringLiteral("Rooted");
+    if (state & 0x00800) flags << QStringLiteral("Hypnotized");
+    if (state & 0x20000) flags << QStringLiteral("Eye gouged");
+    if (state & 0x40000) flags << QStringLiteral("Chomped");
+    return flags;
 }

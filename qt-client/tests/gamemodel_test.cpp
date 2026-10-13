@@ -38,10 +38,24 @@ class GameModelTest : public QObject
 
 private slots:
     void initializeFromRealGameState();
+    void initializeFromLiveGameState();
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void staticHelpers();
 };
+
+namespace {
+QJsonObject loadLiveFixtureGame()
+{
+    QFile f(QStringLiteral("liveGameState_fixture.json"));
+    if (!f.open(QIODevice::ReadOnly))
+        qFatal("cannot open liveGameState_fixture.json");
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (!doc.isObject())
+        qFatal("bad live fixture JSON");
+    return doc.object().value(QStringLiteral("game")).toObject();
+}
+} // namespace
 
 void GameModelTest::initializeFromRealGameState()
 {
@@ -100,6 +114,78 @@ void GameModelTest::initializeFromRealGameState()
     QVERIFY(!p0->position.isEmpty());
     QVERIFY(!p0->skills.isEmpty());
     QCOMPARE(p0->state, 1); // STANDING from playerDataArray
+}
+
+// A REAL serverGameState capture taken live from fumbbl.com (game 1953034,
+// Big Monsters Big Spooky vs OwaOgre). Exercises the live payload shape:
+// players carry positionId (not positionName), passing, playerStatus,
+// lastingInjuries, skillValuesMap, usedSkills; coordinates only in
+// fieldModel.playerDataArray.
+void GameModelTest::initializeFromLiveGameState()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadLiveFixtureGame()));
+    QVERIFY(model.isInitialized());
+
+    QCOMPARE(model.teamHomeName(), QStringLiteral("Big Monsters Big Spooky (BBT18"));
+    QCOMPARE(model.teamAwayName(), QStringLiteral("OwaOgre"));
+    QCOMPARE(model.teamHomeRace(), QStringLiteral("Necromantic Horror"));
+    QCOMPARE(model.teamAwayRace(), QStringLiteral("Old World Alliance"));
+    QCOMPARE(model.rosterHome().size(), 13);
+    QCOMPARE(model.rosterAway().size(), 13);
+
+    // Turn / half / side
+    QCOMPARE(model.half(), 1);
+    QVERIFY(!model.homePlaying());
+    QCOMPARE(model.turn(), 5); // home turnNr wins
+
+    // Field: 17 on-field tokens, ball at (12,12)
+    QCOMPARE(model.fieldTokens().size(), 17);
+    int bx = -1, by = -1;
+    QVERIFY(model.ballAt(bx, by));
+    QCOMPARE(bx, 12);
+    QCOMPARE(by, 12);
+
+    // Adrian Custennin: full stats incl. passing, position resolved via
+    // positionId 66250 -> "Werewolf" (shorthand "W", keywords incl. Blitzer)
+    const FFBPlayer *adrian = model.findPlayerById(QStringLiteral("18234934"));
+    QVERIFY(adrian);
+    QCOMPARE(adrian->ma, 8);
+    QCOMPARE(adrian->st, 3);
+    QCOMPARE(adrian->ag, 3);
+    QCOMPARE(adrian->pa, 3);
+    QCOMPARE(adrian->av, 9);
+    QCOMPARE(adrian->playerStatus, QStringLiteral("active"));
+    QCOMPARE(adrian->position, QStringLiteral("Werewolf"));
+    QCOMPARE(adrian->positionShorthand, QStringLiteral("W"));
+    QVERIFY(adrian->positionKeywords.contains(QStringLiteral("Blitzer")));
+    QVERIFY(adrian->positionKeywords.contains(QStringLiteral("Undead")));
+    QVERIFY(adrian->skills.contains(QStringLiteral("Frenzy")));
+    QCOMPARE(adrian->state, 257); // STANDING + ACTIVE flag
+    QCOMPARE(GameModel::stateText(adrian->state), QStringLiteral("Standing"));
+
+    // He is on the field at (10,14) and findable by coordinate
+    QVERIFY(adrian->hasCoords);
+    QCOMPARE(adrian->fieldX, 10);
+    QCOMPARE(adrian->fieldY, 14);
+    QCOMPARE(model.playerAt(10, 14)->playerId, adrian->playerId);
+    QVERIFY(model.playerAt(0, 0) == nullptr);
+
+    // Dean Wuthmon: skillValuesMap (Hatred "treeman")
+    const FFBPlayer *dean = model.findPlayerById(QStringLiteral("18234940"));
+    QVERIFY(dean);
+    QCOMPARE(dean->skillValues.value(QStringLiteral("Hatred")),
+             QStringLiteral("treeman"));
+
+    // Julia Fasten: lasting injury parsed
+    const FFBPlayer *julia = model.findPlayerById(QStringLiteral("18304199"));
+    QVERIFY(julia);
+    QCOMPARE(julia->lastingInjuries.size(), 1);
+    QCOMPARE(julia->lastingInjuries.first(), QStringLiteral("Seriously Hurt (MNG)"));
+    QCOMPARE(julia->position, QStringLiteral("Wraith")); // positionId 66249
+
+    // Unknown id
+    QVERIFY(model.findPlayerById(QStringLiteral("nope")) == nullptr);
 }
 
 void GameModelTest::modelChangesEssentials()
@@ -246,6 +332,23 @@ void GameModelTest::staticHelpers()
     QCOMPARE(GameModel::stateLabel(13), QStringLiteral("BAN"));
     QCOMPARE(GameModel::stateLabel(1), QString()); // STANDING -> no label
     QCOMPARE(GameModel::baseState(1 | 0x100 | 0x200), 1);
+
+    // Human-readable base states (PlayerState.getButtonText port)
+    QCOMPARE(GameModel::stateText(1), QStringLiteral("Standing"));
+    QCOMPARE(GameModel::stateText(3), QStringLiteral("Prone"));
+    QCOMPARE(GameModel::stateText(4 | 0x100), QStringLiteral("has been stunned"));
+    QCOMPARE(GameModel::stateText(5), QStringLiteral("Knocked Out"));
+    QCOMPARE(GameModel::stateText(257), QStringLiteral("Standing")); // flags masked
+
+    // Flag bits
+    QVERIFY(GameModel::stateFlags(0x100).isEmpty()); // ACTIVE alone: no flag
+    QCOMPARE(GameModel::stateFlags(0x200).size(), 1);
+    QCOMPARE(GameModel::stateFlags(0x200).first(), QStringLiteral("Confused"));
+    QCOMPARE(GameModel::stateFlags(0x400).first(), QStringLiteral("Rooted"));
+    QCOMPARE(GameModel::stateFlags(0x800).first(), QStringLiteral("Hypnotized"));
+    QCOMPARE(GameModel::stateFlags(0x20000).first(), QStringLiteral("Eye gouged"));
+    QCOMPARE(GameModel::stateFlags(0x40000).first(), QStringLiteral("Chomped"));
+    QCOMPARE(GameModel::stateFlags(1 | 0x200 | 0x400).size(), 2);
 }
 
 QTEST_MAIN(GameModelTest)

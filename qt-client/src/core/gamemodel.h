@@ -36,12 +36,24 @@ struct FFBPlayer {
     QString name;
     int number = 0;     // playerNr
     QString race;
-    QString position;   // positionName as sent by the server ("Blocker", ...)
+    QString position;   // position name ("Blocker", "Werewolf", ...) —
+                        // from the player itself or resolved via positionId
+                        // against the team roster's positionArray
+    QString positionShorthand; // "L", "W", ... (roster positionArray)
+    QStringList positionKeywords; // "Blitzer", "Undead", ...
     int ma = 0;         // movement
     int st = 0;         // strength
     int ag = 0;         // agility
+    int pa = 0;         // passing
     int av = 0;         // armour
-    QStringList skills; // skillArray (shortnames: B, A, R, ...)
+    QStringList skills; // skillArray (full names on live payloads)
+    // Skill name -> value (skillValuesMap, e.g. Loner -> "4", Juggernaut -> "dwarf")
+    QHash<QString, QString> skillValues;
+    QStringList usedSkills; // skills already used this turn (usedSkills)
+    QString playerStatus;   // "active" / ... (playerStatus)
+    QString playerType;     // "Regular" / "Star" / "Sub" ... (playerType)
+    QStringList lastingInjuries; // e.g. "Seriously Hurt (MNG)"
+    QString recoveringInjury;    // text of the injury the player is recovering from
     bool sideHome = true;
 
     // Live field data (from fieldModel.playerDataArray / model changes).
@@ -85,6 +97,9 @@ public:
     // --- Teams / score / turn ----------------------------------------------
     QString teamHomeName() const { return m_teamHomeName; }
     QString teamAwayName() const { return m_teamAwayName; }
+    // Team race (live players usually carry no per-player race).
+    QString teamHomeRace() const { return m_teamHomeRace; }
+    QString teamAwayRace() const { return m_teamAwayRace; }
     int scoreHome() const { return m_scoreHome; }
     int scoreAway() const { return m_scoreAway; }
     int turn() const { return m_turn; }
@@ -98,6 +113,10 @@ public:
 
     // First player of a side with the given shirt number (nullptr if none).
     const FFBPlayer *findPlayerByNumber(int number, bool homeSide) const;
+    // Player by server id (nullptr if unknown) — used for click selection.
+    const FFBPlayer *findPlayerById(const QString &playerId) const;
+    // On-field player standing at the given field cell (nullptr if none).
+    const FFBPlayer *playerAt(int x, int y) const;
 
     // --- Field ---------------------------------------------------------------
     // Players with a field coordinate (box coordinates excluded).
@@ -116,11 +135,18 @@ public:
 
     // --- Player state helpers (port of ffb-common PlayerState) ---------------
     // State ids carry bit flags (0x100 ACTIVE, 0x200 CONFUSED, ...); the base
-    // state (UNKNOWN..IN_THE_AIR, 0..21) is id & 0xFF.
+    // state (UNKNOWN..IN_THE_AIR, 0..19) is id & 0xFF.
     static int baseState(int state) { return state & 0xFF; }
     // Short label for the UI: "KO", "BH", "SI", "RIP", "RES", "BAN", "STN",
-    // "PRN", "MISS" or empty for on-field active states.
+    // "PRN", "MISS", "BLD" or empty for on-field active states.
     static QString stateLabel(int state);
+    // Human-readable base state (port of PlayerState.getButtonText):
+    // "Standing", "Prone", "has been stunned", "Knocked Out", ...
+    static QString stateText(int state);
+    // Active flag bits worth showing (PlayerState.java):
+    // 0x100 ACTIVE, 0x200 CONFUSED, 0x400 ROOTED, 0x800 HYPNOTIZED,
+    // 0x20000 EYE GOUGED, 0x40000 CHOMPED. Returns e.g. ["Confused", "Rooted"].
+    static QStringList stateFlags(int state);
 
 signals:
     // Emitted after initialize() and after each applyModelChanges() batch.
@@ -128,6 +154,8 @@ signals:
 
 private:
     void parsePlayerArray(const QJsonArray &array, bool homeSide);
+    // Fills the positionId -> name/shorthand/keywords maps for one team.
+    void parseRosterPositions(const QJsonObject &team, bool homeSide);
     void applyFieldModel(const QJsonObject &fieldModel);
     void handleModelChange(const QString &id, const QString &key, const QJsonValue &value);
     FFBPlayer *findPlayer(const QString &playerId);
@@ -139,6 +167,18 @@ private:
     // Teams / score / turn
     QString m_teamHomeName;
     QString m_teamAwayName;
+    QString m_teamHomeRace;
+    QString m_teamAwayRace;
+
+    // Position lookup: positionId -> positionName/shorthand/keywords,
+    // filled from teamX.roster.positionArray (live players carry only the
+    // positionId, the name lives in the team's roster definition).
+    QHash<QString, QString> m_positionNameHome;
+    QHash<QString, QString> m_positionNameAway;
+    QHash<QString, QString> m_positionShortHome;
+    QHash<QString, QString> m_positionShortAway;
+    QHash<QString, QString> m_positionKeywordsHome;
+    QHash<QString, QString> m_positionKeywordsAway;
     int m_scoreHome = 0;
     int m_scoreAway = 0;
     int m_turn = 1;

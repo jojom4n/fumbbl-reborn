@@ -89,6 +89,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_awayRoster, &RosterWidget::playerSelected, this,
             [this](int number) { this->showPlayerInfo(number, false); });
 
+    // Field click-to-select (empty id = clicked an empty square = deselect).
+    connect(m_field, &FieldView::playerClicked, this, &MainWindow::onFieldPlayerClicked);
+
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
 }
@@ -351,9 +354,19 @@ void MainWindow::applyModelToUi()
         pt.hasBall = t.hasBall;
         pt.state = t.state;
         pt.name = t.name;
+        pt.playerId = t.playerId;
         (t.sideHome ? homeTokens : awayTokens).append(pt);
     }
     m_field->setPlayers(homeTokens, awayTokens);
+
+    // Keep the selection valid: if the selected player still exists refresh
+    // the panel (state/skills may have changed); if it was removed, deselect.
+    if (!m_selectedPlayerId.isEmpty()) {
+        if (m_model->findPlayerById(m_selectedPlayerId))
+            selectPlayer(m_selectedPlayerId);
+        else
+            onFieldPlayerClicked(QString()); // deselect
+    }
 
     int bx = -1, by = -1;
     if (m_model->ballAt(bx, by))
@@ -451,32 +464,79 @@ void MainWindow::showPlayerInfo(int number, bool homeSide)
 {
     const FFBPlayer *p = m_model->findPlayerByNumber(number, homeSide);
     if (!p) {
+        m_selectedPlayerId.clear();
         m_playerInfo->showPlaceholder();
+        m_field->setSelectedPlayer(QString());
         return;
     }
+    selectPlayer(p->playerId);
+}
 
-    QStringList lines;
-    lines << QStringLiteral("%1  (Nr %2)").arg(p->name).arg(p->number);
-    lines << QStringLiteral("%1  —  %2").arg(p->position).arg(p->race);
-    lines << QStringLiteral("ST %1   AG %2   MA %3   AV %4")
-                  .arg(p->st).arg(p->ag).arg(p->ma).arg(p->av);
-    if (!p->skills.isEmpty())
-        lines << tr("Skills: %1").arg(p->skills.join(QStringLiteral(", ")));
+void MainWindow::onFieldPlayerClicked(const QString &playerId)
+{
+    if (playerId.isEmpty()) {
+        m_selectedPlayerId.clear();
+        m_playerInfo->showPlaceholder();
+        m_field->setSelectedPlayer(QString());
+        return;
+    }
+    if (!m_model->findPlayerById(playerId))
+        return; // unknown id (stale click)
+    selectPlayer(playerId);
+}
 
-    const QString status = GameModel::stateLabel(p->state);
-    if (!status.isEmpty())
-        lines << tr("Status: %1").arg(status);
-    else if (p->hasCoords && GameModel::isOnField(p->fieldX, p->fieldY))
-        lines << tr("On field at (%1, %2)").arg(p->fieldX).arg(p->fieldY);
-    else if (p->hasCoords)
-        lines << tr("Off field (box %1, %2)").arg(p->fieldX).arg(p->fieldY);
-    else
-        lines << tr("Not on the field yet");
+void MainWindow::selectPlayer(const QString &playerId)
+{
+    const FFBPlayer *p = m_model->findPlayerById(playerId);
+    if (!p) {
+        m_selectedPlayerId.clear();
+        m_playerInfo->showPlaceholder();
+        m_field->setSelectedPlayer(QString());
+        return;
+    }
+    m_selectedPlayerId = playerId;
+    m_field->setSelectedPlayer(playerId);
 
-    if (p->playerId == m_model->activePlayerId())
-        lines << tr("⚡ Acting player");
+    // Assemble the panel data (widget stays decoupled from the model).
+    PlayerInfoData d;
+    d.playerId = p->playerId;
+    d.name = p->name;
+    d.number = p->number;
+    d.position = p->position;
+    d.positionShorthand = p->positionShorthand;
+    d.positionKeywords = p->positionKeywords;
+    d.race = p->sideHome ? m_model->teamHomeRace() : m_model->teamAwayRace();
+    d.teamName = p->sideHome ? m_model->teamHomeName() : m_model->teamAwayName();
+    d.sideHome = p->sideHome;
+    d.status = p->playerStatus;
+    d.ma = p->ma;
+    d.st = p->st;
+    d.ag = p->ag;
+    d.pa = p->pa;
+    d.av = p->av;
+    d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
-    m_playerInfo->showPlayerDetails(lines.join(QStringLiteral("\n")));
+    if (p->hasCoords) {
+        if (GameModel::isBoxX(p->fieldX))
+            d.stateText = tr("in the box (%1)").arg(GameModel::stateLabel(p->state));
+        else if (GameModel::isOnField(p->fieldX, p->fieldY))
+            d.stateText = GameModel::stateText(p->state);
+    }
+    d.stateFlags = GameModel::stateFlags(p->state);
+
+    const QHash<QString, QString> &values = p->skillValues;
+    for (const QString &s : p->skills) {
+        PlayerInfoData::Skill sk;
+        sk.name = s;
+        sk.value = values.value(s);
+        sk.used = p->usedSkills.contains(s);
+        d.skills.append(sk);
+    }
+    d.injuries = p->lastingInjuries;
+    if (!p->recoveringInjury.isEmpty())
+        d.injuries << tr("Recovering: %1").arg(p->recoveringInjury);
+
+    m_playerInfo->showPlayer(d);
 }
 
 QByteArray MainWindow::savedLayout() const

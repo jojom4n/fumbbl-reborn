@@ -19,6 +19,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QSet>
 
 #include "core/gamemodel.h"
 #include "ui/chatwidget.h"
@@ -26,6 +27,7 @@
 #include "ui/fieldview.h"
 #include "ui/headerbar.h"
 #include "ui/mainwindow.h"
+#include "ui/playerinfowidget.h"
 #include "ui/rosterwidget.h"
 
 namespace {
@@ -65,9 +67,29 @@ class UiWiringTest : public QObject
 private slots:
     void gameStatePopulatesUi();
     void modelSyncUpdatesUi();
+    void fieldClickSelectsPlayer();
+    void fieldClickEmptyDeselects();
+    void selectionFollowsModelSync();
     void gameTimeDrivesTimer();
     void talkAndJoinPopulateChatAndSpectators();
 };
+
+namespace {
+// Deterministic click point: resize the field to a fixed size and compute
+// the center of a cell with the SAME math as FieldView (10px margin, 26x15).
+QPoint cellCenter(const FieldView *field, int x, int y)
+{
+    const qreal margin = 10.0;
+    const qreal availW = field->width() - 2 * margin;
+    const qreal availH = field->height() - 2 * margin;
+    const qreal cell = qMin(availW / 26.0, availH / 15.0);
+    const qreal w = cell * 26.0;
+    const qreal h = cell * 15.0;
+    const qreal x0 = (field->width() - w) / 2.0;
+    const qreal y0 = (field->height() - h) / 2.0;
+    return QPoint(int(x0 + (x + 0.5) * cell), int(y0 + (y + 0.5) * cell));
+}
+} // namespace
 
 void UiWiringTest::gameStatePopulatesUi()
 {
@@ -127,6 +149,134 @@ void UiWiringTest::modelSyncUpdatesUi()
     QCOMPARE(field->ballPosition(), QPoint(12, 3));
     // One player moved into the box -> 21 on field
     QCOMPARE(field->playerCount(), 21);
+}
+
+// Clicking a player token selects it: the Player Info panel fills with the
+// model data and the field highlights the token.
+void UiWiringTest::fieldClickSelectsPlayer()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(model && field && info);
+
+    w.onGameState(fixtureGame());
+
+    // Fix the field size for deterministic click math.
+    field->setFixedSize(780, 450);
+    QApplication::processEvents();
+
+    // Acting player 18109690 stands at (3,2).
+    const FFBPlayer *p = model->findPlayerById(QStringLiteral("18109690"));
+    QVERIFY(p && p->hasCoords);
+    const QPoint pt = cellCenter(field, 3, 2);
+    QCOMPARE(field->tokenAt(pt)->playerId, QStringLiteral("18109690"));
+
+    QTest::mouseClick(field, Qt::LeftButton, {}, pt);
+
+    QCOMPARE(w.selectedPlayerId(), QStringLiteral("18109690"));
+    QCOMPARE(info->shownPlayerId(), QStringLiteral("18109690"));
+    QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
+    // The panel shows the player's name and a stat (ST from the model).
+    QVERIFY(labelContains(info, p->name));
+    QVERIFY(labelContains(info, QStringLiteral("ST")));
+}
+
+// Clicking an empty square deselects (placeholder back, no highlight).
+void UiWiringTest::fieldClickEmptyDeselects()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(model && field && info);
+
+    w.onGameState(fixtureGame());
+    field->setFixedSize(780, 450);
+    QApplication::processEvents();
+
+    // Find a field cell with no player on it.
+    QSet<QPoint> occupied;
+    for (const FieldToken &t : model->fieldTokens())
+        occupied.insert(QPoint(t.x, t.y));
+    int ex = -1, ey = -1;
+    for (int x = 0; x < 26 && ex < 0; ++x)
+        for (int y = 0; y < 15; ++y)
+            if (!occupied.contains(QPoint(x, y))) {
+                ex = x;
+                ey = y;
+                break;
+            }
+    QVERIFY(ex >= 0);
+
+    // Select first, then click the empty cell.
+    const FieldToken first = model->fieldTokens().first();
+    const FFBPlayer *any = model->findPlayerById(first.playerId);
+    QVERIFY(any);
+    w.selectPlayer(first.playerId);
+    QCOMPARE(w.selectedPlayerId(), first.playerId);
+
+    QTest::mouseClick(field, Qt::LeftButton, {}, cellCenter(field, ex, ey));
+
+    QCOMPARE(w.selectedPlayerId(), QString());
+    QCOMPARE(info->shownPlayerId(), QString());
+    QCOMPARE(field->selectedPlayer(), QString());
+}
+
+// The selection survives model updates: state changes refresh the panel;
+// removing the player deselects.
+void UiWiringTest::selectionFollowsModelSync()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(model && field && info);
+
+    w.onGameState(fixtureGame());
+    field->setFixedSize(780, 450);
+    QApplication::processEvents();
+
+    const QString id = QStringLiteral("18109690");
+    w.selectPlayer(id);
+    QCOMPARE(w.selectedPlayerId(), id);
+
+    // The selected player is KO'd into the home box: selection kept, panel
+    // shows the box state.
+    QJsonArray changes;
+    QJsonArray ko;
+    ko << -2 << 0;
+    QJsonObject c1;
+    c1.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelSetPlayerCoordinate"));
+    c1.insert(QStringLiteral("modelChangeKey"), id);
+    c1.insert(QStringLiteral("modelChangeValue"), QJsonValue(ko));
+    changes.append(c1);
+    QJsonObject c2;
+    c2.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelSetPlayerState"));
+    c2.insert(QStringLiteral("modelChangeKey"), id);
+    c2.insert(QStringLiteral("modelChangeValue"), QJsonValue(5)); // KO
+    changes.append(c2);
+    w.onModelSync(changes, QJsonArray());
+
+    QCOMPARE(w.selectedPlayerId(), id);
+    QCOMPARE(info->shownPlayerId(), id);
+    QVERIFY(labelContains(info, QStringLiteral("KO")));
+
+    // The player is removed from the game: the selection is dropped.
+    QJsonArray changes2;
+    QJsonObject c3;
+    c3.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelRemovePlayer"));
+    c3.insert(QStringLiteral("modelChangeKey"), id);
+    c3.insert(QStringLiteral("modelChangeValue"), QJsonValue());
+    changes2.append(c3);
+    w.onModelSync(changes2, QJsonArray());
+
+    QCOMPARE(w.selectedPlayerId(), QString());
+    QCOMPARE(info->shownPlayerId(), QString());
 }
 
 void UiWiringTest::gameTimeDrivesTimer()

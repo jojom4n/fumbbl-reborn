@@ -39,10 +39,12 @@ void RosterWidget::addPlayer(int number, const QString &name, const QString &pos
     const QString numberStr = number > 0 ? QStringLiteral("%1  ").arg(number) : QStringLiteral("  ");
     const QString statusStr = status.isEmpty() ? QString()
                                                : QStringLiteral("(%1) ").arg(status);
-    const QString line = QStringLiteral("%1%2  %3-22s  S:%4 A:%5 M:%6 P:%7  [%8]")
+    // Row: "  #  (status) Name (Position)  S: ST  A: AG  M: MA  AV: AV  [skills]"
+    const QString line = QStringLiteral("%1%2%3%4  S:%5 A:%6 M:%7 AV:%8  [%9]")
                              .arg(numberStr)
                              .arg(statusStr)
-                             .arg(position)
+                             .arg(name)
+                             .arg(position.isEmpty() ? QString() : QStringLiteral(" (%1) ").arg(position))
                              .arg(strength)
                              .arg(agility)
                              .arg(movement)

@@ -9,6 +9,7 @@
 //
 // Usage:
 //   ./spectator_smoke --game <GAME_ID> [--credentials <path>] [--duration <sec>]
+//                     [--dump-gamestate <file>]   # save the raw serverGameState JSON
 //
 // Exit code: 0 if serverJoin + serverGameState were received, 1 otherwise.
 // =============================================================================
@@ -45,6 +46,7 @@ int main(int argc, char *argv[])
         QStringLiteral("/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json");
     int gameId = 0;
     int durationSec = 15;
+    QString dumpPath; // optional: write the raw serverGameState here
 
     const QStringList args = app.arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -54,6 +56,8 @@ int main(int argc, char *argv[])
             credentialsPath = args[++i];
         else if (args[i] == QLatin1String("--duration") && i + 1 < args.size())
             durationSec = args[++i].toInt();
+        else if (args[i] == QLatin1String("--dump-gamestate") && i + 1 < args.size())
+            dumpPath = args[++i];
     }
 
     if (gameId == 0) {
@@ -116,6 +120,16 @@ int main(int argc, char *argv[])
                      [&](const QString &id, const QJsonObject &p) {
                          // Keep the log readable: one line per command.
                          logLine(QStringLiteral("<< recv  ") + id);
+                         if (!dumpPath.isEmpty() && id == QLatin1String("serverGameState")) {
+                             QFile f(dumpPath);
+                             if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                                 f.write(QJsonDocument(p).toJson(QJsonDocument::Indented));
+                                 logLine(QStringLiteral("DUMPED    serverGameState -> ") + dumpPath);
+                                 dumpPath.clear(); // one-shot
+                             } else {
+                                 logLine(QStringLiteral("DUMP FAIL ") + dumpPath);
+                             }
+                         }
                          Q_UNUSED(p)
                      });
 

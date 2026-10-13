@@ -23,6 +23,7 @@ public:
         bool hasBall = false;
         int state = 1;      // ffb PlayerState (1=standing; 3=prone, 4=stunned, ...)
         QString name;       // display name (for tooltips)
+        QString playerId;   // server id (for selection)
     };
 
     explicit FieldView(QWidget *parent = nullptr);
@@ -33,14 +34,26 @@ public:
     void setBall(int x, int y, bool inPlay);
     void setTurn(int turn);
 
+    // Selected player (highlighted with a ring). Empty id = nothing selected.
+    void setSelectedPlayer(const QString &playerId);
+    QString selectedPlayer() const { return m_selectedPlayer; }
+
     // Telemetry (used by tests / debug): rendered token count and ball spot.
     int playerCount() const { return m_homePlayers.size() + m_awayPlayers.size(); }
     QPoint ballPosition() const { return m_ballInPlay ? QPoint(m_ballX, m_ballY) : QPoint(-1, -1); }
+    // The topmost token at a widget point (nullptr if none / outside field).
+    const PlayerToken *tokenAt(const QPoint &pos) const;
 
     QSize sizeHint() const override;
 
+signals:
+    // Left click on the field. Carries the clicked player's id, or an empty
+    // string when the click landed on an empty square (deselect).
+    void playerClicked(const QString &playerId);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
@@ -57,4 +70,5 @@ private:
     int m_ballY = 7;
     bool m_ballInPlay = false;
     int m_turn = 1;
+    QString m_selectedPlayer; // playerId highlighted with a ring
 };

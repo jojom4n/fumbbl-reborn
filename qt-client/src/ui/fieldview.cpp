@@ -3,6 +3,7 @@
 // =============================================================================
 #include "ui/fieldview.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 
@@ -49,6 +50,48 @@ void FieldView::setTurn(int turn)
 {
     m_turn = turn;
     update();
+}
+
+void FieldView::setSelectedPlayer(const QString &playerId)
+{
+    if (m_selectedPlayer == playerId)
+        return;
+    m_selectedPlayer = playerId;
+    update();
+}
+
+// ---------------------------------------------------------------------------
+// Click handling
+// ---------------------------------------------------------------------------
+const FieldView::PlayerToken *FieldView::tokenAt(const QPoint &pos) const
+{
+    const QRectF f = fieldRect();
+    if (f.isEmpty() || !f.contains(pos))
+        return nullptr;
+    const qreal cellW = f.width() / kFieldWidth;
+    const qreal cellH = f.height() / kFieldHeight;
+    const int x = int((pos.x() - f.x()) / cellW);
+    const int y = int((pos.y() - f.y()) / cellH);
+    if (x < 0 || x >= kFieldWidth || y < 0 || y >= kFieldHeight)
+        return nullptr;
+
+    // Away is drawn last (on top), so it wins the click.
+    const auto find = [this, x, y](const QVector<PlayerToken> &team) -> const PlayerToken * {
+        for (const PlayerToken &t : team)
+            if (t.x == x && t.y == y)
+                return &t;
+        return nullptr;
+    };
+    return find(m_awayPlayers) ? find(m_awayPlayers) : find(m_homePlayers);
+}
+
+void FieldView::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        const PlayerToken *t = tokenAt(event->pos());
+        emit playerClicked(t ? t->playerId : QString());
+    }
+    QWidget::mousePressEvent(event);
 }
 
 QRectF FieldView::fieldRect() const
@@ -183,4 +226,24 @@ void FieldView::paintEvent(QPaintEvent *)
 
     drawTeam(m_homePlayers, QColor(0x4a, 0x7c, 0x3f));
     drawTeam(m_awayPlayers, QColor(0xc4, 0xa3, 0x5a));
+
+    // --- Selection ring (drawn last so it is always visible) -----------------
+    if (!m_selectedPlayer.isEmpty()) {
+        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
+            for (const PlayerToken &t : team)
+                if (t.playerId == m_selectedPlayer)
+                    return &t;
+            return nullptr;
+        };
+        const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
+        if (sel) {
+            const QRectF c = cellRect(sel->x, sel->y);
+            const QRectF ring(c.center().x() - cellW * 0.44, c.center().y() - cellH * 0.44,
+                              cellW * 0.88, cellH * 0.88);
+            QPen selPen(QColor(0xff, 0xd2, 0x4a), qMax(2.0, cellW * 0.09));
+            p.setPen(selPen);
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(ring, cellW * 0.12, cellW * 0.12);
+        }
+    }
 }
