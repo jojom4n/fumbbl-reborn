@@ -108,7 +108,9 @@ per ora manteniamoci sempre sul fare gli spettatori, come debug").
   - `c9c599a` chore — stop tracking qt-client/build/ artifacts (gitignore)
   - `72dba40` phase 4 — QDS docking layer (submodule @ v5.1.1) + layout persistence
   - `4cedbf9` phase 5 — GameModel port (spectator)
-  - phase 6 — core→UI wiring + connect dialog + report parser (commit in progress 12/ott)
+  - `e5d8ca2` phase 6 — core→UI wiring + connect dialog + report parser
+  - `4fa9b2a` fix — live connection bugs (sender() in functor connect,
+    binary WS frames) — see "LIVE VERIFIED" below
 
 ## What exists (qt-client/)
 ```
@@ -151,23 +153,78 @@ cmake --build build
 ctest --test-dir build                  # lzstring_test: PASS
 QT_QPA_PLATFORM=offscreen ./build/fumbbl-qt --smoke   # UI boots headless, exit 0
 ```
-**LIVE test (next session, needs a running match):**
+## ✅ LIVE VERIFIED (13/ott, commit 4fa9b2a)
+Full spectator flow verified against the REAL FUMBBL server on a live
+match (game 1953002, XVIII Chaos vs BBT18 Mjöd och Mål):
+OAuth → access_token → one-time session token → WS open →
+clientPing/clientRequestVersion/clientJoin → serverPong loop +
+serverVersion 3.3.1 + serverUserSettings + **serverJoin (spectator)** +
+**serverGameState** + continuous **serverGameTime** + 18
+**serverModelSync** in 45 s. `spectator_smoke`: **SPECTATOR FLOW OK**,
+exit 0. Offline ctest still 3/3 green.
+
+**Fresh OAuth app credentials** were issued by the user and saved to the
+standard file (perm 600, OUTSIDE the repo — nothing to gitignore):
+`~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json`
+(new clientId `KQ0aCF2J…`; the old pair was rejected with
+`{"error":"Authorization failed"}`).
+
+**TWO REAL BUGS found by the live test (fixed in 4fa9b2a — don't
+re-learn these):**
+1. **`sender()` is useless in functor (lambda) connects.**
+   `connect(obj, &Signal, ctx, [this](T arg){…})` — inside the lambda,
+   `QObject::sender()` does NOT return the emitter (it returns stale
+   thread-local state, usually nullptr). FumbblAuth's QNAM `finished`
+   handler did `qobject_cast<QNetworkReply*>(sender())` → nullptr →
+   **silent return, OAuth never completed, no error emitted at all**.
+   Rule: pass the argument explicitly to helper methods.
+2. **The FUMBBL server answers with BINARY WebSocket frames** (the
+   official Java client exchanges binary: `sendBinary(bytes)`;
+   binary→UTF-8 string→`LZString.decompressFromUTF16`). We only
+   connected `QWebSocket::textMessageReceived` → serverPong/
+   serverVersion/… were all dropped silently. Fix: also connect
+   `binaryMessageReceived` (UTF-8 decode → same handler). The TS client
+   handles both (ArrayBuffer branch).
+
+**Verified cross-language codec:** C++ `compressToUTF16` output
+**decodes correctly with the server's Java LZString** (ffb-common
+`LZString.decompressFromUTF16`) and vice versa. Text frames are
+accepted by the server (`onBinaryMessage` → `onTextMessage`), so we
+keep sending text like the TS client.
+
+**Useful debug techniques that found the bugs:** a standalone QNAM
+program (isolates the library), a copy of fumbblauth.cpp with DBG
+prints (reply arrived HTTP 200 but `accessTokenReady` never fired),
+a raw QWebSocket probe (serverPong came back as BINARY), `javac
+-sourcepath ffb-common/src/main/java` to test the server's Java codec
+directly. Note: the FUMBBL server logs decode failures to ITS debug log
+and stays SILENT toward the client (no error frame, no close).
+
+**LIVE test recipe (works):**
 ```bash
-# find a live game id:  GET /api/match/current (Bearer access token)
-#   (last seen live: game 1952497, "Checks and Balances" vs …)
-./build/spectator_smoke --game <ID> --duration 15
-# expect: PROGRESS lines, ">> send clientPing/clientRequestVersion/clientJoin",
-# "<< recv serverVersion/serverJoin/serverGameState/serverModelSync/…",
-# RESULT: SPECTATOR FLOW OK
+# find a live game id:
+TOKEN=$(curl -s -X POST https://fumbbl.com/api/oauth/token \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "client_id=$ID" --data-urlencode "client_secret=$SECRET" \
+  | jq -r .access_token)
+curl -s -H "Authorization: Bearer $TOKEN" https://fumbbl.com/api/match/current | jq .
+#   (NOTE: curl MUST use --data-urlencode — the secret contains '+' and '/';
+#    plain -d sends literal '+' which the server decodes as SPACE →
+#    "Authorization failed". The C++ client percent-encodes, it's fine.)
+./build/spectator_smoke --game <ID> --duration 45
+# expect: RESULT: SPECTATOR FLOW OK, exit 0
 ```
 Credentials are auto-read from
 `~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json`
 (key `fumbbl_credentials`, fallback `credentials`).
 
+## ✅ DONE 13/ott — live spectator verification
+See "LIVE VERIFIED" above. Also: the earlier old-credentials failure was
+a red herring on the curl side (encoding); the real blockers were the two
+bugs in 4fa9b2a.
+
 ## NEXT STEPS (in order)
-1. **Run the live smoke test** (above) and fix anything it reveals
-   (most likely nothing — protocol facts were ported 1:1 and the codec is
-   verified byte-identical). Needs a live match + the user's go-ahead.
+1. ✅ **DONE** Live smoke test + fixes (see "LIVE VERIFIED" above).
 1.5. ✅ **DONE** — Vendor QDS + swap the dock layer (see "DONE 12/ott" above).
 2. ✅ **DONE** GameModel port (`src/core/gamemodel.{h,cpp}`) + `findPlayerByNumber(
    number, side)` helper: QObject with
@@ -255,4 +312,8 @@ Credentials are auto-read from
 When resuming: update this file + activeContext.md. The TS client remains
 the behavioral reference for everything protocol-related (its memory-bank
 notes — fumbbl-protocol-research.md, the "Protocol Discovery Log" in
-activeContext.md — are authoritative).
+activeContext.md — are authoritative). The Java sources in
+`/home/saruman/Projects/ffb` (ffb-server, ffb-client-logic, ffb-common)
+are the AUTHORITATIVE reference for server-side behavior (CommandSocket
+message handling, LZString, net command factories) and can be compiled
+with `javac -sourcepath ffb-common/src/main/java` for cross-checks.
