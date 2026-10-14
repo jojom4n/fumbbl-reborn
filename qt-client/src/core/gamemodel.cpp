@@ -251,6 +251,9 @@ void GameModel::applyFieldModel(const QJsonObject &fieldModel)
         }
         if (pd.contains(QStringLiteral("playerState")))
             player->state = readInt(pd.value(QStringLiteral("playerState")));
+        // Active inducement cards (JSON string array of card names).
+        for (const QJsonValue &cv : pd.value(QStringLiteral("cards")).toArray())
+            player->cards << cv.toString();
     }
 
     int x = -1, y = -1;
@@ -477,9 +480,30 @@ QVector<FieldToken> GameModel::fieldTokens() const
         t.state = p.state;
         t.hasBall = m_ballOnField && p.fieldX == m_ballX && p.fieldY == m_ballY;
         t.isActing = !m_activePlayerId.isEmpty() && p.playerId == m_activePlayerId;
+        t.archetype = playerArchetype(p);
         tokens.append(t);
     }
     return tokens;
+}
+
+int GameModel::playerArchetype(const FFBPlayer &player)
+{
+    // Order matters: a position is usually one of these keywords.
+    const auto has = [&player](const char *k) {
+        for (const QString &kw : player.positionKeywords)
+            if (kw.compare(QLatin1String(k), Qt::CaseInsensitive) == 0)
+                return true;
+        return false;
+    };
+    if (has("Blitzer"))
+        return 2;
+    if (has("Thrower"))
+        return 4;
+    if (has("Catcher"))
+        return 3;
+    if (has("Runner"))
+        return 1;
+    return 0; // Blocker / Lineman / everything else
 }
 
 QVector<FieldToken> GameModel::boxTokens(bool homeSide) const

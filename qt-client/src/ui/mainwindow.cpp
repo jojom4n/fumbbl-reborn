@@ -355,6 +355,8 @@ void MainWindow::applyModelToUi()
         pt.state = t.state;
         pt.name = t.name;
         pt.playerId = t.playerId;
+        pt.archetype = t.archetype;
+        pt.isActing = t.isActing;
         (t.sideHome ? homeTokens : awayTokens).append(pt);
     }
     m_field->setPlayers(homeTokens, awayTokens);
@@ -514,6 +516,7 @@ void MainWindow::selectPlayer(const QString &playerId)
     d.ag = p->ag;
     d.pa = p->pa;
     d.av = p->av;
+    d.archetype = GameModel::playerArchetype(*p);
     d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
     if (p->hasCoords) {
@@ -535,6 +538,7 @@ void MainWindow::selectPlayer(const QString &playerId)
     d.injuries = p->lastingInjuries;
     if (!p->recoveringInjury.isEmpty())
         d.injuries << tr("Recovering: %1").arg(p->recoveringInjury);
+    d.cards = p->cards;
 
     m_playerInfo->showPlayer(d);
 }

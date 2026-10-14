@@ -50,6 +50,7 @@ struct FFBPlayer {
     // Skill name -> value (skillValuesMap, e.g. Loner -> "4", Juggernaut -> "dwarf")
     QHash<QString, QString> skillValues;
     QStringList usedSkills; // skills already used this turn (usedSkills)
+    QStringList cards;      // active inducement card names (fieldModel)
     QString playerStatus;   // "active" / ... (playerStatus)
     QString playerType;     // "Regular" / "Star" / "Sub" ... (playerType)
     QStringList lastingInjuries; // e.g. "Seriously Hurt (MNG)"
@@ -75,6 +76,8 @@ struct FieldToken {
     int state = 0;
     bool hasBall = false;  // standing on the same square as the ball
     bool isActing = false; // the player with the actingPlayer turn
+    int archetype = 0;     // 0 blocker, 1 runner, 2 blitzer, 3 catcher, 4 thrower
+                           // (from the position keywords — bust icon choice)
 };
 
 class GameModel : public QObject
@@ -117,6 +120,9 @@ public:
     const FFBPlayer *findPlayerById(const QString &playerId) const;
     // On-field player standing at the given field cell (nullptr if none).
     const FFBPlayer *playerAt(int x, int y) const;
+    // Bust archetype from the position keywords (Blitzer/Thrower/Catcher/
+    // Runner, else Blocker).
+    static int playerArchetype(const FFBPlayer &player);
 
     // --- Field ---------------------------------------------------------------
     // Players with a field coordinate (box coordinates excluded).

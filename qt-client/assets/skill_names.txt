@@ -1,0 +1,52 @@
+Block	block
+Dodge	dodge
+Mighty Blow	mighty_blow
+Mighty Blows	mighty_blow
+Nerves of Steel	nerves_of_steel
+Catch	catch
+Sure Hands	sure_hands
+Anchor	anchor
+Loner	loner
+Frenzy	frenzy
+Assassin	assassin
+Piledriver	piledriver
+Sidestep	sidestep
+Stiff Spring	stiff_spring
+Juggernaut	juggernaut
+Tackle	tackle
+Pass	pass
+Foul	foul
+Claws	claws
+Savage Mauling	savage_mauling
+Wrestle	wrestle
+Regeneration	regeneration
+Unsteady	unsteady
+Stunty	stunty
+Lethal Flight	lethal_flight
+Bone Head	bone_head
+Thick Skull	thick_skull
+Kick	kick
+Kick Team-Mate	kick_team_mate
+No Kicks Left	no_kicks_left
+I'll Carry You	i_ll_carry_you
+Strong Passing Game	strong_passing_game
+Star of the Show	star_of_the_show
+Bloodlust	bloodlust
+Accurate	accurate
+Bullseye	bullseye
+Hatred	hatred
+Eye Gouge	eye_gouge
+Hypnotic Gaze	hypnotic_gaze
+Take Root	take_root
+Drunkard	drunkard
+Taunt	taunt
+Sprint	sprint
+Stand Firm	stand_firm
+Defensive	defensive
+Guard	guard
+Break Tackle	break_tackle
+Strong Arm	strong_arm
+Indomitable	indomitable
+Leader	leader
+Old Pro	old_pro
+Pro	pro

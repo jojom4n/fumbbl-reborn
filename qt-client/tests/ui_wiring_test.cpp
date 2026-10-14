@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QSet>
 
+#include "core/assets.h"
 #include "core/gamemodel.h"
 #include "ui/chatwidget.h"
 #include "ui/dicelogwidget.h"
@@ -72,6 +73,7 @@ private slots:
     void selectionFollowsModelSync();
     void gameTimeDrivesTimer();
     void talkAndJoinPopulateChatAndSpectators();
+    void assetsLoad();
 };
 
 namespace {
@@ -329,6 +331,26 @@ void UiWiringTest::talkAndJoinPopulateChatAndSpectators()
     QJsonArray changes;
     w.onModelSync(changes, reports);
     QVERIFY(dice->toPlainText().contains(QStringLiteral("Dodge")));
+}
+
+void UiWiringTest::assetsLoad()
+{
+    QVERIFY(assets::isAvailable());
+    for (int arch = 0; arch < 5; ++arch) {
+        QVERIFY(!assets::playerBust(arch, true).isNull());
+        QVERIFY(!assets::playerBust(arch, false).isNull());
+    }
+    // skill icons (known + fallback)
+    QVERIFY(!assets::skillPixmap(QStringLiteral("Dodge")).isNull());
+    QVERIFY(!assets::skillPixmap(QStringLiteral("Knockdown")).isNull());
+    QVERIFY(!assets::skillPixmap(QStringLiteral("TotallyBogusSkill")).isNull());
+    QCOMPARE(assets::skillIconSlug(QStringLiteral("DODGE")), QStringLiteral("dodge"));
+    QCOMPARE(assets::skillIconSlug(QStringLiteral("NeverHeardOfIt")),
+             QStringLiteral("generic"));
+    // card icons
+    QVERIFY(!assets::cardPixmap(QStringLiteral("Rabbit's Foot")).isNull());
+    QCOMPARE(assets::cardIconSlug(QStringLiteral("rabbit's foot")),
+             QStringLiteral("rabbit_s_foot"));
 }
 
 QTEST_MAIN(UiWiringTest)

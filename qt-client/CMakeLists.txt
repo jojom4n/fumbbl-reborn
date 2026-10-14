@@ -52,6 +52,8 @@ add_executable(fumbbl-qt
     src/core/gamemodel.cpp
     src/core/reportparser.h
     src/core/reportparser.cpp
+    src/core/assets.h
+    src/core/assets.cpp
 
     # UI
     src/ui/mainwindow.h
@@ -73,6 +75,9 @@ add_executable(fumbbl-qt
 )
 
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# Procedural art assets (see gen_assets). Committed under <source>/assets.
+target_compile_definitions(fumbbl-qt PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
 target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Core
@@ -99,6 +104,19 @@ target_link_libraries(spectator_smoke PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+
+# -----------------------------------------------------------------------------
+# gen_assets — procedural fantasy art generator (draws all PNG assets with
+# QPainter; no external art). Output: <source>/assets/{players,skills,cards}.
+# Run: cmake --build build --target gen_assets && ./build/gen_assets [dir]
+# -----------------------------------------------------------------------------
+add_executable(gen_assets tools/gen_assets.cpp)
+target_link_libraries(gen_assets PRIVATE Qt6::Core Qt6::Gui)
+add_custom_target(generate_assets
+    COMMAND $<TARGET_FILE:gen_assets> ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    DEPENDS gen_assets
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating fantasy PNG assets into assets/")
 
 # -----------------------------------------------------------------------------
 # Tests

@@ -3,9 +3,12 @@
 // =============================================================================
 #include "ui/playerinfowidget.h"
 
+#include "core/assets.h"
+
 #include <QFont>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QListWidget>
 #include <QVBoxLayout>
@@ -76,17 +79,31 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(6);
 
-    // Header
+    // Header: bust portrait + name/subtitle
+    m_portrait = new QLabel(m_content);
+    m_portrait->setFixedSize(52, 52);
+    m_portrait->setAlignment(Qt::AlignCenter);
+    m_portrait->setStyleSheet(QStringLiteral(
+        "border: 1px solid #3a3a46; border-radius: 4px; background: #22222c;"));
+
     m_nameLabel = new QLabel(m_content);
     QFont nFont;
     nFont.setBold(true);
     nFont.setPointSize(13);
     m_nameLabel->setFont(nFont);
-    v->addWidget(m_nameLabel);
 
     m_subLabel = new QLabel(m_content);
     m_subLabel->setStyleSheet(QStringLiteral("color:#aaa;"));
-    v->addWidget(m_subLabel);
+
+    auto *header = new QHBoxLayout;
+    header->setSpacing(8);
+    header->addWidget(m_portrait, 0, Qt::AlignTop);
+    auto *nameCol = new QVBoxLayout;
+    nameCol->setSpacing(2);
+    nameCol->addWidget(m_nameLabel);
+    nameCol->addWidget(m_subLabel);
+    header->addLayout(nameCol, 1);
+    v->addLayout(header);
 
     m_stateLabel = new QLabel(m_content);
     m_stateLabel->setWordWrap(true);
@@ -107,6 +124,7 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_skillList = new QListWidget(m_content);
     m_skillList->setFrameShape(QFrame::NoFrame);
     m_skillList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_skillList->setIconSize(QSize(20, 20));
     v->addWidget(m_skillList, 1);
 
     // Injuries
@@ -132,6 +150,7 @@ void PlayerInfoWidget::setAccentColor(const QColor &color)
 void PlayerInfoWidget::showPlaceholder()
 {
     m_shownPlayerId.clear();
+    m_portrait->clear();
     m_placeholder->setVisible(true);
     m_content->setVisible(false);
 }
@@ -149,6 +168,9 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     setAccentColor(info.sideHome ? kHomeAccent : kAwayAccent);
 
     // Header
+    const QPixmap bust = assets::playerBust(info.archetype, info.sideHome);
+    if (!bust.isNull())
+        m_portrait->setPixmap(bust.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     m_nameLabel->setText(info.name);
     QString sub;
     if (info.number > 0)
@@ -191,7 +213,7 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     m_statAv->setText(QStringLiteral("%1<br><span style=\"font-size:9px;color:#999;\">AV</span>")
                           .arg(info.av));
 
-    // Skills
+    // Skills (with icons)
     m_skillList->clear();
     for (const PlayerInfoData::Skill &s : info.skills) {
         auto *item = new QListWidgetItem(m_skillList);
@@ -199,6 +221,7 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
         if (!s.value.isEmpty())
             text += QStringLiteral(" (%1)").arg(s.value);
         item->setText(text);
+        item->setIcon(QIcon(assets::skillPixmap(s.name)));
         item->setToolTip(s.used ? QStringLiteral("Used this turn")
                                 : QStringLiteral("Available"));
         if (s.used) {
@@ -209,6 +232,21 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
         auto *item = new QListWidgetItem(m_skillList);
         item->setText(QStringLiteral("No skills"));
         item->setForeground(QColor(0x77, 0x77, 0x77));
+    }
+
+    // Active inducement cards (with icons)
+    if (!info.cards.isEmpty()) {
+        auto *header = new QListWidgetItem(QStringLiteral("In-play cards"), m_skillList);
+        QFont hf;
+        hf.setBold(true);
+        header->setFont(hf);
+        header->setFlags(Qt::NoItemFlags);
+        for (const QString &cardName : info.cards) {
+            auto *item = new QListWidgetItem(m_skillList);
+            item->setText(cardName);
+            item->setIcon(QIcon(assets::cardPixmap(cardName)));
+            item->setToolTip(QStringLiteral("Active inducement card"));
+        }
     }
 
     // Injuries

@@ -42,6 +42,7 @@ private slots:
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void staticHelpers();
+    void playerArchetypes();
 };
 
 namespace {
@@ -349,6 +350,28 @@ void GameModelTest::staticHelpers()
     QCOMPARE(GameModel::stateFlags(0x20000).first(), QStringLiteral("Eye gouged"));
     QCOMPARE(GameModel::stateFlags(0x40000).first(), QStringLiteral("Chomped"));
     QCOMPARE(GameModel::stateFlags(1 | 0x200 | 0x400).size(), 2);
+}
+
+void GameModelTest::playerArchetypes()
+{
+    auto check = [](const QStringList &keywords, int expected) {
+        FFBPlayer p;
+        p.positionKeywords = keywords;
+        QCOMPARE(GameModel::playerArchetype(p), expected);
+    };
+    check({QStringLiteral("Blitzer"), QStringLiteral("Runner")}, 2);
+    check({QStringLiteral("Thrower")}, 4);
+    check({QStringLiteral("Catcher")}, 3);
+    check({QStringLiteral("Runner")}, 1);
+    check({QStringLiteral("Blocker")}, 0);
+    check({}, 0);
+    // live fixture: every on-field player got an archetype from their position
+    GameModel m;
+    QVERIFY(m.initialize(loadLiveFixtureGame()));
+    const auto tokens = m.fieldTokens();
+    QVERIFY(!tokens.isEmpty());
+    for (const FieldToken &t : tokens)
+        QVERIFY(t.archetype >= 0 && t.archetype <= 4);
 }
 
 QTEST_MAIN(GameModelTest)

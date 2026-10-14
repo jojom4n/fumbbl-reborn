@@ -1,0 +1,24 @@
+Beguiling Bracers	beguiling_bracers
+Belt of Invulnerability	belt_of_invulnerability
+Blatant Foul	blatant_foul
+Chop Block	chop_block
+Distract	distract
+Custard Pie	custard_pie
+Fawndough's Headband	fawndough_s_headband
+Force Shield	force_shield
+Gikta's Strength of da Bear	gikta_s_strength_of_da_bear
+Gloves of Holding	gloves_of_holding
+Good Old Magic Codpiece	good_old_magic_codpiece
+Greased Shoes	greased_shoes
+Gromskull's Exploding Runes	gromskull_s_exploding_runes
+Illegal Substitution	illegal_substitution
+Inertia Damper	inertia_damper
+Kicking Boots	kicking_boots
+Lucky Charm	lucky_charm
+Magic Gloves of Jark Longarm	magic_gloves_of_jark_longarm
+Pit Trap	pit_trap
+Rabbit's Foot	rabbit_s_foot
+Spiked Ball	spiked_ball
+Stolen Playbook	stolen_playbook
+Wand of Smashing	wand_of_smashing
+Witch's Brew	witch_s_brew

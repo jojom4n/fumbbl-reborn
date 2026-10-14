@@ -24,6 +24,8 @@ public:
         int state = 1;      // ffb PlayerState (1=standing; 3=prone, 4=stunned, ...)
         QString name;       // display name (for tooltips)
         QString playerId;   // server id (for selection)
+        int archetype = 0;  // bust: 0 blocker, 1 runner, 2 blitzer, 3 catcher, 4 thrower
+        bool isActing = false;
     };
 
     explicit FieldView(QWidget *parent = nullptr);

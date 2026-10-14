@@ -380,3 +380,35 @@ activeContext.md — are authoritative). The Java sources in
 are the AUTHORITATIVE reference for server-side behavior (CommandSocket
 message handling, LZString, net command factories) and can be compiled
 with `javac -sourcepath ffb-common/src/main/java` for cross-checks.
+
+## Phase 8: Procedural Fantasy Assets (generated, not downloaded)
+- **Generator**: `qt-client/tools/gen_assets.cpp` — pure QPainter, no external art.
+  CMake targets: `gen_assets` (binary), `generate_assets` (runs it into `assets/`).
+  Regenerate: `cmake --build build --target gen_assets && ./build/gen_assets`.
+- **Asset catalog (87 PNGs, committed under `qt-client/assets/`)**:
+  - `players/<archetype>_{home,away}.png` — 96x96 fantasy mini busts with face:
+    blocker (horned helm + spikes), runner (spiky hair + headband tail),
+    blitzer (wild hair, glowing eyes, tusks, snarl), catcher (bandana + knot),
+    thrower (full helmet + T-visor + crest). 5 archetypes x 2 team colors.
+  - `skills/<slug>.png` — 64x64 icons for 51 real FUMBBL skills + `generic`.
+  - `cards/<slug>.png` — 64x64 icons for 24 real inducement cards + `generic`.
+  - `skill_names.txt`, `card_names.txt` — "Name<TAB>slug" maps (real server names).
+- **Runtime loader**: `src/core/assets.{h,cpp}` — locates dir via
+  `FUMBBL_ASSETS_DIR` (compile def) > `<exe>/../assets` > `CWD/assets`;
+  caches pixmaps; `skillIconSlug()`/`cardIconSlug()` resolve names (fallback
+  `generic`); `playerBust(archetype, home)`.
+- **GameModel**: `FFBPlayer.cards` (active card names from
+  `fieldModel.playerDataArray[].cards`); `FieldToken.archetype`;
+  `GameModel::playerArchetype(player)` maps position keywords
+  Blitzer/Thrower/Catcher/Runner -> 2/4/3/1, else 0 (blocker).
+- **FieldView**: tokens are now busts (squashed + flat when prone/stunned/KO)
+  with gold-rimmed number badges; acting player gets a white dashed ring;
+  ball indicator moved to top-left corner. Plain ellipse fallback if no assets.
+- **PlayerInfoWidget**: bust portrait (52px) next to name; skill list items get
+  skill icons; new "In-play cards" section with card icons.
+- **Tests**: `gamemodel_test::playerArchetypes`, `ui_wiring_test::assetsLoad`
+  (busts non-null, slug maps, fallback). 3/3 green.
+- **Live re-verified** (game 1953281, 45s): SPECTATOR FLOW OK.
+- Qt 6.12 gotchas hit: `QPixmap::load(QFile*)` removed; no
+  `drawPixmap(QRectF, QPixmap)` 2-arg overload (use 3-arg with source rect);
+  `QListWidgetItem` has no `setIconSize` (it's on the view).

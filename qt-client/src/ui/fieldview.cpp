@@ -3,9 +3,12 @@
 // =============================================================================
 #include "ui/fieldview.h"
 
+#include "core/assets.h"
+
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPixmap>
 
 FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
@@ -184,48 +187,75 @@ void FieldView::paintEvent(QPaintEvent *)
     }
 
     // --- Player tokens -------------------------------------------------------
+    // Fantasy mini busts (procedural assets) with a number badge; a plain
+    // colored ellipse is the fallback when the assets are not available.
     const auto drawTeam = [this, &p, cellW, cellH](const QVector<PlayerToken> &players,
-                                                   const QColor &color) {
+                                                   bool sideHome, const QColor &fallback) {
+        const qreal s = qMin(cellW, cellH) * 0.92;
         for (const PlayerToken &t : players) {
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
                 continue; // box coordinate / off field
             const QRectF c = cellRect(t.x, t.y);
-            const QRectF token(c.center().x() - cellW * 0.36, c.center().y() - cellH * 0.36,
-                               cellW * 0.72, cellH * 0.72);
-
-            // Prone / stunned / knocked out: flattened ellipse
             const bool down = (t.state == 3 || t.state == 4 || t.state == 5 || t.state == 11);
-            p.setPen(QPen(QColor(0, 0, 0, 180), 1.5));
-            p.setBrush(color);
-            if (down)
-                p.drawEllipse(QRectF(token.center().x() - token.width() * 0.55,
-                                     token.center().y() - token.height() * 0.28,
-                                     token.width() * 1.1, token.height() * 0.56));
-            else
-                p.drawEllipse(token);
+            const QRectF token(c.center().x() - s / 2, c.center().y() - s / 2, s, s);
 
-            // Number
+            const QPixmap pm = assets::playerBust(t.archetype, sideHome);
+            const QRectF src(0, 0, pm.width(), pm.height());
+            if (!pm.isNull()) {
+                if (down) {
+                    // Prone / stunned / KO: squashed bust
+                    const QRectF flat(c.center().x() - s * 0.55, c.center().y() - s * 0.24,
+                                      s * 1.1, s * 0.5);
+                    p.drawPixmap(flat, pm, src);
+                } else {
+                    p.drawPixmap(token, pm, src);
+                }
+            } else {
+                p.setPen(QPen(QColor(0, 0, 0, 180), 1.5));
+                p.setBrush(fallback);
+                p.drawEllipse(down ? QRectF(token.center().x() - token.width() * 0.55,
+                                             token.center().y() - token.height() * 0.28,
+                                             token.width() * 1.1, token.height() * 0.56)
+                                   : token);
+            }
+
+            // Acting player: thin white ring
+            if (t.isActing) {
+                const QRectF ring(c.center().x() - s * 0.52, c.center().y() - s * 0.52, s * 1.04,
+                                  s * 1.04);
+                QPen actPen(QColor(255, 255, 255, 200), 1.4, Qt::DashLine);
+                p.setPen(actPen);
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(ring);
+            }
+
+            // Number badge (bottom-right corner)
+            const qreal br = qMin(cellW, cellH) * 0.24;
+            const QPointF bc(c.right() - cellW * 0.22, c.bottom() - cellH * 0.2);
+            p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.2));
+            p.setBrush(QColor(0x1e, 0x1e, 0x26));
+            p.drawEllipse(bc, br, br);
             p.setPen(Qt::white);
             QFont numFont = p.font();
-            numFont.setPointSizeF(qMax(6.0, cellH * 0.55));
+            numFont.setPointSizeF(qMax(5.0, br * 1.5));
             numFont.setBold(true);
             p.setFont(numFont);
-            p.drawText(token, Qt::AlignCenter,
+            p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
-            // Ball carrier indicator (small football in the corner)
+            // Ball carrier indicator (small football, top-left corner)
             if (t.hasBall) {
-                const QRectF br(c.right() - cellW * 0.42, c.top() + cellH * 0.06,
-                                cellW * 0.36, cellH * 0.24);
+                const QRectF br2(c.left() + cellW * 0.06, c.top() + cellH * 0.04,
+                                 cellW * 0.34, cellH * 0.22);
                 p.setPen(QPen(QColor(0x40, 0x26, 0x12), 1));
                 p.setBrush(QColor(0xc7, 0x83, 0x3b));
-                p.drawEllipse(br);
+                p.drawEllipse(br2);
             }
         }
     };
 
-    drawTeam(m_homePlayers, QColor(0x4a, 0x7c, 0x3f));
-    drawTeam(m_awayPlayers, QColor(0xc4, 0xa3, 0x5a));
+    drawTeam(m_homePlayers, true, QColor(0x4a, 0x7c, 0x3f));
+    drawTeam(m_awayPlayers, false, QColor(0xc4, 0xa3, 0x5a));
 
     // --- Selection ring (drawn last so it is always visible) -----------------
     if (!m_selectedPlayer.isEmpty()) {

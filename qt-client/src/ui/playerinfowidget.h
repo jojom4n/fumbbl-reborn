@@ -40,6 +40,8 @@ struct PlayerInfoData {
     };
     QVector<Skill> skills;
     QStringList injuries;  // lasting injuries + recovering injury
+    QStringList cards;     // active inducement card names
+    int archetype = 0;     // bust icon (0 blocker .. 4 thrower)
     bool isActing = false; // holds the current turn
 
     bool isValid() const { return !playerId.isEmpty() && !name.isEmpty(); }
@@ -65,6 +67,7 @@ private:
     QWidget *m_content = nullptr;    // the structured panel
 
     QLabel *m_accentBar = nullptr;   // thin side-color strip
+    QLabel *m_portrait = nullptr;    // bust icon
     QLabel *m_nameLabel = nullptr;
     QLabel *m_subLabel = nullptr;    // #nr · position (keywords)
     QLabel *m_stateLabel = nullptr;  // status + field state + flags + acting
