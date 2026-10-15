@@ -293,11 +293,18 @@ void MainWindow::applySavedLayout(const QByteArray &state)
         if (p.contains(QStringLiteral("y"))) g.moveTop(p.value(QStringLiteral("y")).toInt());
         if (p.contains(QStringLiteral("w"))) g.setWidth(p.value(QStringLiteral("w")).toInt());
         if (p.contains(QStringLiteral("h"))) g.setHeight(p.value(QStringLiteral("h")).toInt());
+        const bool vis = p.contains(QStringLiteral("v")) ? p.value(QStringLiteral("v")).toBool() : true;
         it.value()->setGeometry(g);
-        it.value()->setVisible(p.contains(QStringLiteral("v")) ? p.value(QStringLiteral("v")).toBool() : true);
+        it.value()->setVisible(vis);
+        // Sync the View-menu action from the SAVED value, not from
+        // isVisible() (false at this point: the top-level is not shown yet,
+        // and the action's toggled signal would re-hide the panel).
+        if (QAction *action = m_panelViewActions.value(it.key())) {
+            action->blockSignals(true);
+            action->setChecked(vis);
+            action->blockSignals(false);
+        }
     }
-    for (auto it = m_panelViewActions.cbegin(); it != m_panelViewActions.cend(); ++it)
-        it.value()->setChecked(m_panels.value(it.key())->isVisible());
     if (any) {
         clampPanelsToStage();
         m_layoutApplied = true;

@@ -76,6 +76,7 @@ private slots:
     void talkAndJoinPopulateChatAndSpectators();
     void assetsLoad();
     void panelLayoutPersistAndReset();
+    void savedLayoutRestoredOnFirstShow();
 };
 
 namespace {
@@ -428,6 +429,49 @@ void UiWiringTest::panelLayoutPersistAndReset()
     panel->setGeometry(defaultGeom);
     w.restoreLayout(state);
     QCOMPARE(panel->geometry(), custom);
+}
+
+void UiWiringTest::savedLayoutRestoredOnFirstShow()
+{
+    // Regression (phase 10): a layout saved by a PREVIOUS run must be
+    // restored on the first stage resize — while the top-level is still
+    // mid-show. The old action-sync used panel->isVisible() (false at that
+    // moment) and its toggled signal re-hid every panel.
+    QSettings settings;
+    QJsonObject panels;
+    const struct { const char *name; int x, y, w, h; } seed[] = {
+        { "home_roster", 40, 40, 300, 400 },
+        { "away_roster", 450, 40, 260, 300 },
+        { "player_info", 40, 350, 380, 220 },
+        { "dice_log", 430, 350, 280, 220 },
+        { "chat", 450, 60, 260, 220 },
+        { "protocol", 700, 40, 200, 200 },
+    };
+    for (const auto &s2 : seed) {
+        QJsonObject p;
+        p.insert(QStringLiteral("x"), s2.x);
+        p.insert(QStringLiteral("y"), s2.y);
+        p.insert(QStringLiteral("w"), s2.w);
+        p.insert(QStringLiteral("h"), s2.h);
+        p.insert(QStringLiteral("v"), true);
+        panels.insert(s2.name, p);
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("panels"), panels);
+    settings.setValue(QStringLiteral("mainwindow/panelLayout"),
+                      QJsonDocument(root).toJson(QJsonDocument::Compact));
+
+    MainWindow w; // ctor shows maximized; the saved layout lands on first sizing
+    RosterWidget *home = w.findChild<RosterWidget *>(QStringLiteral("roster_home"));
+    QVERIFY(home);
+    FloatingPanel *panel = panelFor(&w, home);
+    QVERIFY(panel);
+
+    QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 3000);
+    QCOMPARE(panel->x(), 40);
+    QCOMPARE(panel->y(), 40);
+    QCOMPARE(panel->width(), 300);
+    QCOMPARE(panel->height(), 400);
 }
 
 QTEST_MAIN(UiWiringTest)
