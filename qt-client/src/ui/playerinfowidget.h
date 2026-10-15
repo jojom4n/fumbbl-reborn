@@ -41,7 +41,6 @@ struct PlayerInfoData {
     QVector<Skill> skills;
     QStringList injuries;  // lasting injuries + recovering injury
     QStringList cards;     // active inducement card names
-    int archetype = 0;     // bust icon (0 blocker .. 4 thrower)
     bool isActing = false; // holds the current turn
 
     bool isValid() const { return !playerId.isEmpty() && !name.isEmpty(); }
@@ -52,6 +51,11 @@ class PlayerInfoWidget : public QWidget
     Q_OBJECT
 
 public:
+    // Deterministic team color (hashed from the team name, shifted for
+    // home/away so both sides stay readable). Faces carry NO team color —
+    // the UI draws the colored circle behind them at runtime.
+    static QColor teamColor(const QString &teamName, bool home);
+
     explicit PlayerInfoWidget(QWidget *parent = nullptr);
 
     void showPlayer(const PlayerInfoData &info);

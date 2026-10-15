@@ -75,7 +75,8 @@ add_executable(fumbbl-qt
 )
 
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-# Procedural art assets (see gen_assets). Committed under <source>/assets.
+# Game assets: cartoon faces (assets/faces, per roster piece) + procedural
+# skill/card icons (see gen_assets). Committed under <source>/assets.
 target_compile_definitions(fumbbl-qt PRIVATE
     FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
@@ -106,8 +107,9 @@ target_link_libraries(spectator_smoke PRIVATE
 )
 
 # -----------------------------------------------------------------------------
-# gen_assets — procedural fantasy art generator (draws all PNG assets with
-# QPainter; no external art). Output: <source>/assets/{players,skills,cards}.
+# gen_assets — procedural icon generator (skill/card PNGs with QPainter;
+# no external art). Output: <source>/assets/{skills,cards}. Player faces are
+# in <source>/assets/faces (one-off generator, committed).
 # Run: cmake --build build --target gen_assets && ./build/gen_assets [dir]
 # -----------------------------------------------------------------------------
 add_executable(gen_assets tools/gen_assets.cpp)

@@ -1,17 +1,17 @@
 // =============================================================================
-// gen_assets — procedural fantasy art generator for FUMBBL Reborn (Qt6)
+// gen_assets — procedural icon generator for FUMBBL Reborn (Qt6)
 //
-// Draws ALL client assets with QPainter (no external art, no downloads):
-//   assets/players/<archetype>_<team>.png  96x96  miniature bust WITH FACE
+// Draws the icon assets with QPainter (no external art, no downloads):
 //   assets/skills/<slug>.png               64x64  skill icons
 //   assets/cards/<slug>.png                64x64  inducement card icons
 //
+// Player FACES (assets/faces/<slug>.png + assets/faces.txt, one cartoon face
+// per named roster piece, all 31 BB2025 races) are generated separately by
+// the one-off tool draw_faces.cpp — they are committed and NOT regenerated
+// here.
+//
 // Usage:
 //   ./gen_assets [output_dir]     (default: <repo>/qt-client/assets)
-//
-// The busts are tabletop-miniature style: head with a face (eyes/brows/mouth),
-// archetype headgear, team-colored armor. Archetypes:
-//   blocker, runner, blitzer, catcher, thrower
 // =============================================================================
 #include <QCoreApplication>
 #include <QColor>
@@ -1542,20 +1542,7 @@ int main(int argc, char *argv[])
 
     int count = 0;
 
-    // --- Player busts: 5 archetypes x 2 teams, 96x96 -------------------------
-    const QStringList archNames = { QStringLiteral("blocker"), QStringLiteral("runner"),
-                                    QStringLiteral("blitzer"), QStringLiteral("catcher"),
-                                    QStringLiteral("thrower") };
-    for (int a = 0; a < archNames.size(); ++a)
-        for (bool home : { true, false }) {
-            QImage img(96, 96, QImage::Format_ARGB32);
-            bust::draw(img, a, home);
-            const QString file =
-                QStringLiteral("players/%1_%2.png").arg(archNames[a]).arg(home ? "home" : "away");
-            if (!img.save(out.filePath(file)))
-                std::fprintf(stderr, "FAIL %s\n", file.toUtf8().constData());
-            ++count;
-        }
+    // NOTE: player faces live in assets/faces (one-off generator, committed).
 
     // --- Skills ----------------------------------------------------------------
     const QHash<QString, std::function<void(QPainter &)>> skillPainters = {

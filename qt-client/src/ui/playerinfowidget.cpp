@@ -11,12 +11,15 @@
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <QPainter>
 #include <QVBoxLayout>
 
 namespace {
 // Team accent colors (match the roster panels / field token colors).
 const QColor kHomeAccent(0x7c, 0xa8, 0x6f);
 const QColor kAwayAccent(0xd8, 0xc0, 0x7a);
+
+QColor sideAccent(bool home) { return home ? kHomeAccent : kAwayAccent; }
 
 QString escapeHtml(const QString &s)
 {
@@ -44,6 +47,13 @@ QLabel *makeStatCell(const QString &label, int value, QGridLayout *grid, int row
     return cell;
 }
 } // namespace
+
+QColor PlayerInfoWidget::teamColor(const QString &teamName, bool home)
+{
+    const uint h = qHash(teamName.toUtf8());
+    const int hue = int((h % 200) + (home ? 0 : 100)) % 360;
+    return QColor::fromHsv(hue, 150, 130);
+}
 
 PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     : QWidget(parent)
@@ -165,12 +175,26 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     m_placeholder->setVisible(false);
     m_content->setVisible(true);
 
-    setAccentColor(info.sideHome ? kHomeAccent : kAwayAccent);
+    setAccentColor(sideAccent(info.sideHome));
 
-    // Header
-    const QPixmap bust = assets::playerBust(info.archetype, info.sideHome);
-    if (!bust.isNull())
-        m_portrait->setPixmap(bust.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    // Header: the piece's face inside a team-colored ring (team color is
+    // applied at runtime, never baked into the face asset).
+    const QPixmap face = assets::playerFace(info.position, info.race);
+    if (!face.isNull()) {
+        QPixmap canvas(64, 64);
+        canvas.fill(Qt::transparent);
+        {
+            QPainter painter(&canvas);
+            painter.setRenderHint(QPainter::Antialiasing);
+            const QColor ring = teamColor(info.teamName, info.sideHome);
+            painter.setPen(QPen(ring, 3));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(QRectF(4, 4, 56, 56));
+            painter.drawPixmap(QRectF(8, 8, 48, 48), face,
+                               QRectF(0, 0, face.width(), face.height()));
+        }
+        m_portrait->setPixmap(canvas);
+    }
     m_nameLabel->setText(info.name);
     QString sub;
     if (info.number > 0)

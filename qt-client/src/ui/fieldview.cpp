@@ -33,6 +33,28 @@ void FieldView::setAwayTeamName(const QString &name)
     update();
 }
 
+void FieldView::setHomeColor(const QColor &color)
+{
+    m_homeColor = color;
+    update();
+}
+
+void FieldView::setAwayColor(const QColor &color)
+{
+    m_awayColor = color;
+    update();
+}
+
+void FieldView::setHomeRace(const QString &race)
+{
+    m_homeRace = race;
+}
+
+void FieldView::setAwayRace(const QString &race)
+{
+    m_awayRace = race;
+}
+
 void FieldView::setPlayers(const QVector<PlayerToken> &home,
                            const QVector<PlayerToken> &away)
 {
@@ -187,36 +209,41 @@ void FieldView::paintEvent(QPaintEvent *)
     }
 
     // --- Player tokens -------------------------------------------------------
-    // Fantasy mini busts (procedural assets) with a number badge; a plain
-    // colored ellipse is the fallback when the assets are not available.
+    // Team-colored circle (runtime, per home/away) + the piece's cartoon
+    // face on top, with a number badge. A plain circle is the fallback when
+    // the face assets are missing.
     const auto drawTeam = [this, &p, cellW, cellH](const QVector<PlayerToken> &players,
-                                                   bool sideHome, const QColor &fallback) {
+                                                   bool sideHome) {
+        const QColor team = sideHome ? m_homeColor : m_awayColor;
+        const QColor teamDark = team.darker(150);
         const qreal s = qMin(cellW, cellH) * 0.92;
         for (const PlayerToken &t : players) {
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
                 continue; // box coordinate / off field
             const QRectF c = cellRect(t.x, t.y);
             const bool down = (t.state == 3 || t.state == 4 || t.state == 5 || t.state == 11);
-            const QRectF token(c.center().x() - s / 2, c.center().y() - s / 2, s, s);
+            const QPointF ctr = c.center();
 
-            const QPixmap pm = assets::playerBust(t.archetype, sideHome);
-            const QRectF src(0, 0, pm.width(), pm.height());
+            // Team-colored circle behind the face.
+            QRectF circ(ctr.x() - s * 0.5, ctr.y() - s * 0.5, s, s);
+            if (down) {
+                circ = QRectF(ctr.x() - s * 0.55, ctr.y() - s * 0.28, s * 1.1, s * 0.56);
+            }
+            p.setPen(QPen(teamDark, 1.6));
+            p.setBrush(team);
+            p.drawEllipse(circ);
+
+            // Face on top (slightly inset from the circle). Custom-named
+            // star pieces fall back to the side's race representative.
+            const QString race = sideHome ? m_homeRace : m_awayRace;
+            const QPixmap pm = assets::playerFace(t.positionName, race);
             if (!pm.isNull()) {
+                const qreal fs = s * 0.82;
+                QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
                 if (down) {
-                    // Prone / stunned / KO: squashed bust
-                    const QRectF flat(c.center().x() - s * 0.55, c.center().y() - s * 0.24,
-                                      s * 1.1, s * 0.5);
-                    p.drawPixmap(flat, pm, src);
-                } else {
-                    p.drawPixmap(token, pm, src);
+                    face = QRectF(ctr.x() - fs * 0.58, ctr.y() - fs * 0.27, fs * 1.16, fs * 0.54);
                 }
-            } else {
-                p.setPen(QPen(QColor(0, 0, 0, 180), 1.5));
-                p.setBrush(fallback);
-                p.drawEllipse(down ? QRectF(token.center().x() - token.width() * 0.55,
-                                             token.center().y() - token.height() * 0.28,
-                                             token.width() * 1.1, token.height() * 0.56)
-                                   : token);
+                p.drawPixmap(face, pm, QRectF(0, 0, pm.width(), pm.height()));
             }
 
             // Acting player: thin white ring
@@ -254,8 +281,8 @@ void FieldView::paintEvent(QPaintEvent *)
         }
     };
 
-    drawTeam(m_homePlayers, true, QColor(0x4a, 0x7c, 0x3f));
-    drawTeam(m_awayPlayers, false, QColor(0xc4, 0xa3, 0x5a));
+    drawTeam(m_homePlayers, true);
+    drawTeam(m_awayPlayers, false);
 
     // --- Selection ring (drawn last so it is always visible) -----------------
     if (!m_selectedPlayer.isEmpty()) {

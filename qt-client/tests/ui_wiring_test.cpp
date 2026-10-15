@@ -336,10 +336,36 @@ void UiWiringTest::talkAndJoinPopulateChatAndSpectators()
 void UiWiringTest::assetsLoad()
 {
     QVERIFY(assets::isAvailable());
-    for (int arch = 0; arch < 5; ++arch) {
-        QVERIFY(!assets::playerBust(arch, true).isNull());
-        QVERIFY(!assets::playerBust(arch, false).isNull());
-    }
+    // Faces: exact roster names (case-insensitive), slug fallback, and the
+    // generic fallback for unknown pieces.
+    const QStringList rosterNames = { QStringLiteral("Zombie Lineman"),
+                                      QStringLiteral("Werewolf"),
+                                      QStringLiteral("Ogre"),
+                                      QStringLiteral("Troll Slayer"),
+                                      QStringLiteral("Dark Elf Assassin"),
+                                      QStringLiteral("Kroxigor"),
+                                      QStringLiteral("Minotaur"),
+                                      QStringLiteral("'Ooligan"),
+                                      QStringLiteral("Altern Forest Treeman") };
+    for (const QString &n : rosterNames)
+        QVERIFY2(!assets::playerFace(n).isNull(), qPrintable(n));
+    QVERIFY(!assets::playerFace(QStringLiteral("OGRE")).isNull()); // case
+    QVERIFY(!assets::playerFace(QStringLiteral("Totally Unknown Piece"))
+                 .isNull()); // generic face
+    // Custom-named star pieces fall back to the race representative face.
+    const QPixmap star =
+        assets::playerFace(QStringLiteral("Count Luthor von Drakenborg"),
+                           QStringLiteral("Vampire"));
+    const QPixmap raceRep = assets::playerFace(QStringLiteral("Vampire Runner"));
+    QVERIFY(!star.isNull());
+    QCOMPARE(star.size(), raceRep.size());
+    QCOMPARE(assets::playerFace(QStringLiteral("Crumbleberry"),
+                                 QStringLiteral("Old World Alliance"))
+                 .size(),
+             assets::playerFace(QStringLiteral("Human Lineman")).size());
+    QCOMPARE(assets::faceSlug(QStringLiteral("Zombie Lineman")),
+             QStringLiteral("zombie_lineman"));
+    QCOMPARE(assets::faceSlug(QStringLiteral("Wraith")), QStringLiteral("wraith"));
     // skill icons (known + fallback)
     QVERIFY(!assets::skillPixmap(QStringLiteral("Dodge")).isNull());
     QVERIFY(!assets::skillPixmap(QStringLiteral("Knockdown")).isNull());

@@ -35,3 +35,9 @@ memory-bank/project-insights.md
 
 # Qt client build artifacts
 qt-client/build/
+
+# Face generation work area (references, staging, logs) - not committed
+faces-work/
+
+# Local art reference
+Esempio facce.png

@@ -1,0 +1,127 @@
+Altern Forest Treeman	altern_forest_treeman
+Beastmen Lineman	beastmen_lineman
+Beer Boar	beer_boar
+Big Un Blocker	big_un_blocker
+Black Orc	black_orc
+Bloater	bloater
+Bloodborn Marauder	bloodborn_marauder
+Bloodseeker	bloodseeker
+Bloodspawn	bloodspawn
+Bodyguard	bodyguard
+Bomma	bomma
+Bretonnian Knight Catcher	bretonnian_knight_catcher
+Bretonnian Knight Thrower	bretonnian_knight_thrower
+Bretonnian Squire	bretonnian_squire
+Bull Centaur	bull_centaur
+Chameleon Skink	chameleon_skink
+Chaos Chosen	chaos_chosen
+Chaos Dwarf Blocker	chaos_dwarf_blocker
+Dark Elf Assassin	dark_elf_assassin
+Dark Elf Blitzer	dark_elf_blitzer
+Dark Elf Lineman	dark_elf_lineman
+Dark Elf Runner	dark_elf_runner
+Deathroller	deathroller
+Doom Diver	doom_diver
+Dragon Prince	dragon_prince
+Dwarf Blitzer	dwarf_blitzer
+Dwarf Lineman	dwarf_lineman
+Dwarf Runner	dwarf_runner
+Eagle Warrior	eagle_warrior
+Elf Blitzer	elf_blitzer
+Elf Catcher	elf_catcher
+Elf Lineman	elf_lineman
+Elf Thrower	elf_thrower
+Fanatic	fanatic
+Flamesmith	flamesmith
+Flesh Golem	flesh_golem
+Fun-hoppa	fun_hoppa
+Fungus Flinga	fungus_flinga
+Ghoul Runner	ghoul_runner
+Gnoblar Lineman	gnoblar_lineman
+Gnome Beastmaster	gnome_beastmaster
+Gnome Illusionist	gnome_illusionist
+Gnome Lineman	gnome_lineman
+Goblin Bruiser	goblin_bruiser
+Goblin Lineman	goblin_lineman
+Grail Knight	grail_knight
+Gutter Runner	gutter_runner
+Halfling Catcher	halfling_catcher
+Halfling Hefty	halfling_hefty
+Halfling Hopeful	halfling_hopeful
+High Elf Lineman	high_elf_lineman
+Hobgoblin Lineman	hobgoblin_lineman
+Human Blitzer	human_blitzer
+Human Catcher	human_catcher
+Human Lineman	human_lineman
+Human Thrower	human_thrower
+Imperial Retainer	imperial_retainer
+Imperial Thrower	imperial_thrower
+Jaguar Warrior	jaguar_warrior
+Khorngor	khorngor
+Kroxigor	kroxigor
+Loony	loony
+Loren Forest Treeman	loren_forest_treeman
+Minotaur	minotaur
+Mummy	mummy
+Noble Blitzer	noble_blitzer
+Norse Berserker	norse_berserker
+Norse Raider	norse_raider
+Ogre	ogre
+Ogre Blocker	ogre_blocker
+Ogre Runt Punter	ogre_runt_punter
+'Ooligan	ooligan
+Orc Blitzer	orc_blitzer
+Orc Lineman	orc_lineman
+Orc Thrower	orc_thrower
+Pestigor	pestigor
+Phoenix Warrior	phoenix_warrior
+Piranha Warrior	piranha_warrior
+Pogoer	pogoer
+Pump Wagon	pump_wagon
+Python Warrior	python_warrior
+Rat Ogre	rat_ogre
+Renegade Dark Elf	renegade_dark_elf
+Renegade Goblin	renegade_goblin
+Renegade Human	renegade_human
+Renegade Human Thrower	renegade_human_thrower
+Renegade Orc	renegade_orc
+Renegade Skaven	renegade_skaven
+Rotspawn	rotspawn
+Rotter Lineman	rotter_lineman
+Saurus Blocker	saurus_blocker
+Skaven Blitzer	skaven_blitzer
+Skaven Clanrat	skaven_clanrat
+Skaven Thrower	skaven_thrower
+Skeleton Lineman	skeleton_lineman
+Skink Lineman	skink_lineman
+Slann Blitzer	slann_blitzer
+Slann Catcher	slann_catcher
+Slann Lineman	slann_lineman
+Sneaky Stabba	sneaky_stabba
+Snotling Lineman	snotling_lineman
+Stilty Runna	stilty_runna
+Thrall Lineman	thrall_lineman
+Tomb Guardian	tomb_guardian
+Tomb Kings Blitzer	tomb_kings_blitzer
+Tomb Kings Thrower	tomb_kings_thrower
+Trained Troll	trained_troll
+Troll	troll
+Troll Slayer	troll_slayer
+Ulfwerener	ulfwerener
+Valkyrie	valkyrie
+Vampire Blitzer	vampire_blitzer
+Vampire Runner	vampire_runner
+Vampire Thrower	vampire_thrower
+Vargheist	vargheist
+Wardancer	wardancer
+Werewolf	werewolf
+White Lion	white_lion
+Wight Blitzer	wight_blitzer
+Witch Elf	witch_elf
+Wood Elf Catcher	wood_elf_catcher
+Wood Elf Lineman	wood_elf_lineman
+Wood Elf Thrower	wood_elf_thrower
+Woodland Fox	woodland_fox
+Wraith	wraith
+Yhetee	yhetee
+Zombie Lineman	zombie_lineman

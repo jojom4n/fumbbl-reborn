@@ -18,6 +18,8 @@ QString s_dir;
 bool s_dirResolved = false;
 QHash<QString, QString> s_skillSlugs; // lowercased name -> slug
 QHash<QString, QString> s_cardSlugs;
+QHash<QString, QString> s_faceSlugs; // lowercased position name -> slug
+QHash<QString, QString> s_raceSlugs; // lowercased race name -> representative slug
 QHash<QString, QPixmap> s_cache; // file path -> pixmap
 
 void loadMap(const QString &path, QHash<QString, QString> &map)
@@ -43,7 +45,7 @@ const QString &dir()
 #ifdef FUMBBL_ASSETS_DIR
         {
             QDir d(QStringLiteral(FUMBBL_ASSETS_DIR));
-            if (d.exists(QStringLiteral("players")))
+            if (d.exists(QStringLiteral("faces")))
                 s_dir = d.absolutePath();
         }
 #endif
@@ -54,7 +56,7 @@ const QString &dir()
             };
             for (const QString &c : candidates) {
                 QDir d(c);
-                if (d.exists(QStringLiteral("players"))) {
+                if (d.exists(QStringLiteral("faces"))) {
                     s_dir = d.absolutePath();
                     break;
                 }
@@ -71,6 +73,8 @@ bool ensureMaps()
         done = true;
         loadMap(dir() + QStringLiteral("/skill_names.txt"), s_skillSlugs);
         loadMap(dir() + QStringLiteral("/card_names.txt"), s_cardSlugs);
+        loadMap(dir() + QStringLiteral("/faces.txt"), s_faceSlugs);
+        loadMap(dir() + QStringLiteral("/race_faces.txt"), s_raceSlugs);
     }
     return true;
 }
@@ -86,6 +90,27 @@ QPixmap loadPixmap(const QString &relPath)
         pm.load(path);
     s_cache.insert(path, pm);
     return pm;
+}
+
+// Slugify: lowercase, non-alphanumerics -> '_', trimmed. ('Ooligan -> ooligan,
+// "Altern Forest Treeman" -> altern_forest_treeman)
+QString slugify(const QString &name)
+{
+    QString out;
+    bool pendingSep = false;
+    for (const QChar ch : name.toLower()) {
+        if (ch.isLetterOrNumber()) {
+            if (!pendingSep && !out.isEmpty())
+                out.append(QLatin1Char('_'));
+            out.append(ch);
+            pendingSep = false;
+        } else {
+            pendingSep = true;
+        }
+    }
+    while (out.endsWith(QLatin1Char('_')))
+        out.chop(1);
+    return out;
 }
 
 } // namespace
@@ -107,16 +132,33 @@ QString cardIconSlug(const QString &cardName)
     return s_cardSlugs.value(cardName.toLower(), QStringLiteral("generic"));
 }
 
-QPixmap playerBust(int archetype, bool home)
+QString faceSlug(const QString &positionName)
 {
-    if (archetype < 0 || archetype > 4)
-        archetype = 0;
-    static const QStringList names = { QStringLiteral("blocker"), QStringLiteral("runner"),
-                                       QStringLiteral("blitzer"), QStringLiteral("catcher"),
-                                       QStringLiteral("thrower") };
-    return loadPixmap(QStringLiteral("players/%1_%2.png")
-                          .arg(names[archetype])
-                          .arg(home ? QStringLiteral("home") : QStringLiteral("away")));
+    ensureMaps();
+    const QString key = positionName.trimmed().toLower();
+    const auto it = s_faceSlugs.constFind(key);
+    if (it != s_faceSlugs.constEnd())
+        return it.value();
+    const QString slug = slugify(positionName);
+    if (!slug.isEmpty() && QFile::exists(dir() + QStringLiteral("/faces/") + slug
+                                                  + QStringLiteral(".png")))
+        return slug;
+    return QStringLiteral("human_lineman"); // generic
+}
+
+QPixmap playerFace(const QString &positionName, const QString &raceHint)
+{
+    const QString slug = faceSlug(positionName);
+    QPixmap pm = loadPixmap(QStringLiteral("faces/%1.png").arg(slug));
+    if (pm.isNull() && !raceHint.trimmed().isEmpty()) {
+        // Custom-named star piece: use the race's representative face.
+        const QString raceSlug = s_raceSlugs.value(raceHint.trimmed().toLower());
+        if (!raceSlug.isEmpty())
+            pm = loadPixmap(QStringLiteral("faces/%1.png").arg(raceSlug));
+    }
+    if (pm.isNull() && slug != QStringLiteral("human_lineman"))
+        pm = loadPixmap(QStringLiteral("faces/human_lineman.png"));
+    return pm;
 }
 
 QPixmap skillPixmap(const QString &skillName)
@@ -131,7 +173,7 @@ QPixmap cardPixmap(const QString &cardName)
 
 bool isAvailable()
 {
-    return !playerBust(0, true).isNull();
+    return !playerFace(QStringLiteral("Ogre")).isNull();
 }
 
 } // namespace assets

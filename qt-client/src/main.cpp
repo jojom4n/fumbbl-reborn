@@ -54,9 +54,12 @@ int main(int argc, char *argv[])
     // while and quits with exit code 0 if the event loop stayed healthy.
     // --screenshot <file>: saves a PNG of the window before quitting (used
     // together with QT_QPA_PLATFORM=offscreen to verify the layout).
+    // --demo <fixture.json>: load a captured serverGameState into the UI.
+    //   Interactive by itself (the window stays open); combined with
+    //   --screenshot it quits after capturing the image.
     bool smoke = app.arguments().contains("--smoke");
     QString screenshotPath;
-    QString demoPath; // --demo <fixture.json>: load a serverGameState capture
+    QString demoPath;
     const auto args = app.arguments();
     const int shotIdx = args.indexOf("--screenshot");
     if (shotIdx >= 0 && shotIdx + 1 < args.size())
@@ -65,30 +68,33 @@ int main(int argc, char *argv[])
     if (demoIdx >= 0 && demoIdx + 1 < args.size())
         demoPath = args.at(demoIdx + 1);
 
-    if (smoke || !screenshotPath.isEmpty() || !demoPath.isEmpty()) {
-        QTimer::singleShot(1200, &app, [&app, &window, screenshotPath, demoPath]() {
-            if (!demoPath.isEmpty()) {
-                QFile f(demoPath);
-                if (f.open(QIODevice::ReadOnly)) {
-                    const QJsonObject game =
-                        QJsonDocument::fromJson(f.readAll())
-                            .object()
-                            .value(QStringLiteral("game"))
-                            .toObject();
-                    if (!game.isEmpty())
-                        window.onGameState(game);
-                }
-                // Select the acting player (or the first on-field one) so the
-                // Player Info panel renders real data in the screenshot.
-                GameModel *m = window.model();
-                if (m && m->isInitialized()) {
-                    QString id = m->activePlayerId();
-                    if (id.isEmpty() && !m->fieldTokens().isEmpty())
-                        id = m->fieldTokens().first().playerId;
-                    if (!id.isEmpty())
-                        window.selectPlayer(id);
-                }
-            }
+    const auto loadDemo = [&window, demoPath]() {
+        QFile f(demoPath);
+        if (f.open(QIODevice::ReadOnly)) {
+            const QJsonObject game =
+                QJsonDocument::fromJson(f.readAll())
+                    .object()
+                    .value(QStringLiteral("game"))
+                    .toObject();
+            if (!game.isEmpty())
+                window.onGameState(game);
+        }
+        // Select the acting player (or the first on-field one) so the
+        // Player Info panel renders real data.
+        GameModel *m = window.model();
+        if (m && m->isInitialized()) {
+            QString id = m->activePlayerId();
+            if (id.isEmpty() && !m->fieldTokens().isEmpty())
+                id = m->fieldTokens().first().playerId;
+            if (!id.isEmpty())
+                window.selectPlayer(id);
+        }
+    };
+    if (!demoPath.isEmpty())
+        loadDemo();
+
+    if (smoke || !screenshotPath.isEmpty()) {
+        QTimer::singleShot(1200, &app, [&app, &window, screenshotPath]() {
             if (!screenshotPath.isEmpty())
                 window.grab().save(screenshotPath);
             app.quit();

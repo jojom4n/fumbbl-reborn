@@ -42,7 +42,7 @@ private slots:
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void staticHelpers();
-    void playerArchetypes();
+    void positionNames();
 };
 
 namespace {
@@ -352,26 +352,30 @@ void GameModelTest::staticHelpers()
     QCOMPARE(GameModel::stateFlags(1 | 0x200 | 0x400).size(), 2);
 }
 
-void GameModelTest::playerArchetypes()
+void GameModelTest::positionNames()
 {
-    auto check = [](const QStringList &keywords, int expected) {
-        FFBPlayer p;
-        p.positionKeywords = keywords;
-        QCOMPARE(GameModel::playerArchetype(p), expected);
-    };
-    check({QStringLiteral("Blitzer"), QStringLiteral("Runner")}, 2);
-    check({QStringLiteral("Thrower")}, 4);
-    check({QStringLiteral("Catcher")}, 3);
-    check({QStringLiteral("Runner")}, 1);
-    check({QStringLiteral("Blocker")}, 0);
-    check({}, 0);
-    // live fixture: every on-field player got an archetype from their position
+    // Live players carry only a positionId; the model must resolve the
+    // roster position name (it is the face-lookup key).
     GameModel m;
     QVERIFY(m.initialize(loadLiveFixtureGame()));
+    bool sawName = false;
+    for (const FFBPlayer &p : m.rosterHome())
+        if (!p.position.isEmpty())
+            sawName = true;
+    QVERIFY(sawName);
+    // Necromantic Horror fixture: the position names are the real piece
+    // names ("Zombie Lineman", "Werewolf", ...) — exactly what faces.txt
+    // is keyed by.
+    QStringList have;
+    for (const FFBPlayer &p : m.rosterHome())
+        have << p.position;
+    QVERIFY(have.contains(QStringLiteral("Zombie Lineman")));
+    QVERIFY(have.contains(QStringLiteral("Werewolf")));
+    // Every on-field token carries its position name.
     const auto tokens = m.fieldTokens();
     QVERIFY(!tokens.isEmpty());
     for (const FieldToken &t : tokens)
-        QVERIFY(t.archetype >= 0 && t.archetype <= 4);
+        QVERIFY(!t.positionName.isEmpty());
 }
 
 QTEST_MAIN(GameModelTest)

@@ -276,6 +276,12 @@ void MainWindow::setTeams(const QString &homeName, const QString &awayName)
     m_header->setTeams(homeName, awayName);
     m_field->setHomeTeamName(homeName);
     m_field->setAwayTeamName(awayName);
+    m_field->setHomeColor(PlayerInfoWidget::teamColor(homeName, true));
+    m_field->setAwayColor(PlayerInfoWidget::teamColor(awayName, false));
+    if (m_model) {
+        m_field->setHomeRace(m_model->teamHomeRace());
+        m_field->setAwayRace(m_model->teamAwayRace());
+    }
     m_homeRoster->setTeamName(tr("%1 (Home)").arg(homeName));
     m_awayRoster->setTeamName(tr("%1 (Away)").arg(awayName));
 }
@@ -355,7 +361,7 @@ void MainWindow::applyModelToUi()
         pt.state = t.state;
         pt.name = t.name;
         pt.playerId = t.playerId;
-        pt.archetype = t.archetype;
+        pt.positionName = t.positionName;
         pt.isActing = t.isActing;
         (t.sideHome ? homeTokens : awayTokens).append(pt);
     }
@@ -516,7 +522,6 @@ void MainWindow::selectPlayer(const QString &playerId)
     d.ag = p->ag;
     d.pa = p->pa;
     d.av = p->av;
-    d.archetype = GameModel::playerArchetype(*p);
     d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
     if (p->hasCoords) {

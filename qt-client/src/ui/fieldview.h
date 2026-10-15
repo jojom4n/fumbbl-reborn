@@ -24,7 +24,7 @@ public:
         int state = 1;      // ffb PlayerState (1=standing; 3=prone, 4=stunned, ...)
         QString name;       // display name (for tooltips)
         QString playerId;   // server id (for selection)
-        int archetype = 0;  // bust: 0 blocker, 1 runner, 2 blitzer, 3 catcher, 4 thrower
+        QString positionName; // "Ogre", "Zombie Lineman", ... (face lookup)
         bool isActing = false;
     };
 
@@ -32,6 +32,13 @@ public:
 
     void setHomeTeamName(const QString &name);
     void setAwayTeamName(const QString &name);
+    // Team colors: the colored circle behind each face is drawn at runtime
+    // (home/away), never baked into the face assets.
+    void setHomeColor(const QColor &color);
+    void setAwayColor(const QColor &color);
+    // Team races: used for the face fallback of custom-named star pieces.
+    void setHomeRace(const QString &race);
+    void setAwayRace(const QString &race);
     void setPlayers(const QVector<PlayerToken> &home, const QVector<PlayerToken> &away);
     void setBall(int x, int y, bool inPlay);
     void setTurn(int turn);
@@ -66,6 +73,10 @@ private:
 
     QString m_homeName = QStringLiteral("Team 1");
     QString m_awayName = QStringLiteral("Team 2");
+    QColor m_homeColor{0xc8, 0x96, 0x3c}; // gold
+    QColor m_awayColor{0x4a, 0x6a, 0xb8}; // blue
+    QString m_homeRace;
+    QString m_awayRace;
     QVector<PlayerToken> m_homePlayers;
     QVector<PlayerToken> m_awayPlayers;
     int m_ballX = 13;

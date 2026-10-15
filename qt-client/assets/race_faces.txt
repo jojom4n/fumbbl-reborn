@@ -1,0 +1,32 @@
+Amazon	eagle_warrior
+Black Orc	black_orc
+Bretonnian	bretonnian_knight_catcher
+Chaos Chosen	chaos_chosen
+Chaos Dwarf	chaos_dwarf_blocker
+Chaos Renegade	renegade_human
+Dark Elf	dark_elf_lineman
+Dwarf	dwarf_lineman
+Elven Union	elf_lineman
+Gnome	gnome_lineman
+Goblin	goblin_lineman
+Halfling	halfling_hopeful
+High Elf	high_elf_lineman
+Human	human_lineman
+Imperial Nobility	imperial_retainer
+Khorne	bloodborn_marauder
+Lizardman	skink_lineman
+Lizardmen	skink_lineman
+Necromantic Horror	zombie_lineman
+Norse	norse_raider
+Nurgle	rotter_lineman
+Ogre	ogre_blocker
+Old World Alliance	human_lineman
+Orc	orc_lineman
+Shambling Undead	skeleton_lineman
+Skaven	skaven_clanrat
+Snotling	snotling_lineman
+Tomb Kings	tomb_kings_thrower
+Underworld Denizens	goblin_lineman
+Vampire	vampire_runner
+Wood Elf	wood_elf_lineman
+Slann	slann_lineman
