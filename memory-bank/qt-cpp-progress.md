@@ -412,3 +412,98 @@ with `javac -sourcepath ffb-common/src/main/java` for cross-checks.
 - Qt 6.12 gotchas hit: `QPixmap::load(QFile*)` removed; no
   `drawPixmap(QRectF, QPixmap)` 2-arg overload (use 3-arg with source rect);
   `QListWidgetItem` has no `setIconSize` (it's on the view).
+
+## ✅ DONE 14/ott — Phase 9: per-piece faces, all 31 BB2025 races (d7f3209)
+The user REJECTED the phase-8 approach (5 archetype busts): the deliverable is
+ONE FACE per named roster piece of every BB2025 race (127 unique pieces), in
+the style of `Esempio facce.png` (chibi fantasy miniature, dramatic rim
+lighting, dark background), **face only** (no shoulders/pedestal/props) because
+each face sits in a square frame in the player's field cell. Team color is a
+RUNTIME ring behind the face, never baked into the asset.
+
+- **Rosters**: all 31 BB2025 team rosters extracted from dadidimerda.it
+  (warhammer-community tier-list PDF + JSON-LD) →
+  `faces-work/bb2025_rosters.json`. 127 unique deduped pieces; shared
+  creatures (Ogre, Minotaur, Troll, Treeman, Rat Ogre, Ghoul/Wight...) get ONE
+  canonical face reused by every team that fields them.
+- **Assets (committed)**: `qt-client/assets/faces/<slug>.png` (127) +
+  `qt-client/assets/faces.txt` (Name<TAB>slug, 127) +
+  `qt-client/assets/race_faces.txt` (race → representative slug, 32 lines).
+- **Lookup** (`assets.cpp`): `playerFace(positionName, raceHint)` — exact
+  position-name match (case-insensitive) → race representative (covers custom
+  star names like "Count Luthor von Drakenborg") → generic human. `faceSlug()`
+  exposes the slug for tests.
+- **UI**: FieldView draws a runtime team-colored circle behind the face
+  (`setHomeColor/setAwayColor` + `setHomeRace/setAwayRace`); PlayerInfoWidget
+  draws the face in a deterministic team-colored ring; MainWindow feeds the
+  model's team races. `GameModel::FieldToken` carries `positionName` (not
+  archetype); `playerArchetype()` removed from model/UI.
+- **Generation pipeline** (see next section for the ComfyUI details): prompts
+  written per piece AFTER reviewing each piece's miniature (SearXNG refs in
+  `faces-work/refs*`, team montages in `faces-work/montages/`), then rendered
+  with the local ComfyUI (CPU-offloaded) + Blood_bowl LoRA.
+
+## ✅ DONE 15/ott — Phase 10: fullscreen field + transparent overlay HUD (f7f84b5)
+User requirements: field rendered much larger (fullscreen), NO white side
+stripes, panels TOTALLY transparent (title bar included) and overlaid on the
+field, still resizable + drag-and-drop, and "Reset Layout" must restore the
+DEFAULT SIZES (the old QDS reset only restored positions).
+
+Decision: QDS floating windows are separate top-levels (Wayland z-order is
+compositor-controlled → the field could end up above the panels). The HUD is
+now a SINGLE window:
+- `FieldView` fills the whole central "stage" widget — `fieldRect()` = full
+  widget rect, no margins (cells follow the window aspect). Window opens
+  maximized.
+- New `src/ui/panel.{h,cpp}` `FloatingPanel`: child of the stage,
+  `WA_TranslucentBackground`, painted ~90%-opaque dark rounded rect + 1px
+  border + accent top line (home green / away gold / neutral). Title strip
+  (26px) = drag zone (clamped so 60px of title stays reachable); 6px edge
+  zones resize on left/right/bottom + corners (min 200x120, clamped to stage);
+  × button hides the panel; `raise()` on press.
+- Panels: home roster, away roster, player info, dice log, chat, protocol log.
+  Default geometry is relative to the stage size; applied on the FIRST stage
+  resize (event filter on the stage — a `show()` before the top-level is shown
+  does not make `isVisible()` true, so the one-shot must wait for the first
+  sizing). Clamped on every later stage resize.
+- Persistence: small JSON `{"panels":{name:{x,y,w,h,v}}}` in QSettings key
+  `mainwindow/panelLayout` (supersedes the old QDS XML key). Reset Layout →
+  `resetLayout()` (public, testable) → default geometry + all visible.
+  closeEvent never persists an all-hidden state (footgun: a saved
+  all-hidden layout traps the user in an empty HUD — this actually happened
+  during development).
+- QDS is no longer linked into `fumbbl-qt`/tests (submodule kept, untouched,
+  still buildable).
+- **Test** `ui_wiring_test::panelLayoutPersistAndReset`: default layout lands
+  after first sizing; user move+resize; `resetLayout()` restores the EXACT
+  default geometry (position AND size); `savedLayout()/restoreLayout()`
+  round-trips the user's size. `cellCenter` in the tests updated to the
+  margin-less field math. ctest 3/3.
+
+## Phase 9 generation pipeline (faces-work/, git-ignored)
+- ComfyUI: local install `/home/saruman/ComfyUI-Installs/ComfyUI/ComfyUI`,
+  MUST run CPU-offloaded (the assistant's llama-server owns the GPU):
+  `./.venv/bin/python main.py --listen 127.0.0.1 --port 8188 --disable-auto-launch --cpu --extra-model-paths-config /home/saruman/.local/share/comfyui-desktop-2/shared_model_paths.yaml`
+- Models (shared dir): `z_image_turbo_int8_convrot.safetensors` (UNET) +
+  `qwen_3_4b.safetensors` (CLIP, type `qwen_image`) + `ae.safetensors` (VAE) +
+  `Blood_bowl.safetensors` LoRA @ 0.75. KSampler: 9 steps, cfg 1.0, euler,
+  beta. 512x512 ≈ 3 min/face on CPU (1024 ≈ 7+ min; 512 is enough for tokens).
+- Scripts (persistent, in `faces-work/`):
+  - `face_prompts.py` — the 127 per-piece prompts (species carries the race
+    language; the piece gets its own hair/expression/eyes/one identity accent;
+    shared creatures keep one canonical look).
+  - `gen_faces_batch.py` — resumable batch (staging in `faces-work/staging/`,
+    log `gen.log`, MD5-derived deterministic seeds per slug, retries).
+  - `wf_base.json` — base workflow template.
+  - `collect_refs.py` / `slow_retry_refs.py` — SearXNG miniature references
+    into `refs/` (SearXNG at 192.168.0.2:8032; JSON image fields `img_src` or
+    `thumbnail`; queries `blood bowl <piece> miniature`; slow_retry paces to
+    survive rate limits).
+  - `make_montages.py` — per-team contact sheets in `montages/` (used to
+    review each race's visual language before writing prompts).
+  - `sync.sh` — every 120s copies new `staging/*.png` into
+    `qt-client/assets/faces/` (cp -n) so the client picks up faces live.
+- **Workflow for NEW/REDO faces**: restart ComfyUI if down → edit prompt in
+  `face_prompts.py` → run batch (skips existing slugs; delete the staging PNG
+  to force a redo) → review in staging → sync.sh picks it up → screenshot the
+  client with `--demo tests/liveGameState_fixture.json --screenshot`.
