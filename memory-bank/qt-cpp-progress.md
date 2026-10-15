@@ -507,3 +507,20 @@ now a SINGLE window:
   `face_prompts.py` → run batch (skips existing slugs; delete the staging PNG
   to force a redo) → review in staging → sync.sh picks it up → screenshot the
   client with `--demo tests/liveGameState_fixture.json --screenshot`.
+
+## ✅ DONE 15/ott (notte) — Phase 9 final batch + HUD restore fix
+- **Batch completo: 127/127, zero failures** (gen.log: "BATCH DONE"). All
+  faces reviewed on 5 team-grouped montages (faces-work/montages/final_*.png):
+  every piece within a race is distinct (7 goblins, 4 skavens, 6 Norse,
+  5 dwarfs, 5 dark elves, 4+4 humans/elves...), shared creatures canonical.
+  Committed as `e3feeac` (the 127 PNGs replaced the first-batch assets).
+- **Bug found & fixed (`0d1b32c`):** a saved layout was NOT restored — on the
+  first stage resize (top-level still mid-show) the View-menu action sync
+  read `panel->isVisible()` (false there) → `toggled(false)` →
+  `setVisible(false)` → every panel permanently hidden on every restore run.
+  Fresh/default layouts were unaffected, which hid the bug until a second
+  run. Fix: sync actions from the SAVED value with `blockSignals()`.
+  Regression test `ui_wiring_test::savedLayoutRestoredOnFirstShow` (12/12 UI
+  checks, ctest 3/3).
+- **sync.sh bug:** `cp -n` never overwrote the stale first-batch faces in the
+  client; switched to `cp -f` + immediate resync.
