@@ -121,16 +121,11 @@ void FieldView::mousePressEvent(QMouseEvent *event)
 
 QRectF FieldView::fieldRect() const
 {
-    const qreal margin = 10.0;
-    const qreal availW = width() - 2 * margin;
-    const qreal availH = height() - 2 * margin;
-    if (availW <= 0 || availH <= 0)
+    // The field stretches over the WHOLE widget (fullscreen HUD: no margins,
+    // no letterboxing stripes around it). Cells follow the window aspect.
+    if (width() <= 0 || height() <= 0)
         return QRectF();
-
-    const qreal cell = qMin(availW / kFieldWidth, availH / kFieldHeight);
-    const qreal w = cell * kFieldWidth;
-    const qreal h = cell * kFieldHeight;
-    return QRectF((width() - w) / 2.0, (height() - h) / 2.0, w, h);
+    return QRectF(0, 0, width(), height());
 }
 
 QRectF FieldView::cellRect(int x, int y) const

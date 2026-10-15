@@ -72,6 +72,8 @@ add_executable(fumbbl-qt
     src/ui/headerbar.cpp
     src/ui/playerinfowidget.h
     src/ui/playerinfowidget.cpp
+    src/ui/panel.h
+    src/ui/panel.cpp
 )
 
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -86,7 +88,6 @@ target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::WebSockets
-    ads::qtadvanceddocking
 )
 
 # -----------------------------------------------------------------------------

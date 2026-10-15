@@ -47,13 +47,13 @@ add_executable(ui_wiring_test
     ${CMAKE_SOURCE_DIR}/src/ui/dicelogwidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/chatwidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/playerinfowidget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/panel.cpp
 )
 target_include_directories(ui_wiring_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_definitions(ui_wiring_test PRIVATE
     FUMBBL_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 target_link_libraries(ui_wiring_test PRIVATE
     Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets
-    ads::qtadvanceddocking
 )
 add_test(NAME ui_wiring_test COMMAND $<TARGET_FILE:ui_wiring_test>)
 set_tests_properties(ui_wiring_test PROPERTIES

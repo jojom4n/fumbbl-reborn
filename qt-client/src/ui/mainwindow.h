@@ -1,24 +1,28 @@
 // =============================================================================
 // MainWindow — FUMBBL Reborn main window
 //
-// Office/VS-style layout:
-//   - Native menu bar (File / View / Help) with accelerators
-//   - Movable header toolbar (teams, score, turn, timer, spectators)
-//   - Central field widget (the "anchor")
-//   - Dockable panels: home roster (left), away roster (right),
-//     player info / dice log / chat (bottom). All dockable, floatable,
-//     tabbable, resizable — layout persistable via saveState()/restoreState().
+// HUD layout (phase 10):
+//   - The field fills the whole window (fullscreen, no side stripes).
+//   - Panels (rosters, player info, dice log, chat, protocol) are translucent
+//     FloatingPanels that overlay the field; they stay draggable (title strip)
+//     and resizable (edges) and can be hidden with × / re-shown from the View
+//     menu. Layout (positions AND sizes) is persisted and "Reset Layout"
+//     restores the default arrangement with default sizes.
+//   - Native menu bar (File / View / Help) + thin header toolbar on top.
 // =============================================================================
 #pragma once
 
 #include <QByteArray>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMainWindow>
+#include <QRect>
 
 class ChatWidget;
 class DiceLogWidget;
 class FieldView;
+class FloatingPanel;
 class GameModel;
 class QCloseEvent;
 class QPlainTextEdit;
@@ -28,11 +32,6 @@ class RosterWidget;
 class SpectatorSession;
 class QLabel;
 class QAction;
-
-namespace ads {
-class CDockManager;
-class CDockWidget;
-}
 
 class MainWindow : public QMainWindow
 {
@@ -53,10 +52,12 @@ public:
     void appendChat(const QString &sender, const QString &text);
     void appendProtocol(const QString &direction, const QString &text);
 
-    // Restore/dock layout persistence (QSettings-backed, phase 3).
-    // Backed by QDS saveState()/restoreState() (XML layout serialization).
+    // Panel layout persistence (JSON via QSettings, phase 10).
     QByteArray savedLayout() const;
     void restoreLayout(const QByteArray &state);
+    // Restore the default panel arrangement (positions AND sizes) — the
+    // "Reset Layout" action. Public so tests can verify the size-restore fix.
+    void resetLayout();
 
     // --- Core (spectator) -----------------------------------------------------
     // The game model (exposed for tests / tooling; the UI reads from it).
@@ -85,18 +86,25 @@ signals:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
     void createActions();
     void createMenus();
     void createToolbar();
-    void createDockManager();
     void createCentralWidget();
-    void createDockWidgets();
+    void createPanels();
     void createStatusBar();
 
-    // Dock layout persistence (QSettings-backed via QDS state).
-    void loadLayout();
+    // Panel layout (phase 10).
+    FloatingPanel *makePanel(const QString &name, const QString &title,
+                             QWidget *content, const QColor &accent);
+    void applyDefaultLayout();
+    void applySavedLayout(const QByteArray &state);
+    void clampPanelsToStage();
+    void onStageFirstSized();
+    QRect defaultGeometryFor(const QString &name) const;
+
     void onWsClosed(int code, const QString &reason);
     void onConnectRequested();
     void showPlayerInfo(int number, bool homeSide);
@@ -104,12 +112,14 @@ private:
     void onFieldPlayerClicked(const QString &playerId);
 
     QString m_selectedPlayerId; // the player shown in the Player Info panel
+    bool m_layoutApplied = false; // default/saved geometry applied once
 
     // Core
     SpectatorSession *m_session = nullptr;
     GameModel *m_model = nullptr;
 
     // Widgets
+    QWidget *m_stage = nullptr; // central container: field + overlay panels
     HeaderBar *m_header = nullptr;
     FieldView *m_field = nullptr;
     RosterWidget *m_homeRoster = nullptr;
@@ -118,27 +128,16 @@ private:
     DiceLogWidget *m_diceLog = nullptr;
     ChatWidget *m_chat = nullptr;
 
-    // Docking (QT Advanced Docking System)
-    ads::CDockManager *m_dockManager = nullptr; // central widget of the window
-
-    // Dock panels
-    ads::CDockWidget *m_fieldDock = nullptr; // central anchor (locked)
-    ads::CDockWidget *m_homeRosterDock = nullptr;
-    ads::CDockWidget *m_awayRosterDock = nullptr;
-    ads::CDockWidget *m_playerInfoDock = nullptr;
-    ads::CDockWidget *m_diceLogDock = nullptr;
-    ads::CDockWidget *m_chatDock = nullptr;
-    ads::CDockWidget *m_protocolDock = nullptr;
+    // Overlay panels (child of m_stage, floating over the field)
+    QHash<QString, FloatingPanel *> m_panels; // name -> panel
     QPlainTextEdit *m_protocolLog = nullptr;
-
-    // Default dock arrangement, remembered for the "Reset Layout" action.
-    QByteArray m_defaultLayout;
 
     // Actions
     QAction *m_connectAction = nullptr;
     QAction *m_disconnectAction = nullptr;
     QAction *m_quitAction = nullptr;
     QAction *m_resetLayoutAction = nullptr;
+    QHash<QString, QAction *> m_panelViewActions; // name -> View-menu action
 
     QLabel *m_statusLabel = nullptr;
     QLabel *m_connectionLabel = nullptr;

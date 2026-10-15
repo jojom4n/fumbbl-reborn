@@ -28,6 +28,7 @@
 #include "ui/fieldview.h"
 #include "ui/headerbar.h"
 #include "ui/mainwindow.h"
+#include "ui/panel.h"
 #include "ui/playerinfowidget.h"
 #include "ui/rosterwidget.h"
 
@@ -74,22 +75,27 @@ private slots:
     void gameTimeDrivesTimer();
     void talkAndJoinPopulateChatAndSpectators();
     void assetsLoad();
+    void panelLayoutPersistAndReset();
 };
 
 namespace {
-// Deterministic click point: resize the field to a fixed size and compute
-// the center of a cell with the SAME math as FieldView (10px margin, 26x15).
+// Deterministic click point: compute the center of a cell with the SAME math
+// as FieldView (the field now fills the whole widget, 26x15 cells, phase 10).
 QPoint cellCenter(const FieldView *field, int x, int y)
 {
-    const qreal margin = 10.0;
-    const qreal availW = field->width() - 2 * margin;
-    const qreal availH = field->height() - 2 * margin;
-    const qreal cell = qMin(availW / 26.0, availH / 15.0);
-    const qreal w = cell * 26.0;
-    const qreal h = cell * 15.0;
-    const qreal x0 = (field->width() - w) / 2.0;
-    const qreal y0 = (field->height() - h) / 2.0;
-    return QPoint(int(x0 + (x + 0.5) * cell), int(y0 + (y + 0.5) * cell));
+    const qreal cellW = field->width() / 26.0;
+    const qreal cellH = field->height() / 15.0;
+    return QPoint(int((x + 0.5) * cellW), int((y + 0.5) * cellH));
+}
+
+// The FloatingPanel that wraps `content` (the HUD overlay of phase 10).
+FloatingPanel *panelFor(QWidget *root, QWidget *content)
+{
+    const auto panels = root->findChildren<FloatingPanel *>();
+    for (FloatingPanel *p : panels)
+        if (p->contentWidget() == content)
+            return p;
+    return nullptr;
 }
 } // namespace
 
@@ -377,6 +383,51 @@ void UiWiringTest::assetsLoad()
     QVERIFY(!assets::cardPixmap(QStringLiteral("Rabbit's Foot")).isNull());
     QCOMPARE(assets::cardIconSlug(QStringLiteral("rabbit's foot")),
              QStringLiteral("rabbit_s_foot"));
+}
+
+void UiWiringTest::panelLayoutPersistAndReset()
+{
+    // Phase 10 HUD: the panels float over the field. Verify that:
+    //  1) the default layout is applied on the first sizing,
+    //  2) "Reset Layout" restores the default geometry (position AND size —
+    //     the old QDS-based reset lost the sizes),
+    //  3) savedLayout()/restoreLayout() round-trip the user's sizes.
+    QSettings settings;
+    settings.remove(QStringLiteral("mainwindow/panelLayout")); // no stale state
+
+    MainWindow w;
+    w.show();
+
+    RosterWidget *home = w.findChild<RosterWidget *>(QStringLiteral("roster_home"));
+    QVERIFY(home);
+    FloatingPanel *panel = panelFor(&w, home);
+    QVERIFY(panel);
+
+    // The default layout lands on the first stage resize.
+    QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 3000);
+    const QRect defaultGeom = panel->geometry();
+    QVERIFY(defaultGeom.width() >= FloatingPanel::kMinWidth);
+    QVERIFY(defaultGeom.height() >= FloatingPanel::kMinHeight);
+
+    // The user moves + resizes the panel...
+    QRect custom = defaultGeom;
+    custom.moveLeft(defaultGeom.x() + 120);
+    custom.setWidth(defaultGeom.width() + 90);
+    panel->setGeometry(custom);
+    QCOMPARE(panel->geometry(), custom);
+
+    // ... "Reset Layout" restores the default position AND size.
+    w.resetLayout();
+    QCOMPARE(panel->geometry(), defaultGeom);
+
+    // ... and the serialized state round-trips the user's size.
+    panel->setGeometry(custom);
+    const QByteArray state = w.savedLayout();
+    QVERIFY(!state.isEmpty());
+    QVERIFY(QString::fromUtf8(state).contains(QStringLiteral("\"w\"")));
+    panel->setGeometry(defaultGeom);
+    w.restoreLayout(state);
+    QCOMPARE(panel->geometry(), custom);
 }
 
 QTEST_MAIN(UiWiringTest)

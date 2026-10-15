@@ -1,21 +1,13 @@
 // =============================================================================
 // MainWindow — implementation
 //
-// Docking is provided by the QT Advanced Docking System (QDS, vendored in
-// third_party/QDS — used as-is, never modified):
-//   - ads::CDockManager is the central widget of the QMainWindow (it sets
-//     itself up automatically when its parent is a QMainWindow).
-//   - The Field is the central, LOCKED anchor (not closable/movable/floatable);
-//     its (empty) title bar is hidden via HideSingleCentralWidgetTitleBar.
-//   - Roster / Player Info / Dice Log / Chat / Protocol Log are regular
-//     CDockWidgets: dockable, floatable, tabbable, draggable.
-//   - Layout persistence uses QDS saveState()/restoreState() (XML).
+// HUD layout (phase 10): the field fills the whole window; the panels are
+// translucent FloatingPanels that float over it (draggable by their title
+// strip, resizable by their edges, hideable with ×). Layout persistence is a
+// small JSON (positions AND sizes) in QSettings; "Reset Layout" restores the
+// default arrangement with the default sizes.
 // =============================================================================
 #include "ui/mainwindow.h"
-
-#include "DockAreaWidget.h"
-#include "DockManager.h"
-#include "DockWidget.h"
 
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
@@ -25,12 +17,14 @@
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
 #include "ui/headerbar.h"
+#include "ui/panel.h"
 #include "ui/playerinfowidget.h"
 #include "ui/rosterwidget.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QEvent>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
@@ -38,12 +32,14 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QResizeEvent>
 #include <QSettings>
 #include <QStatusBar>
 
-// Version of the serialized layout. Bump when the dock set changes
-// incompatibly; QDS refuses to restore a state saved with a different version.
-static const int kLayoutStateVersion = 1;
+
+namespace {
+const QString kLayoutSettingsKey = QStringLiteral("mainwindow/panelLayout");
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -53,16 +49,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     createActions();
     createToolbar();
-    createDockManager();
     createCentralWidget();
-    createDockWidgets();
+    createPanels();
     createStatusBar();
-    createMenus(); // after the docks: the View menu uses their toggleViewAction()
+    createMenus(); // after the panels: the View menu toggles them
 
-    // Remember the default arrangement for the "Reset Layout" action, then
-    // restore the user's saved layout (if any) on top of it.
-    m_defaultLayout = m_dockManager->saveState(kLayoutStateVersion);
-    loadLayout();
+    // The window starts maximized so the field is as large as possible;
+    // the default/saved panel geometry is applied on the first stage resize
+    // (caught with an event filter), and clamped on every subsequent resize.
+    m_stage->installEventFilter(this);
+    showMaximized();
 
     // --- Core (spectator) wiring --------------------------------------------
     m_model = new GameModel(this);
@@ -114,11 +110,9 @@ void MainWindow::createActions()
     connect(m_quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
     m_resetLayoutAction = new QAction(tr("Reset &Layout"), this);
-    m_resetLayoutAction->setStatusTip(tr("Restore the default panel arrangement"));
-    connect(m_resetLayoutAction, &QAction::triggered, this, [this]() {
-        if (!m_defaultLayout.isEmpty())
-            m_dockManager->restoreState(m_defaultLayout, kLayoutStateVersion);
-    });
+    m_resetLayoutAction->setStatusTip(tr("Restore the default panel arrangement "
+                                         "(positions and sizes)"));
+    connect(m_resetLayoutAction, &QAction::triggered, this, &MainWindow::resetLayout);
 }
 
 void MainWindow::createMenus()
@@ -130,12 +124,14 @@ void MainWindow::createMenus()
     fileMenu->addAction(m_quitAction);
 
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
-    viewMenu->addAction(m_homeRosterDock->toggleViewAction());
-    viewMenu->addAction(m_awayRosterDock->toggleViewAction());
-    viewMenu->addAction(m_playerInfoDock->toggleViewAction());
-    viewMenu->addAction(m_diceLogDock->toggleViewAction());
-    viewMenu->addAction(m_chatDock->toggleViewAction());
-    viewMenu->addAction(m_protocolDock->toggleViewAction());
+    const QStringList panelOrder = { QStringLiteral("home_roster"),
+                                     QStringLiteral("away_roster"),
+                                     QStringLiteral("player_info"),
+                                     QStringLiteral("dice_log"),
+                                     QStringLiteral("chat"),
+                                     QStringLiteral("protocol") };
+    for (const QString &name : panelOrder)
+        viewMenu->addAction(m_panelViewActions.value(name));
     viewMenu->addSeparator();
     viewMenu->addAction(m_resetLayoutAction);
 
@@ -165,98 +161,190 @@ void MainWindow::createToolbar()
     addToolBar(Qt::TopToolBarArea, m_header);
 }
 
-void MainWindow::createDockManager()
-{
-    // CDockManager becomes the central widget of this QMainWindow itself.
-    m_dockManager = new ads::CDockManager(this);
-
-    // Follow the application's dark palette instead of ADS's built-in schemes.
-    m_dockManager->setColorSchemeMode(ads::CDockManager::ColorSchemeMode::FollowPalette);
-
-    // The field is the single central dock widget: hide its title bar
-    // (it has no title bar actions, so the bar would just be empty chrome).
-    ads::CDockManager::setConfigFlag(ads::CDockManager::HideSingleCentralWidgetTitleBar,
-                                     true);
-}
-
 void MainWindow::createCentralWidget()
 {
-    m_field = new FieldView(this);
-    m_fieldDock = new ads::CDockWidget(m_dockManager, tr("Field"), this);
-    m_fieldDock->setObjectName(QStringLiteral("dock_field"));
-    m_fieldDock->setWidget(m_field, ads::CDockWidget::ForceNoScrollArea);
-    // The field is the fixed anchor of the layout: not closable, not movable,
-    // not floatable (it only takes focus when clicked).
-    m_fieldDock->setFeatures(ads::CDockWidget::DockWidgetFocusable);
-    m_dockManager->setCentralWidget(m_fieldDock);
+    // The stage is the central widget: it hosts the field (full rect) plus
+    // the floating overlay panels, so everything shares one top-level window.
+    m_stage = new QWidget(this);
+    m_stage->setObjectName(QStringLiteral("stage"));
+    m_stage->setStyleSheet(QStringLiteral("#stage { background: #0c1014; }"));
+
+    m_field = new FieldView(m_stage);
+    m_field->setObjectName(QStringLiteral("field"));
+    setCentralWidget(m_stage);
 }
 
-// Creates a CDockWidget wrapping `content` and registers it with the manager.
-static ads::CDockWidget *makeDock(ads::CDockManager *manager, const QString &title,
-                                  const QString &objectName, QWidget *content,
-                                  QWidget *parent)
+FloatingPanel *MainWindow::makePanel(const QString &name, const QString &title,
+                                     QWidget *content, const QColor &accent)
 {
-    auto *dock = new ads::CDockWidget(manager, title, parent);
-    dock->setObjectName(objectName);
-    dock->setWidget(content);
-    return dock;
+    auto *panel = new FloatingPanel(title, content, m_stage);
+    panel->setAccent(accent);
+    panel->hide(); // shown once the default/saved geometry is applied
+    connect(panel, &FloatingPanel::hideRequested, panel, &QWidget::hide);
+
+    auto *viewAction = new QAction(title, this);
+    viewAction->setCheckable(true);
+    viewAction->setChecked(true);
+    connect(viewAction, &QAction::toggled, panel, &QWidget::setVisible);
+    m_panelViewActions.insert(name, viewAction);
+    m_panels.insert(name, panel);
+    return panel;
 }
 
-void MainWindow::createDockWidgets()
+void MainWindow::createPanels()
 {
-    // QDS split semantics: addDockWidget(area, w, targetArea) places w relative
-    // to targetArea; "Left/Right" areas split HORIZONTALLY (side by side),
-    // "Top/Bottom" areas split VERTICALLY (stacked).
+    const QColor homeAccent(0x7c, 0xa8, 0x6f);
+    const QColor awayAccent(0xd8, 0xc0, 0x7a);
+    const QColor neutral(0x8f, 0xa6, 0xc0);
 
-    // --- Left column: protocol log above the home roster --------------------
-    m_homeRoster = new RosterWidget(this);
+    m_homeRoster = new RosterWidget(m_stage);
     m_homeRoster->setObjectName(QStringLiteral("roster_home"));
-    m_homeRoster->setTeamColor(QColor(0x7c, 0xa8, 0x6f));
-    m_homeRosterDock =
-        makeDock(m_dockManager, tr("Home Roster"), QStringLiteral("dock_home_roster"),
-                 m_homeRoster, this);
-    auto homeArea = m_dockManager->addDockWidget(ads::LeftDockWidgetArea, m_homeRosterDock);
+    m_homeRoster->setTeamColor(homeAccent);
+    makePanel(QStringLiteral("home_roster"), tr("Home Roster"), m_homeRoster, homeAccent);
 
-    m_protocolLog = new QPlainTextEdit(this);
+    m_awayRoster = new RosterWidget(m_stage);
+    m_awayRoster->setObjectName(QStringLiteral("roster_away"));
+    m_awayRoster->setTeamColor(awayAccent);
+    makePanel(QStringLiteral("away_roster"), tr("Away Roster"), m_awayRoster, awayAccent);
+
+    m_playerInfo = new PlayerInfoWidget(m_stage);
+    makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
+
+    m_diceLog = new DiceLogWidget(m_stage);
+    makePanel(QStringLiteral("dice_log"), tr("Dice Log"), m_diceLog, neutral);
+
+    m_chat = new ChatWidget(m_stage);
+    makePanel(QStringLiteral("chat"), tr("Chat"), m_chat, neutral);
+
+    m_protocolLog = new QPlainTextEdit(m_stage);
     m_protocolLog->setReadOnly(true);
     m_protocolLog->setMaximumBlockCount(4000);
+    m_protocolLog->setStyleSheet(QStringLiteral("background: rgba(10, 13, 18, 200); "
+                                                "color: #9fb0c4;"));
     QFont mono(QStringLiteral("Monospace"));
     mono.setStyleHint(QFont::TypeWriter);
     mono.setPointSize(8);
     m_protocolLog->setFont(mono);
-    m_protocolDock =
-        makeDock(m_dockManager, tr("Protocol Log"), QStringLiteral("dock_protocol"),
-                 m_protocolLog, this);
-    m_dockManager->addDockWidget(ads::TopDockWidgetArea, m_protocolDock, homeArea);
-
-    // --- Right: away roster ---------------------------------------------------
-    m_awayRoster = new RosterWidget(this);
-    m_awayRoster->setObjectName(QStringLiteral("roster_away"));
-    m_awayRoster->setTeamColor(QColor(0xd8, 0xc0, 0x7a));
-    m_awayRosterDock =
-        makeDock(m_dockManager, tr("Away Roster"), QStringLiteral("dock_away_roster"),
-                 m_awayRoster, this);
-    m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_awayRosterDock);
-
-    // --- Bottom band: player info | dice log | chat (side by side) ------------
-    m_playerInfo = new PlayerInfoWidget(this);
-    m_playerInfoDock =
-        makeDock(m_dockManager, tr("Player Info"), QStringLiteral("dock_player_info"),
-                 m_playerInfo, this);
-    auto playerInfoArea =
-        m_dockManager->addDockWidget(ads::BottomDockWidgetArea, m_playerInfoDock);
-
-    m_diceLog = new DiceLogWidget(this);
-    m_diceLogDock =
-        makeDock(m_dockManager, tr("Dice Log"), QStringLiteral("dock_dice_log"),
-                 m_diceLog, this);
-    auto diceLogArea =
-        m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_diceLogDock, playerInfoArea);
-
-    m_chat = new ChatWidget(this);
-    m_chatDock = makeDock(m_dockManager, tr("Chat"), QStringLiteral("dock_chat"), m_chat, this);
-    m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_chatDock, diceLogArea);
+    makePanel(QStringLiteral("protocol"), tr("Protocol Log"), m_protocolLog, neutral);
 }
+
+QRect MainWindow::defaultGeometryFor(const QString &name) const
+{
+    // Relative to the stage size; clamped by applyDefaultLayout().
+    const int w = m_stage ? m_stage->width() : 1400;
+    const int h = m_stage ? m_stage->height() : 860;
+    if (name == QLatin1String("home_roster"))
+        return QRect(10, 10, 280, 540);
+    if (name == QLatin1String("away_roster"))
+        return QRect(w - 290, 10, 280, 540);
+    if (name == QLatin1String("player_info"))
+        return QRect(10, h - 330, 440, 320);
+    if (name == QLatin1String("dice_log"))
+        return QRect(460, h - 210, 380, 200);
+    if (name == QLatin1String("chat"))
+        return QRect(w - 460, h - 210, 450, 200);
+    if (name == QLatin1String("protocol"))
+        return QRect(w - 290, 560, 280, qMax(160, h - 570));
+    return QRect(40, 40, 320, 240);
+}
+
+void MainWindow::resetLayout()
+{
+    applyDefaultLayout();
+}
+
+void MainWindow::applyDefaultLayout()
+{
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it) {
+        QRect g = defaultGeometryFor(it.key());
+        // Clamp to the stage and minimum panel size.
+        if (m_stage) {
+            g = g.intersected(QRect(QPoint(0, 0), m_stage->size()));
+            if (g.width() < FloatingPanel::kMinWidth)
+                g.setWidth(FloatingPanel::kMinWidth);
+            if (g.height() < FloatingPanel::kMinHeight)
+                g.setHeight(FloatingPanel::kMinHeight);
+        }
+        it.value()->setGeometry(g);
+        it.value()->show();
+        it.value()->raise();
+    }
+    for (auto it = m_panelViewActions.cbegin(); it != m_panelViewActions.cend(); ++it)
+        it.value()->setChecked(true);
+    m_layoutApplied = true;
+}
+
+void MainWindow::applySavedLayout(const QByteArray &state)
+{
+    if (state.isEmpty()) {
+        applyDefaultLayout();
+        return;
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(state);
+    const QJsonObject panels = doc.object().value(QStringLiteral("panels")).toObject();
+    bool any = false;
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it) {
+        const QJsonObject p = panels.value(it.key()).toObject();
+        if (p.isEmpty())
+            continue;
+        any = true;
+        QRect g = defaultGeometryFor(it.key()); // sane base, then override
+        if (p.contains(QStringLiteral("x"))) g.moveLeft(p.value(QStringLiteral("x")).toInt());
+        if (p.contains(QStringLiteral("y"))) g.moveTop(p.value(QStringLiteral("y")).toInt());
+        if (p.contains(QStringLiteral("w"))) g.setWidth(p.value(QStringLiteral("w")).toInt());
+        if (p.contains(QStringLiteral("h"))) g.setHeight(p.value(QStringLiteral("h")).toInt());
+        it.value()->setGeometry(g);
+        it.value()->setVisible(p.contains(QStringLiteral("v")) ? p.value(QStringLiteral("v")).toBool() : true);
+    }
+    for (auto it = m_panelViewActions.cbegin(); it != m_panelViewActions.cend(); ++it)
+        it.value()->setChecked(m_panels.value(it.key())->isVisible());
+    if (any) {
+        clampPanelsToStage();
+        m_layoutApplied = true;
+    } else {
+        applyDefaultLayout();
+    }
+}
+
+void MainWindow::clampPanelsToStage()
+{
+    if (!m_stage)
+        return;
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it) {
+        FloatingPanel *panel = it.value();
+        if (!panel->isVisible())
+            continue;
+        QRect g = panel->geometry();
+        // Keep a 60px slice of the title reachable; never leave the stage.
+        g.moveLeft(qBound(-(g.width() - 60), g.x(), m_stage->width() - 60));
+        g.moveTop(qBound(0, g.y(), m_stage->height() - FloatingPanel::kTitleHeight));
+        g.setWidth(qMin(g.width(), m_stage->width() - g.x()));
+        g.setHeight(qMin(g.height(), m_stage->height() - g.y()));
+        if (g != panel->geometry())
+            panel->setGeometry(g);
+    }
+}
+
+// One-shot: apply the saved (or default) layout the first time the stage has
+// a real size (the window starts maximized, so this fires right after show).
+void MainWindow::onStageFirstSized()
+{
+    if (m_layoutApplied)
+        return;
+    QSettings settings;
+    applySavedLayout(settings.value(kLayoutSettingsKey).toByteArray());
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_stage && event->type() == QEvent::Resize) {
+        m_field->setGeometry(m_stage->rect());
+        onStageFirstSized();
+        clampPanelsToStage();
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
 
 void MainWindow::createStatusBar()
 {
@@ -550,32 +638,37 @@ void MainWindow::selectPlayer(const QString &playerId)
 
 QByteArray MainWindow::savedLayout() const
 {
-    return m_dockManager->saveState(kLayoutStateVersion);
+    QJsonObject panels;
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it) {
+        const QRect g = it.value()->geometry();
+        QJsonObject p;
+        p.insert(QStringLiteral("x"), g.x());
+        p.insert(QStringLiteral("y"), g.y());
+        p.insert(QStringLiteral("w"), g.width());
+        p.insert(QStringLiteral("h"), g.height());
+        p.insert(QStringLiteral("v"), it.value()->isVisible());
+        panels.insert(it.key(), p);
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("panels"), panels);
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
 void MainWindow::restoreLayout(const QByteArray &state)
 {
-    if (!state.isEmpty())
-        m_dockManager->restoreState(state, kLayoutStateVersion);
-}
-
-// -----------------------------------------------------------------------------
-// Dock layout persistence (QSettings)
-// -----------------------------------------------------------------------------
-namespace {
-const QString kLayoutSettingsKey = QStringLiteral("mainwindow/dockLayout");
-} // namespace
-
-void MainWindow::loadLayout()
-{
-    QSettings settings;
-    const QByteArray state = settings.value(kLayoutSettingsKey).toByteArray();
-    restoreLayout(state);
+    applySavedLayout(state);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     QSettings settings;
-    settings.setValue(kLayoutSettingsKey, savedLayout());
+    // Never persist a state where every panel is hidden (e.g. the window was
+    // closed before the first sizing): that would trap the user in an
+    // empty HUD. "Reset Layout" always recovers, but avoid the footgun.
+    bool anyVisible = false;
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it)
+        anyVisible |= it.value()->isVisible();
+    if (anyVisible)
+        settings.setValue(kLayoutSettingsKey, savedLayout());
     QMainWindow::closeEvent(event);
 }
