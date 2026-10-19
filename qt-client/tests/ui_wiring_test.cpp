@@ -23,6 +23,7 @@
 
 #include "core/assets.h"
 #include "core/gamemodel.h"
+#include "core/matchlist.h"
 #include "ui/chatwidget.h"
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
@@ -77,6 +78,7 @@ private slots:
     void assetsLoad();
     void panelLayoutPersistAndReset();
     void savedLayoutRestoredOnFirstShow();
+    void matchListParsing();
 };
 
 namespace {
@@ -472,6 +474,46 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
     QCOMPARE(panel->y(), 40);
     QCOMPARE(panel->width(), 300);
     QCOMPARE(panel->height(), 400);
+}
+
+void UiWiringTest::matchListParsing()
+{
+    // Phase 11: /api/match/current response (real capture) must parse into
+    // filterable live matches (id, status, division, both teams).
+    QFile f(QStringLiteral("matchlist_fixture.json"));
+    QVERIFY2(f.open(QIODevice::ReadOnly), "matchlist_fixture.json not found");
+    const QVector<FFBLiveMatch> matches = parseMatchList(f.readAll());
+    QVERIFY(matches.size() >= 10);
+
+    // First match of the fixture: Orc (Wotan83) vs Chaos Chosen (diomed),
+    // second half, competitive.
+    const FFBLiveMatch &m0 = matches.first();
+    QCOMPARE(m0.id, 1954643);
+    QCOMPARE(m0.half, 2);
+    QCOMPARE(m0.division, QStringLiteral("Competitive"));
+    QCOMPARE(m0.home.coach, QStringLiteral("Wotan83"));
+    QCOMPARE(m0.home.race, QStringLiteral("Orc"));
+    QCOMPARE(m0.away.coach, QStringLiteral("diomed"));
+    QCOMPARE(m0.away.race, QStringLiteral("Chaos Chosen"));
+    QCOMPARE(m0.home.score, 0);
+    QCOMPARE(m0.away.score, 1);
+    QVERIFY(m0.statusText().startsWith(QStringLiteral("2H")));
+
+    // Every match has a game id and both teams named.
+    for (const FFBLiveMatch &m : matches) {
+        QVERIFY(m.id > 0);
+        QVERIFY(!m.home.name.isEmpty() && !m.home.coach.isEmpty());
+        QVERIFY(!m.away.name.isEmpty() && !m.away.coach.isEmpty());
+    }
+    // Not-started matches report half == 0 and a "—" status.
+    bool sawNotStarted = false;
+    for (const FFBLiveMatch &m : matches) {
+        if (m.half == 0) {
+            sawNotStarted = true;
+            QCOMPARE(m.statusText(), QStringLiteral("—"));
+        }
+    }
+    QVERIFY(sawNotStarted);
 }
 
 QTEST_MAIN(UiWiringTest)

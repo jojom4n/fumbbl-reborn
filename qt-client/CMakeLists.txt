@@ -54,12 +54,14 @@ add_executable(fumbbl-qt
     src/core/reportparser.cpp
     src/core/assets.h
     src/core/assets.cpp
+    src/core/matchlist.h
+    src/core/matchlist.cpp
 
     # UI
     src/ui/mainwindow.h
     src/ui/mainwindow.cpp
-    src/ui/connectdialog.h
-    src/ui/connectdialog.cpp
+    src/ui/spectatedialog.h
+    src/ui/spectatedialog.cpp
     src/ui/fieldview.h
     src/ui/fieldview.cpp
     src/ui/rosterwidget.h

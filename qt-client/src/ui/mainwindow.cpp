@@ -13,7 +13,7 @@
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
 #include "ui/chatwidget.h"
-#include "ui/connectdialog.h"
+#include "ui/spectatedialog.h"
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
 #include "ui/headerbar.h"
@@ -97,9 +97,9 @@ MainWindow::MainWindow(QWidget *parent)
 // -----------------------------------------------------------------------------
 void MainWindow::createActions()
 {
-    m_connectAction = new QAction(tr("&Connect…"), this);
+    m_connectAction = new QAction(tr("&Spectate Game…"), this);
     m_connectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+J")));
-    m_connectAction->setStatusTip(tr("Connect to a FUMBBL match as spectator"));
+    m_connectAction->setStatusTip(tr("Watch a live FUMBBL match as spectator"));
 
     m_disconnectAction = new QAction(tr("&Disconnect"), this);
     m_disconnectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
@@ -556,10 +556,10 @@ void MainWindow::onWsClosed(int code, const QString &reason)
 
 void MainWindow::onConnectRequested()
 {
-    ConnectDialog dialog(this);
+    SpectateDialog dialog(this);
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
-    connect(&dialog, &ConnectDialog::connectRequested, this,
+    connect(&dialog, &SpectateDialog::connectRequested, this,
             [this](const QString &clientId, const QString &clientSecret,
                    const QString &username, int gameId)
             { m_session->connectAsSpectator(clientId, clientSecret, username, gameId); });
