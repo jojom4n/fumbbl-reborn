@@ -524,3 +524,53 @@ now a SINGLE window:
   checks, ctest 3/3).
 - **sync.sh bug:** `cp -n` never overwrote the stale first-batch faces in the
   client; switched to `cp -f` + immediate resync.
+
+## ✅ DONE 19/ott — Phase 11: BB3-style HUD (translucent panels + grid snap) + Spectate Game dialog
+**User requirements (19/ott):**
+1. Panels must be truly TRANSPARENT (like the Blood Bowl 3 / Cyanide game
+   HUD — "part of the background"), still draggable, and snapping to an
+   INVISIBLE grid while carried.
+2. File menu: "Connect" → "Spectate Game". The dialog must list the matches
+   in progress, catalogued and filterable (race, coach, team name, …).
+
+Reference: downloaded real BB3 UI screenshots (faces-work/refs_ui/ — Cyanide
+studio page + YouTube gameplay thumbnails; SearXNG image search was
+rate-limited, web search + direct fetch worked). Key facts from the real BB3
+HUD (refs_ui/ui_03.png): dark translucent panels (~65% opacity) with the
+field clearly visible through them, thin light border, colored header strips.
+
+**11a — Transparent grid-snapped panels (FloatingPanel v2):**
+- Background QColor(10,14,22,150) (~59% opaque — the field glows through),
+  border 1.2px @ alpha 90. (Was: alpha 226 "opaque".)
+- Invisible grid `FloatingPanel::kGridStep = 20`: DRAG live-snaps x/y to the
+  grid (panel moves in 20px steps while carried); on RELEASE position AND
+  size snap (`snapCoord`/`snapLen`, size keeps kMin via grow-to-next-step).
+- MainWindow default panel geometry re-based on the grid (multiples of 20).
+- SearXNG URL recorded in the memory bank (Tools section, activeContext).
+
+**11b — Spectate Game dialog (live match list):**
+- File → "Spectate Game…" (Ctrl+J). New `src/ui/spectatedialog.{h,cpp}`
+  replaces the old ConnectDialog (deleted):
+  - Filter bar: text (team OR coach, case-insensitive), race combo
+    (All + distinct races found), division combo (All + divisions), Refresh.
+  - QTableWidget: Status (—/1H, turn X/2H, turn X), Game id (UserRole),
+    "Home coach — team (race)", "H : A" score, away side. Row selection /
+    double-click → Spectate. Sortable.
+  - Collapsible credentials (checkable flat button + QGroupBox — a CHECKABLE
+    QGroupBox only DISABLES children on some styles, it does not collapse).
+  - Manual Game ID spinbox (overrides selection); last id kept in QSettings
+    `connect/lastGameId`; same credentials file as before.
+  - Auto-loads the list on open when saved credentials are valid.
+  - Same `connectRequested(clientId, secret, username, gameId)` signal
+    contract → MainWindow starts the SpectatorSession as the dialog closes.
+- New `src/core/matchlist.{h,cpp}`: `FFBLiveMatch`/`FFBMatchTeam` +
+  `MatchListClient` (GET https://fumbbl.com/api/match/current, Bearer
+  OAuth access token from FumbblAuth). Verified live: 13 matches;
+  `half` 0/1/2 = not started/1H/2H; divisions Competitive/League; races may
+  be custom coach names (e.g. "Green Destroyers", "Laurelorn Lightfooters").
+  Fixture: `tests/matchlist_fixture.json` (real capture).
+- **QTableWidget gotcha:** `setItem()` on a row that doesn't exist is SILENTLY
+  IGNORED (no crash, no rows) — `insertRow()` first (or setRowCount big
+  enough). This masked itself because the status said "12 found".
+- Test: `ui_wiring_test::matchListParsing` (real fixture: ids, statusText,
+  division, both teams, score, not-started "—"). 13/13 UI checks, ctest 3/3.
