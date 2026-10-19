@@ -574,3 +574,20 @@ field clearly visible through them, thin light border, colored header strips.
   enough). This masked itself because the status said "12 found".
 - Test: `ui_wiring_test::matchListParsing` (real fixture: ids, statusText,
   division, both teams, score, not-started "—"). 13/13 UI checks, ctest 3/3.
+
+## ⚠️ 19/ott (pm) — The "Spectate Game" menu was DEAD (fix e86c6e5)
+User reported: on Wayland (niri), clicking File > Spectate Game opens
+nothing. Root cause was NOT Wayland: the action relays
+`triggered() → connectionRequested` (a SIGNAL), but that signal was never
+connected to `onConnectRequested()` — the connect had been missing since
+phase 6 (the entry was silently dead; we only ever tested the flow via
+`--demo`/`spectator_smoke`, never by clicking the menu).
+
+Lesson (permanent):
+- A QAction connected to a SIGNAL (not a slot) needs a second hop — verify
+  the chain end-to-end.
+- Test UI entry points via the REAL user path (the menu click), not just
+  the underlying handler; add `--trigger-connect`/`--spectate-now`
+  diagnostic flags (main.cpp) to reproduce menu paths headlessly.
+- `chatMessageSent` is still a dangling relay (SpectatorSession has no
+  send-talk API yet) — chat is receive-only by design for now.
