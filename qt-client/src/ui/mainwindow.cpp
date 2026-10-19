@@ -233,18 +233,21 @@ QRect MainWindow::defaultGeometryFor(const QString &name) const
     // Relative to the stage size; clamped by applyDefaultLayout().
     const int w = m_stage ? m_stage->width() : 1400;
     const int h = m_stage ? m_stage->height() : 860;
+    // Grid-aligned (FloatingPanel::kGridStep = 20) — the panels snap to this
+    // invisible grid while dragged, so the defaults live on it too.
+    const int G = 20;
     if (name == QLatin1String("home_roster"))
-        return QRect(10, 10, 280, 540);
+        return QRect(G, G, 280, 540);
     if (name == QLatin1String("away_roster"))
-        return QRect(w - 290, 10, 280, 540);
+        return QRect((w / G) * G - 300, G, 280, 540);
     if (name == QLatin1String("player_info"))
-        return QRect(10, h - 330, 440, 320);
+        return QRect(G, ((h - 340) / G) * G, 440, 320);
     if (name == QLatin1String("dice_log"))
-        return QRect(460, h - 210, 380, 200);
+        return QRect(480, ((h - 220) / G) * G, 380, 200);
     if (name == QLatin1String("chat"))
-        return QRect(w - 460, h - 210, 450, 200);
+        return QRect((w / G) * G - 460, ((h - 220) / G) * G, 460, 200);
     if (name == QLatin1String("protocol"))
-        return QRect(w - 290, 560, 280, qMax(160, h - 570));
+        return QRect((w / G) * G - 300, 560, 280, qMax(160, ((h - 580) / G) * G));
     return QRect(40, 40, 320, 240);
 }
 

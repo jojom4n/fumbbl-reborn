@@ -33,6 +33,10 @@ public:
     static constexpr int kMinHeight = 120;
     static constexpr int kTitleHeight = 26;
 
+    // Invisible alignment grid (Blood Bowl 3 style): while dragging the panel
+    // position snaps to this grid, and on release position AND size snap.
+    static constexpr int kGridStep = 20;
+
 signals:
     void hideRequested(); // the user clicked the × button
 
@@ -57,6 +61,9 @@ private:
     void beginMove(const QPoint &globalPos);
     void beginResize(int edge, const QPoint &globalPos);
     void clampToParent();
+    // Snap a coordinate / length to the invisible grid (len keeps a minimum).
+    static int snapCoord(int v);
+    static int snapLen(int v, int minLen);
 
     QString m_title;
     QWidget *m_content = nullptr;

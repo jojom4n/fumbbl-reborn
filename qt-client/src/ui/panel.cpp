@@ -36,6 +36,20 @@ void FloatingPanel::setAccent(const QColor &color)
     update();
 }
 
+int FloatingPanel::snapCoord(int v)
+{
+    return (v + kGridStep / 2) / kGridStep * kGridStep;
+}
+
+int FloatingPanel::snapLen(int v, int minLen)
+{
+    const int snapped = v / kGridStep * kGridStep;
+    if (snapped >= minLen)
+        return snapped;
+    // Grow to the next grid step that satisfies the minimum.
+    return (minLen + kGridStep - 1) / kGridStep * kGridStep;
+}
+
 int FloatingPanel::edgeAt(const QPoint &pos) const
 {
     const int zone = 6;
@@ -107,11 +121,13 @@ void FloatingPanel::paintEvent(QPaintEvent *event)
 
     const QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(13, 17, 25, 226)); // translucent dark HUD panel
+    // Blood Bowl 3 style: the panel is part of the scene — dark but clearly
+    // translucent, so the field glows through it.
+    p.setBrush(QColor(10, 14, 22, 150));
     p.drawRoundedRect(r, 10, 10);
 
-    QPen border(QColor(255, 255, 255, 40));
-    border.setWidthF(1.0);
+    QPen border(QColor(255, 255, 255, 90));
+    border.setWidthF(1.2);
     p.setPen(border);
     p.setBrush(Qt::NoBrush);
     p.drawRoundedRect(r, 10, 10);
@@ -157,7 +173,10 @@ void FloatingPanel::mouseMoveEvent(QMouseEvent *event)
         QWidget *parent = this->parentWidget();
         if (parent) {
             const QPoint inParent = parent->mapFromGlobal(global);
-            move(inParent - m_grabOffset);
+            // Live snap to the invisible grid (Blood Bowl 3 style): the panel
+            // moves in kGridStep increments while being carried.
+            move(snapCoord(inParent.x() - m_grabOffset.x()),
+                 snapCoord(inParent.y() - m_grabOffset.y()));
             clampToParent();
         }
         return;
@@ -188,6 +207,17 @@ void FloatingPanel::mouseMoveEvent(QMouseEvent *event)
 
 void FloatingPanel::mouseReleaseEvent(QMouseEvent *event)
 {
+    Q_UNUSED(event);
+    if (m_dragging || m_resizing) {
+        // On release: position AND size align to the invisible grid.
+        QRect g = geometry();
+        g.setWidth(snapLen(g.width(), kMinWidth));
+        g.setHeight(snapLen(g.height(), kMinHeight));
+        g.moveLeft(snapCoord(g.left()));
+        g.moveTop(snapCoord(g.top()));
+        setGeometry(g);
+        clampToParent();
+    }
     m_dragging = false;
     m_resizing = false;
     m_edge = EdgeNone;
