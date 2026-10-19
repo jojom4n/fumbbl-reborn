@@ -52,6 +52,10 @@ public:
     void appendChat(const QString &sender, const QString &text);
     void appendProtocol(const QString &direction, const QString &text);
 
+    // Open the "Spectate Game" dialog (also triggered by File > Spectate Game…).
+    // Public so it can be invoked from --spectate-now / tests.
+    void openSpectateDialog();
+
     // Panel layout persistence (JSON via QSettings, phase 10).
     QByteArray savedLayout() const;
     void restoreLayout(const QByteArray &state);

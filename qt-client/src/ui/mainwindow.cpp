@@ -90,6 +90,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
+    // The menu action relays into the connectionRequested signal; this is
+    // what turns it into the actual dialog (missing since phase 6 — the
+    // menu entry was silently dead).
+    connect(this, &MainWindow::connectionRequested, this, &MainWindow::onConnectRequested);
 }
 
 // -----------------------------------------------------------------------------
@@ -555,6 +559,11 @@ void MainWindow::onWsClosed(int code, const QString &reason)
 }
 
 void MainWindow::onConnectRequested()
+{
+    openSpectateDialog();
+}
+
+void MainWindow::openSpectateDialog()
 {
     SpectateDialog dialog(this);
     // The dialog emits connectRequested() right before accept(); hook it up

@@ -58,6 +58,9 @@ int main(int argc, char *argv[])
     //   Interactive by itself (the window stays open); combined with
     //   --screenshot it quits after capturing the image.
     bool smoke = app.arguments().contains("--smoke");
+    // --spectate-now: open the Spectate Game dialog right after startup
+    // (diagnostic / manual testing).
+    bool spectateNow = app.arguments().contains("--spectate-now");
     QString screenshotPath;
     QString demoPath;
     const auto args = app.arguments();
@@ -92,6 +95,17 @@ int main(int argc, char *argv[])
     };
     if (!demoPath.isEmpty())
         loadDemo();
+
+    if (spectateNow)
+        QTimer::singleShot(800, &window, [&window]() { window.openSpectateDialog(); });
+
+    // --trigger-connect: emit the SAME signal a menu click emits (exact menu
+    // path: connectionRequested -> onConnectRequested -> openSpectateDialog).
+    if (app.arguments().contains("--trigger-connect"))
+        QTimer::singleShot(800, &window, [&window]() {
+            fprintf(stderr, "[spectate] --trigger-connect: emitting connectionRequested\n");
+            emit window.connectionRequested();
+        });
 
     if (smoke || !screenshotPath.isEmpty()) {
         QTimer::singleShot(1200, &app, [&app, &window, screenshotPath]() {
