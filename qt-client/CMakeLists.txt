@@ -109,6 +109,39 @@ target_link_libraries(spectator_smoke PRIVATE
     Qt6::WebSockets
 )
 
+# Headless reproduction of the REAL UI spectate path (MainWindow +
+# clearMatchUi + session->connectAsSpectator) — diagnostic for join problems.
+add_executable(ui_connect_probe
+    tools/ui_connect_probe.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+    src/core/assets.cpp
+    src/core/matchlist.cpp
+    src/ui/mainwindow.cpp
+    src/ui/spectatedialog.cpp
+    src/ui/fieldview.cpp
+    src/ui/rosterwidget.cpp
+    src/ui/dicelogwidget.cpp
+    src/ui/chatwidget.cpp
+    src/ui/headerbar.cpp
+    src/ui/playerinfowidget.cpp
+    src/ui/panel.cpp
+)
+target_include_directories(ui_connect_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ui_connect_probe PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(ui_connect_probe PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
 # -----------------------------------------------------------------------------
 # gen_assets — procedural icon generator (skill/card PNGs with QPainter;
 # no external art). Output: <source>/assets/{skills,cards}. Player faces are
