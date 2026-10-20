@@ -1,43 +1,21 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# CMake / build artifacts
+build/
+cmake-build-*/
+*.user
+CMakeUserPresets.json
 
-node_modules
-dist
-dist-ssr
-*.local
+# Local working memory — never uploaded
+memory-bank/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-FUMBBL __ Online Blood Bowl League.pdf
-memory-bank/activeContext.md
-memory-bank/productContext.md
-memory-bank/progress.md
-memory-bank/projectbrief.md
-memory-bank/systemPatterns.md
-memory-bank/techContext.md
-.clinerules/bb-rules.md
-memory-bank/fumbbl-protocol-research.md
-memory-bank/project-insights.md
-
-# Qt client build artifacts
-qt-client/build/
-
-# Face generation work area (references, staging, logs) - not committed
+# Face generation work area (references, staging, logs) — not committed
 faces-work/
 
-# Local art reference
+# Local art reference + local docs
 Esempio facce.png
+FUMBBL __*.pdf
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.sw?

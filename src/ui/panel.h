@@ -33,8 +33,8 @@ public:
     static constexpr int kMinHeight = 120;
     static constexpr int kTitleHeight = 26;
 
-    // Invisible alignment grid (Blood Bowl 3 style): while dragging the panel
-    // position snaps to this grid, and on release position AND size snap.
+    // Invisible alignment grid: while dragging the panel position snaps to
+    // this grid, and on release position AND size snap.
     static constexpr int kGridStep = 20;
 
 signals:

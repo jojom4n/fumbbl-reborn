@@ -147,7 +147,7 @@ void MainWindow::createMenus()
     connect(aboutAction, &QAction::triggered, this, [this]() {
         QMessageBox::about(this, tr("About FUMBBL Reborn"),
                            tr("<h3>FUMBBL Reborn %1</h3>"
-                              "<p>Native Qt6 client for the FUMBBL online Blood Bowl "
+                              "<p>Native Qt6 client for the FUMBBL online "
                               "platform (spectator mode).</p>"
                               "<p>Protocol compatible with the official FUMBBL client "
                               "(LZString-compressed WebSocket, 2s ping).</p>")

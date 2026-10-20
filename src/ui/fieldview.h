@@ -1,5 +1,5 @@
 // =============================================================================
-// FieldView — 26x15 Blood Bowl field widget
+// FieldView — 26x15 field widget
 //
 // Coordinate convention (matches server FieldCoordinate.java and the TS app):
 //   X in [0, 25]  -> horizontal, X=0 is the home end zone (left side)

@@ -121,8 +121,8 @@ void FloatingPanel::paintEvent(QPaintEvent *event)
 
     const QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
     p.setPen(Qt::NoPen);
-    // Blood Bowl 3 style: the panel is part of the scene — dark but clearly
-    // translucent, so the field glows through it.
+    // The panel is part of the scene — dark but clearly translucent, so the
+    // field glows through it.
     p.setBrush(QColor(10, 14, 22, 150));
     p.drawRoundedRect(r, 10, 10);
 
@@ -173,8 +173,8 @@ void FloatingPanel::mouseMoveEvent(QMouseEvent *event)
         QWidget *parent = this->parentWidget();
         if (parent) {
             const QPoint inParent = parent->mapFromGlobal(global);
-            // Live snap to the invisible grid (Blood Bowl 3 style): the panel
-            // moves in kGridStep increments while being carried.
+            // Live snap to the invisible grid: the panel moves in kGridStep
+            // increments while being carried.
             move(snapCoord(inParent.x() - m_grabOffset.x()),
                  snapCoord(inParent.y() - m_grabOffset.y()));
             clampToParent();

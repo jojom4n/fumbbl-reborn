@@ -1,6 +1,6 @@
 # =============================================================================
 # FUMBBL Reborn — Qt6 C++ client
-# Native desktop client for the FUMBBL online Blood Bowl platform.
+# Native desktop client for the FUMBBL online platform.
 # =============================================================================
 cmake_minimum_required(VERSION 3.21)
 
@@ -23,15 +23,6 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
-
-# -----------------------------------------------------------------------------
-# QT Advanced Docking System (QDS) — vendored in third_party/QDS
-# (https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System.git)
-# Built statically into the app: no runtime .so dependency.
-# -----------------------------------------------------------------------------
-set(BUILD_STATIC ON CACHE BOOL "Build QDS statically" FORCE)
-set(BUILD_EXAMPLES OFF CACHE BOOL "Skip QDS demo/examples" FORCE)
-add_subdirectory(third_party/QDS QDS)
 
 # -----------------------------------------------------------------------------
 # Application
