@@ -101,6 +101,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         DiceLogLine l;
         l.text = text;
         l.color = color;
+        l.playerId = pid(report); // may be empty for team-level reports
         out.append(l);
     };
 

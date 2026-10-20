@@ -18,6 +18,10 @@
 struct DiceLogLine {
     QString text;
     QColor color;
+    // The acting player's server id (empty for team-level reports). The UI
+    // resolves it to a display name against the GameModel, so the dice log
+    // shows "Adrian Custennin (1) dodged…" instead of a raw numeric id.
+    QString playerId;
 };
 
 // Parses one report object into zero or more dice log lines.
