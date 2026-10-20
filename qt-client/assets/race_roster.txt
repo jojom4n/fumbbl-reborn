@@ -1,0 +1,163 @@
+Amazons	Eagle Warrior	Human,Lineman
+Amazons	Python Warrior	Human,Thrower
+Amazons	Piranha Warrior	Blitzer,Human
+Amazons	Jaguar Warrior	Blocker,Human
+Black Orc	Goblin Bruiser	Goblin,Lineman
+Black Orc	Black Orc	Blocker,Orc
+Black Orc	Trained Troll	Big Guy,Troll
+Bretonnian	Bretonnian Squire	Human,Lineman
+Bretonnian	Bretonnian Knight Catcher	Catcher,Human
+Bretonnian	Bretonnian Knight Thrower	Human,Thrower
+Bretonnian	Grail Knight	Blitzer,Human
+Chaos Chosen	Beastmen Lineman	Beastman,Lineman
+Chaos Chosen	Chaos Chosen	Blocker,Human
+Chaos Chosen	Troll	Big Guy,Troll
+Chaos Chosen	Ogre	Big Guy,Ogre
+Chaos Chosen	Minotaur	Big Guy,Minotaur
+Chaos Dwarf	Hobgoblin Lineman	Goblin,Lineman
+Chaos Dwarf	Sneaky Stabba	Goblin,Special
+Chaos Dwarf	Chaos Dwarf Blocker	Blocker,Dwarf
+Chaos Dwarf	Flamesmith	Dwarf,Special
+Chaos Dwarf	Bull Centaur	Blitzer,Dwarf
+Chaos Dwarf	Minotaur	Big Guy,Minotaur
+Chaos Renegade	Renegade Human	Human,Lineman
+Chaos Renegade	Renegade Goblin	Goblin,Lineman
+Chaos Renegade	Renegade Orc	Lineman,Orc
+Chaos Renegade	Renegade Skaven	Lineman,Skaven
+Chaos Renegade	Renegade Dark Elf	Elf,Lineman
+Chaos Renegade	Renegade Human Thrower	Human,Thrower
+Chaos Renegade	Troll	Big Guy,Troll
+Chaos Renegade	Ogre	Big Guy,Ogre
+Chaos Renegade	Minotaur	Big Guy,Minotaur
+Chaos Renegade	Rat Ogre	Big Guy,Skaven
+Dark Elf	Dark Elf Lineman	Elf,Lineman
+Dark Elf	Dark Elf Runner	Elf,Runner
+Dark Elf	Dark Elf Assassin	Elf,Special
+Dark Elf	Dark Elf Blitzer	Blitzer,Elf
+Dark Elf	Witch Elf	Elf,Special
+Dwarf	Dwarf Lineman	Dwarf,Lineman
+Dwarf	Dwarf Runner	Dwarf,Runner
+Dwarf	Dwarf Blitzer	Blitzer,Dwarf
+Dwarf	Troll Slayer	Dwarf,Special
+Dwarf	Deathroller	Big Guy,Dwarf,Special
+Elven Union	Elf Lineman	Elf,Lineman
+Elven Union	Elf Thrower	Elf,Thrower
+Elven Union	Elf Catcher	Catcher,Elf
+Elven Union	Elf Blitzer	Blitzer,Elf
+Gnome	Gnome Lineman	Gnome,Lineman
+Gnome	Woodland Fox	Animal,Runner
+Gnome	Gnome Illusionist	Gnome,Special
+Gnome	Gnome Beastmaster	Blocker,Gnome
+Gnome	Altern Forest Treeman	Big Guy,Treeman
+Goblin	Goblin Lineman	Goblin,Lineman
+Goblin	Loony	Goblin,Special
+Goblin	Bomma	Goblin,Special
+Goblin	'Ooligan	Goblin,Special
+Goblin	Doom Diver	Goblin,Special
+Goblin	Fanatic	Goblin,Special
+Goblin	Pogoer	Goblin,Special
+Goblin	Trained Troll	Big Guy,Troll
+Halfling	Halfling Hopeful	Halfling,Lineman
+Halfling	Halfling Hefty	Blocker,Halfling
+Halfling	Halfling Catcher	Catcher,Halfling
+Halfling	Altern Forest Treeman	Big Guy,Treeman
+High Elf	High Elf Lineman	Elf,Lineman
+High Elf	White Lion	Blitzer,Elf
+High Elf	Phoenix Warrior	Elf,Thrower
+High Elf	Dragon Prince	Blitzer,Elf
+Human	Human Lineman	Human,Lineman
+Human	Halfling Hopeful	Halfling,Lineman
+Human	Human Catcher	Catcher,Human
+Human	Human Thrower	Human,Thrower
+Human	Human Blitzer	Blitzer,Human
+Human	Ogre	Big Guy,Ogre
+Imperial Nobility	Imperial Retainer	Human,Lineman
+Imperial Nobility	Imperial Thrower	Human,Thrower
+Imperial Nobility	Bodyguard	Blocker,Human
+Imperial Nobility	Noble Blitzer	Blitzer,Human
+Imperial Nobility	Ogre	Big Guy,Ogre
+Khorne	Bloodborn Marauder	Human,Lineman
+Khorne	Khorngor	Beastman,Runner
+Khorne	Bloodseeker	Blocker,Human
+Khorne	Bloodspawn	Big Guy,Spawn
+Lizardman	Skink Lineman	Lineman,Lizardman
+Lizardman	Chameleon Skink	Lizardman,Thrower
+Lizardman	Saurus Blocker	Blocker,Lizardman
+Lizardman	Kroxigor	Big Guy,Lizardman
+Necromantic Horror	Zombie Lineman	Human,Lineman,Undead,Zombie
+Necromantic Horror	Ghoul Runner	Ghoul,Runner,Undead
+Necromantic Horror	Wraith	Blocker,Undead,Wraith
+Necromantic Horror	Flesh Golem	Blocker,Construct,Undead
+Necromantic Horror	Werewolf	Blitzer,Undead,Werewolf
+Norse	Norse Raider	Human,Lineman
+Norse	Beer Boar	Animal,Special
+Norse	Norse Berserker	Blitzer,Human
+Norse	Valkyrie	Catcher,Human,Thrower
+Norse	Ulfwerener	Blocker,Human
+Norse	Yhetee	Big Guy,Yhetee
+Nurgle	Rotter Lineman	Human,Lineman
+Nurgle	Pestigor	Beastman,Runner
+Nurgle	Bloater	Blocker,Human
+Nurgle	Rotspawn	Big Guy,Spawn
+Ogre	Gnoblar Lineman	Gnoblar,Lineman
+Ogre	Ogre Blocker	Big Guy,Blocker,Ogre
+Ogre	Ogre Runt Punter	Big Guy,Ogre,Thrower
+Old World Alliance	Human Lineman	Human,Lineman
+Old World Alliance	Halfling Hopeful	Halfling,Lineman
+Old World Alliance	Human Catcher	Catcher,Human
+Old World Alliance	Dwarf Lineman	Dwarf,Lineman
+Old World Alliance	Human Thrower	Human,Thrower
+Old World Alliance	Dwarf Runner	Dwarf,Runner
+Old World Alliance	Human Blitzer	Blitzer,Human
+Old World Alliance	Dwarf Blitzer	Blitzer,Dwarf
+Old World Alliance	Troll Slayer	Dwarf,Special
+Old World Alliance	Ogre	Big Guy,Ogre
+Old World Alliance	Altern Forest Treeman	Big Guy,Treeman
+Orc	Orc Lineman	Lineman,Orc
+Orc	Goblin Lineman	Goblin,Lineman
+Orc	Orc Thrower	Orc,Thrower
+Orc	Orc Blitzer	Blitzer,Orc
+Orc	Big Un Blocker	Blocker,Orc
+Orc	Troll	Big Guy,Troll
+Shambling Undead	Skeleton Lineman	Human,Lineman,Skeleton,Undead
+Shambling Undead	Zombie Lineman	Human,Lineman,Undead,Zombie
+Shambling Undead	Ghoul Runner	Ghoul,Runner,Undead
+Shambling Undead	Wight Blitzer	Blitzer,Human,Skeleton,Undead
+Shambling Undead	Mummy	Big Guy,Blocker,Human,Undead
+Skaven	Skaven Clanrat	Lineman,Skaven
+Skaven	Skaven Thrower	Skaven,Thrower
+Skaven	Gutter Runner	Runner,Skaven
+Skaven	Skaven Blitzer	Blitzer,Skaven
+Skaven	Rat Ogre	Big Guy,Skaven
+Slann	Slann Lineman	Lineman,Lizardman
+Slann	Slann Catcher	Catcher,Lizardman
+Slann	Slann Blitzer	Blitzer,Lizardman
+Slann	Kroxigor	Big Guy,Lizardman
+Snotling	Snotling Lineman	Lineman,Snotling
+Snotling	Fun-hoppa	Snotling,Special
+Snotling	Stilty Runna	Runner,Snotling
+Snotling	Fungus Flinga	Snotling,Special
+Snotling	Pump Wagon	Big Guy,Snotling,Special
+Snotling	Trained Troll	Big Guy,Troll
+Tomb Kings	Skeleton Lineman	Human,Lineman,Skeleton,Undead
+Tomb Kings	Tomb Kings Thrower	Human,Skeleton,Thrower,Undead
+Tomb Kings	Tomb Kings Blitzer	Blitzer,Human,Skeleton,Undead
+Tomb Kings	Tomb Guardian	Big Guy,Blocker,Human,Undead
+Underworld Denizens	Goblin Lineman	Goblin,Lineman
+Underworld Denizens	Snotling Lineman	Lineman,Snotling
+Underworld Denizens	Skaven Clanrat	Lineman,Skaven
+Underworld Denizens	Skaven Thrower	Skaven,Thrower
+Underworld Denizens	Gutter Runner	Runner,Skaven
+Underworld Denizens	Skaven Blitzer	Blitzer,Skaven
+Underworld Denizens	Troll	Big Guy,Troll
+Underworld Denizens	Rat Ogre	Big Guy,Skaven
+Vampire	Thrall Lineman	Human,Lineman,Thrall
+Vampire	Vampire Runner	Runner,Undead,Vampire
+Vampire	Vampire Thrower	Thrower,Undead,Vampire
+Vampire	Vampire Blitzer	Blitzer,Undead,Vampire
+Vampire	Vargheist	Big Guy,Undead,Vampire
+Wood Elf	Wood Elf Lineman	Elf,Lineman
+Wood Elf	Wood Elf Thrower	Elf,Thrower
+Wood Elf	Wood Elf Catcher	Catcher,Elf
+Wood Elf	Wardancer	Blitzer,Elf
+Wood Elf	Loren Forest Treeman	Big Guy,Treeman
