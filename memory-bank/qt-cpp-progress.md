@@ -591,3 +591,149 @@ Lesson (permanent):
   diagnostic flags (main.cpp) to reproduce menu paths headlessly.
 - `chatMessageSent` is still a dangling relay (SpectatorSession has no
   send-talk API yet) — chat is receive-only by design for now.
+
+## ✅ DONE 19/ott (sera) — 3 spectator bugs fixed (dice names / match switch / faces)
+
+User reported three bugs while spectating (Elf vs Orc match):
+
+### Bug 1 — Dice log showed a number instead of the player's name
+- `reportparser.cpp` composed every line with the raw `playerId`
+  (`"%1 Dodge ✓ …".arg(pid(report))`) — the parser has no model context.
+- Fix: `DiceLogLine.playerId` (new field, set in `parseReport`'s push
+  lambda); `MainWindow::diceLineText(text, playerId)` resolves the player
+  via `GameModel::findPlayerById` and replaces the first occurrence of the
+  id with "Name (nr)"; unknown player / team-level reports → text unchanged.
+- Test: `ui_wiring_test::diceLogShowsPlayerName` (fixture player, dodgeRoll
+  report → name present, raw id absent).
+
+### Bug 2 — Picking a different game from "Spectate Game" did nothing
+- Root cause chain: `SpectatorSession::connectAsSpectator` never closed the
+  previous WebSocket; OAuth + session token completed; then
+  `FumbblWs::connectTo()` saw the socket still CONNECTED and early-returned
+  (it only opens from Unconnected) → the new join never happened, the old
+  session kept streaming → user stuck on the old match.
+- Fixes:
+  - `FumbblWs::abortFromServer()` — synchronous `QWebSocket::abort()`
+    (+ `isUnconnected()` accessor); called at the start of
+    `connectAsSpectator` when a session exists.
+  - `SpectatorSession::onSessionToken` — if the socket is still draining,
+    stash `m_pendingToken` and join from the `closed()` handler (defensive;
+    abort makes this path rare).
+  - `FumbblAuth::authenticate` — aborts a pending reply before starting a
+    new auth (rapid double-switch no longer silently ignored).
+  - `MainWindow::clearMatchUi()` (new, private) — called from the dialog's
+    `connectRequested` lambda before connecting: `GameModel::reset()` (new:
+    `clearState()` extracted from `initialize`), field/rosters/dice/chat
+    cleared, selection dropped, header reset.
+- Tests: `gamemodel_test::resetClearsState`,
+  `ui_wiring_test::newGameStateReplacesOldMatch` (match A → reset → match B
+  fully replaces A in the UI).
+
+### Bug 3 — Same face for different pieces (Elf #2 shown on the Orc #2)
+- FUMBBL `positionName` is the PIECE name, but the server data is
+  inconsistent: mostly official names ("Skaven Blitzer", "Dragon Prince",
+  "White Lion", "Witch Elf", "Troll", …) but sometimes BARE names
+  ("Blitzer" for a Skaven blitzer — verified live in game 1954654; the old
+  fixture Orcs United also uses bare "Blocker"/"Blitzer").
+- Old code: `faceSlug` ALWAYS returned an existing slug (generic
+  `human_lineman` as last resort) so the race-fallback branch in
+  `playerFace` was DEAD CODE; bare names collapsed to the generic face →
+  two different pieces looked identical.
+- Fix: authoritative BB2025 rosters from **dadidimerda.it** (see Tools in
+  activeContext.md): `faces-work/parse_dadidi_teams.py` downloads
+  teams.php?ruleset=bb25 → `dadidi_teams_bb25.json` (31 races, 163 piece
+  rows with official names + keywords); `faces-work/gen_race_roster.py`
+  emits `qt-client/assets/race_roster.txt` (`<race>\t<piece>\t<kw…>`).
+  All 163 official names verified present in faces.txt (0 missing).
+- New `assets::playerFace` chain:
+  1. exact official name (faces.txt / slugified file),
+  2. bare name resolved against the race roster: piece name or KEYWORD
+     match (roster order = standard piece first), then name-prefix
+     ("Wight" → "Wight Blitzer"),
+  3. race representative face (custom star names; `race_faces.txt`),
+  4. generic human.
+  Race lookup tolerates singular/plural ("Amazon" ↔ "Amazons").
+- Verified live (game 1954654, Tomb Kings vs Skaven): 0/26 generic
+  fallbacks; Skaven bare "Blitzer" → skaven_blitzer (was generic).
+- Tests: `ui_wiring_test::faceBareNameLookup` (16 cases: bare roles per
+  race, bare creatures, prefix fallback, official names, custom stars,
+  no-name → race representative, unknown race → generic).
+
+### Environment
+- **Arch split qt6-websockets out of qt6-base** (package `qt6-websockets`,
+  extra repo). It had vanished from the box → CMake failed with "Could NOT
+  find Qt6WebSockets". `sudo pacman -S qt6-websockets` fixed it.
+- Qt 6.12 gotchas added: no `qHash(QImage)`; no `QImage::toBytes()`;
+  `QPixmap::operator==` is a DELETED function; `QPixmap::save(QIODevice*,
+  format)` takes `const char*`; `QPixmap::load` qFatals without a
+  QGuiApplication (probes must use QGuiApplication, not QCoreApplication).
+
+## ✅ DONE 19/ott (notte) — "Spectate Game" join silent-failure: ROOT CAUSE + join resilience
+
+User report (reliability rule: user is never wrong, it's a code bug): opening
+the Spectate Game dialog, double-clicking a LIVE match → protocol log shows
+only ping/pong, no `serverJoin`, no game state, no team/turn in the header.
+Earlier "it worked with the bad faces" → a recent commit regressed it.
+
+### THE root cause — the manual "Game ID" field overrode the selected row
+`SpectateDialog::spectate()`:
+```cpp
+int gameId = m_manualGameId->value() > 0 ? m_manualGameId->value() : selectedGameId();
+```
+The manual spinbox is PRE-FILLED with `connect/lastGameId` (the last spectated
+match, saved to QSettings every connect). So: open dialog → manual field holds
+a STALE (finished) game id → user double-clicks a live match → `spectate()`
+used the STALE id, not the clicked row → joined an unjoinable/ended game →
+server never confirmed (only ping/pong). The suffix even said "(overrides
+selection)". This is exactly the user's symptom, and why it "used to work".
+- Fix: mutual exclusion — selecting a row clears the manual id (blockSignals to
+  avoid a loop); entering a manual id (>0) clears the row selection. The pick
+  touched last wins. `selectedGameId()` now prefers `currentRow()`.
+  Suffix → "(or enter a Game ID)".
+- Test: `ui_wiring_test::manualGameIdDoesNotOverrideSelection` (stale id 111111
+  → select row 222222 → manual id cleared to 0, selectedGameId()==222222).
+- Verified live (full real-dialog path via `ui_connect_probe --via-dialog`):
+  serverJoin + serverGameState for the clicked match.
+
+### Join resilience (the client now recovers / surfaces instead of silent pings)
+The FUMBBL join is async server-side (fumbbl.com/xml:auth check) and the
+session token is ONE-TIME; the old client had no watchdog and no error
+surface, so any non-confirmation was silent forever.
+- `FumbblWs`:
+  - `m_joinSent` (join consumed) + `m_versionSent` (per-socket, reset in
+    `handleOpen`). `sendJoin()` guarantees `clientRequestVersion` precedes
+    `clientJoin` on EVERY path (first join, retry on same socket, re-opened
+    socket). On a re-opened socket whose token was consumed it emits
+    `reopenNeedsToken()` instead of replaying the stale join.
+  - `statusReceived(status,message)` re-export (routes `serverStatus`, e.g.
+    ERROR_WRONG_PASSWORD).
+  - `abortFromServer()` (synchronous `abort()`) + `isUnconnected()` for game
+    switching (see Bug 2 above).
+- `SpectatorSession`:
+  - Join WATCHDOG: `clientJoin` sent but no `serverJoin` within
+    `kJoinWatchdogMs=10000` → `retryJoinWithFreshToken()`.
+  - `serverStatus` while not joined → retry with a FRESH one-time token.
+  - `reopenNeedsToken` → fetch fresh token; if the socket is already open,
+    send the join immediately; if it was still draining, `m_pendingToken` +
+    join from `closed()`.
+  - Bounded: after `kMaxJoinRetries=3` → visible `fatal` error (no more silent
+    pings). Normal join still succeeds with NO spurious retry (verified live).
+- `MainWindow`: routes `statusReceived` + `reopenScheduled` to the status bar /
+  protocol log (`onSessionStatus`).
+- Verified live: normal join = version→join→serverJoin, no retry; bogus game id
+  = 4 attempts (3 retries) then a clear FATAL.
+
+### New tool — `tools/ui_connect_probe.cpp` (CMake target `ui_connect_probe`)
+Drives the EXACT real-UI path headlessly: real `MainWindow` + `SpectatorSession`
++ credentials, plus `--via-dialog` which instantiates the real `SpectateDialog`,
+waits for the live list, selects a row (public `selectGame`/`spectate`/
+`listLoaded` test seams) and fires `connectRequested`. Use it to reproduce
+"dialog → join" regressions without a display:
+`QT_QPA_PLATFORM=offscreen ./build/ui_connect_probe --game <id> --via-dialog --seconds 30`.
+
+### Dialog test seams (public, for tools/tests)
+`SpectateDialog`: `selectGame(int)`, `selectFirstGame()`, `spectate()`,
+`listLoaded()` signal, `selectedGameId()`, `currentTableRow()`,
+`tableRowCount()`, `loadMatchesForTest(QVector<FFBLiveMatch>)`,
+`manualGameIdForTest()`. `MainWindow::clearMatchUi()` is public;
+`MainWindow::session()` accessor.
