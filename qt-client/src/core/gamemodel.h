@@ -88,6 +88,9 @@ public:
 
     // Initialize from a full game state (the "game" object of serverGameState).
     bool initialize(const QJsonObject &game);
+    // Forget everything (switching to a different game): back to the
+    // pre-game state, and the UI must clear itself (see MainWindow).
+    void reset();
 
     // Apply a batch of model changes:
     // serverModelSync.modelChangeList.modelChangeArray
@@ -157,6 +160,7 @@ signals:
 private:
     void parsePlayerArray(const QJsonArray &array, bool homeSide);
     // Fills the positionId -> name/shorthand/keywords maps for one team.
+    void clearState();
     void parseRosterPositions(const QJsonObject &team, bool homeSide);
     void applyFieldModel(const QJsonObject &fieldModel);
     void handleModelChange(const QString &id, const QString &key, const QJsonValue &value);

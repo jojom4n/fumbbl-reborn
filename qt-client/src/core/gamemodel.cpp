@@ -46,9 +46,8 @@ GameModel::GameModel(QObject *parent) : QObject(parent)
 // -----------------------------------------------------------------------------
 // Initialization (port of fumbblGameModel.ts initialize())
 // -----------------------------------------------------------------------------
-bool GameModel::initialize(const QJsonObject &game)
+void GameModel::clearState()
 {
-    // Reset live state.
     m_initialized = false;
     m_teamHomeName.clear();
     m_teamAwayName.clear();
@@ -74,6 +73,18 @@ bool GameModel::initialize(const QJsonObject &game)
     m_ballOnField = false;
     m_ballX = -1;
     m_ballY = -1;
+}
+
+void GameModel::reset()
+{
+    clearState();
+    emit stateUpdated();
+}
+
+bool GameModel::initialize(const QJsonObject &game)
+{
+    // Reset live state.
+    clearState();
 
     const QJsonObject home = game.value(QStringLiteral("teamHome")).toObject();
     const QJsonObject away = game.value(QStringLiteral("teamAway")).toObject();
