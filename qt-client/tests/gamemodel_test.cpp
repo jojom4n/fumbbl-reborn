@@ -43,6 +43,7 @@ private slots:
     void boxAndRemovePlayer();
     void staticHelpers();
     void positionNames();
+    void resetClearsState();
 };
 
 namespace {
@@ -376,6 +377,29 @@ void GameModelTest::positionNames()
     QVERIFY(!tokens.isEmpty());
     for (const FieldToken &t : tokens)
         QVERIFY(!t.positionName.isEmpty());
+}
+
+void GameModelTest::resetClearsState()
+{
+    // Switching to a different game resets the model to its pre-game state
+    // (the UI clears itself from the same signal).
+    GameModel m;
+    QVERIFY(m.initialize(loadLiveFixtureGame()));
+    QVERIFY(m.isInitialized());
+    QVERIFY(!m.rosterHome().isEmpty());
+
+    m.reset();
+    QVERIFY(!m.isInitialized());
+    QVERIFY(m.rosterHome().isEmpty());
+    QVERIFY(m.rosterAway().isEmpty());
+    QVERIFY(m.teamHomeName().isEmpty());
+    QVERIFY(m.teamAwayName().isEmpty());
+    QCOMPARE(m.fieldTokens().size(), 0);
+
+    // Re-initialization still works after a reset.
+    QVERIFY(m.initialize(loadLiveFixtureGame()));
+    QVERIFY(m.isInitialized());
+    QVERIFY(!m.rosterHome().isEmpty());
 }
 
 QTEST_MAIN(GameModelTest)

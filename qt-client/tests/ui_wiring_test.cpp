@@ -18,12 +18,15 @@
 #include <QApplication>
 #include <QFile>
 #include <QJsonDocument>
+#include <QBuffer>
 #include <QLabel>
 #include <QSet>
+#include <QSpinBox>
 
 #include "core/assets.h"
 #include "core/gamemodel.h"
 #include "core/matchlist.h"
+#include "core/reportparser.h"
 #include "ui/chatwidget.h"
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
@@ -32,6 +35,7 @@
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
 #include "ui/rosterwidget.h"
+#include "ui/spectatedialog.h"
 
 namespace {
 
@@ -79,6 +83,10 @@ private slots:
     void panelLayoutPersistAndReset();
     void savedLayoutRestoredOnFirstShow();
     void matchListParsing();
+    void faceBareNameLookup();
+    void diceLogShowsPlayerName();
+    void newGameStateReplacesOldMatch();
+    void manualGameIdDoesNotOverrideSelection();
 };
 
 namespace {
@@ -514,6 +522,173 @@ void UiWiringTest::matchListParsing()
         }
     }
     QVERIFY(sawNotStarted);
+}
+
+// Deterministic face comparison (QPixmap/QImage have no usable operator==
+// on Qt 6.12): PNG-encode and compare bytes.
+QByteArray faceBytes(const QString &name, const QString &race = QString())
+{
+    QByteArray out;
+    QBuffer buf(&out);
+    buf.open(QIODevice::WriteOnly);
+    assets::playerFace(name, race).save(&buf, "PNG");
+    return out;
+}
+
+// FUMBBL payloads often carry a BARE piece/role name ("Blitzer", "Zombie",
+// "Wight", "Treeman") instead of the official piece name. Before the fix
+// these all collapsed to the generic face — the "Elf vs Orc, both #2s look
+// the same" bug. They must now resolve via the authoritative BB2025 race
+// roster (dadidimerda.it) for the team's race.
+void UiWiringTest::faceBareNameLookup()
+{
+    // Bare role name -> that race's piece for that role (roster order: the
+    // standard piece comes first).
+    QCOMPARE(faceBytes(QStringLiteral("Blitzer"), QStringLiteral("Skaven")),
+             faceBytes(QStringLiteral("Skaven Blitzer")));
+    QCOMPARE(faceBytes(QStringLiteral("Blitzer"), QStringLiteral("Orc")),
+             faceBytes(QStringLiteral("Orc Blitzer")));
+    QCOMPARE(faceBytes(QStringLiteral("Blitzer"), QStringLiteral("High Elf")),
+             faceBytes(QStringLiteral("White Lion"))); // first Blitzer of the race
+    QCOMPARE(faceBytes(QStringLiteral("Blocker"), QStringLiteral("Chaos Chosen")),
+             faceBytes(QStringLiteral("Chaos Chosen")));
+    QCOMPARE(faceBytes(QStringLiteral("Thrower"), QStringLiteral("Norse")),
+             faceBytes(QStringLiteral("Valkyrie")));
+    QCOMPARE(faceBytes(QStringLiteral("Lineman"), QStringLiteral("Orc")),
+             faceBytes(QStringLiteral("Orc Lineman")));
+    // Bare creature name -> the piece carrying it in that race.
+    QCOMPARE(faceBytes(QStringLiteral("Zombie"), QStringLiteral("Necromantic Horror")),
+             faceBytes(QStringLiteral("Zombie Lineman")));
+    QCOMPARE(faceBytes(QStringLiteral("Treeman"), QStringLiteral("Gnome")),
+             faceBytes(QStringLiteral("Altern Forest Treeman")));
+    QCOMPARE(faceBytes(QStringLiteral("Rat Ogre"), QStringLiteral("Skaven")),
+             faceBytes(QStringLiteral("Rat Ogre")));
+    // Prefix fallback (no exact keyword for "Wight").
+    QCOMPARE(faceBytes(QStringLiteral("Wight"), QStringLiteral("Shambling Undead")),
+             faceBytes(QStringLiteral("Wight Blitzer")));
+    // Shared big guy: exact name, no race needed.
+    QCOMPARE(faceBytes(QStringLiteral("Troll"), QStringLiteral("Orc")),
+             faceBytes(QStringLiteral("Troll")));
+    // Official names (the user's own examples) keep resolving directly.
+    QCOMPARE(faceBytes(QStringLiteral("Dragon Prince"), QStringLiteral("High Elf")),
+             faceBytes(QStringLiteral("Dragon Prince")));
+    QCOMPARE(faceBytes(QStringLiteral("Witch Elf"), QStringLiteral("Dark Elf")),
+             faceBytes(QStringLiteral("Witch Elf")));
+    QCOMPARE(faceBytes(QStringLiteral("White Lion"), QStringLiteral("High Elf")),
+             faceBytes(QStringLiteral("White Lion")));
+    // Custom-named star piece + known race -> the race's representative face
+    // (NOT the generic one).
+    QCOMPARE(faceBytes(QStringLiteral("Ghorgash Ugluk"), QStringLiteral("Orc")),
+             faceBytes(QStringLiteral("Orc Lineman")));
+    // Custom star + unknown race -> generic.
+    QCOMPARE(faceBytes(QStringLiteral("Ghorgash Ugluk"), QStringLiteral("Not A Race")),
+             faceBytes(QStringLiteral("Totally Unknown Piece")));
+    // No name at all -> race representative.
+    QCOMPARE(faceBytes(QString(), QStringLiteral("Skaven")),
+             faceBytes(QStringLiteral("Skaven Clanrat")));
+}
+
+// The dice log must show the player's NAME, not the raw numeric id from the
+// report payload (user reported "18234934 dodged…" instead of the name).
+void UiWiringTest::diceLogShowsPlayerName()
+{
+    MainWindow w;
+    w.show();
+    DiceLogWidget *dice = w.findChild<DiceLogWidget *>();
+    QVERIFY(dice);
+    w.onGameState(fixtureGame());
+
+    // NOTE: rosterHome() returns a COPY — keep the id/name by value.
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    const FFBPlayer *p = nullptr;
+    for (const FFBPlayer &cand : home)
+        if (!cand.playerId.isEmpty()) {
+            p = &cand;
+            break;
+        }
+    QVERIFY(p);
+    const QString pid = p->playerId;
+    const QString name = p->name;
+
+    QJsonObject dodge;
+    dodge.insert(QStringLiteral("reportId"), QStringLiteral("dodgeRoll"));
+    dodge.insert(QStringLiteral("playerId"), pid);
+    dodge.insert(QStringLiteral("roll"), QJsonValue(3));
+    dodge.insert(QStringLiteral("minimumRoll"), QJsonValue(4));
+    dodge.insert(QStringLiteral("successful"), QJsonValue(true));
+    QJsonArray reports;
+    reports.append(dodge);
+    w.onModelSync(QJsonArray(), reports);
+
+    const QString text = dice->toPlainText();
+    QVERIFY2(text.contains(name), qPrintable(text));
+    QVERIFY2(!text.contains(pid), qPrintable(text)); // no raw id
+}
+
+// "Spectate Game" on a different match must fully replace the previous one —
+// the user reported staying on the old game after picking a new one.
+void UiWiringTest::newGameStateReplacesOldMatch()
+{
+    MainWindow w;
+    w.show();
+
+    // Match A.
+    w.onGameState(fixtureGame()); // Orcs United vs Dwarves FC
+    QCOMPARE(w.model()->teamHomeName(), QStringLiteral("Orcs United"));
+
+    // The window clears the match state when a new game is requested
+    // (clearMatchUi() in the Spectate Game flow).
+    w.model()->reset();
+    QVERIFY(!w.model()->isInitialized());
+    QVERIFY(w.model()->rosterHome().isEmpty());
+
+    // Match B arrives: the UI shows B, not leftovers of A.
+    QFile f(QStringLiteral("liveGameState_fixture.json"));
+    QVERIFY2(f.open(QIODevice::ReadOnly), "liveGameState_fixture.json missing");
+    const QJsonObject gameB =
+        QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("game")).toObject();
+    w.onGameState(gameB);
+    QVERIFY(w.model()->teamHomeName().startsWith(QStringLiteral("Big Monsters")));
+    QVERIFY(labelContains(&w, QStringLiteral("Big Monsters")));
+}
+
+// Regression: the manual "Game ID" field is pre-filled with lastGameId (the
+// last spectated match) and used to override the row the user picked — so a
+// double-click on a live match silently joined the stale (finished) game and
+// the server never confirmed it (only ping/pong in the protocol log).
+// Selecting a row must clear the manual id so the clicked match wins.
+void UiWiringTest::manualGameIdDoesNotOverrideSelection()
+{
+    SpectateDialog dialog;
+    dialog.show();
+
+    // Simulate a stale manual id, as loadCredentials() would set from
+    // the saved lastGameId.
+    dialog.manualGameIdForTest()->setValue(111111);
+    QCOMPARE(dialog.manualGameIdForTest()->value(), 111111);
+
+    // Inject a live match list (no network).
+    FFBLiveMatch m;
+    m.id = 222222;
+    m.half = 1;
+    m.turn = 10;
+    m.division = QStringLiteral("League");
+    m.scheduler = QStringLiteral("Blackbox");
+    m.home = FFBMatchTeam{QStringLiteral("Home Team"), QStringLiteral("coachA"),
+                          QStringLiteral("Orcs"), QString(), 0};
+    m.away = FFBMatchTeam{QStringLiteral("Away Team"), QStringLiteral("coachB"),
+                          QStringLiteral("Gnomes"), QString(), 0};
+    QVector<FFBLiveMatch> matches;
+    matches.push_back(m);
+    dialog.loadMatchesForTest(matches);
+    QVERIFY2(dialog.tableRowCount() >= 1, "match list not populated");
+
+    // The user double-clicks the listed match.
+    QVERIFY2(dialog.selectGame(222222), "could not select the match row");
+
+    // The stale manual id must be cleared and the selected match must win.
+    QCOMPARE(dialog.manualGameIdForTest()->value(), 0);
+    QCOMPARE(dialog.selectedGameId(), 222222);
 }
 
 QTEST_MAIN(UiWiringTest)
