@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QItemSelectionModel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
@@ -132,7 +133,7 @@ SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
     m_manualGameId->setRange(0, 2000000000);
     m_manualGameId->setSpecialValueText(tr("(pick a match above)"));
     m_manualGameId->setPrefix(tr("Game ID: "));
-    m_manualGameId->setSuffix(tr("   (overrides selection)"));
+    m_manualGameId->setSuffix(tr("   (or enter a Game ID)"));
     m_status = new QLabel(this);
     m_status->setStyleSheet(QStringLiteral("color: #9fb0c4;"));
 
@@ -174,7 +175,27 @@ SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
     loadCredentials();
 
     connect(m_manualGameId, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this](int) { this->spectateBtnState(); });
+            [this](int v) {
+                // Entering a manual id makes it the active pick: clear any
+                // row selection so it can't be silently overridden later.
+                if (v > 0)
+                    m_table->clearSelection();
+                this->spectateBtnState();
+            });
+    // Selecting a row makes it the active pick: clear the manual id (which
+    // may still hold a stale lastGameId) so the clicked match wins.
+    connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this](const QItemSelection &selected, const QItemSelection &)
+            {
+                if (!selected.isEmpty()) {
+                    // The clicked match is now the active pick: drop the stale
+                    // manual id so it cannot override the selection.
+                    m_manualGameId->blockSignals(true);
+                    m_manualGameId->setValue(0);
+                    m_manualGameId->blockSignals(false);
+                }
+                this->spectateBtnState();
+            });
 
     // Credentials collapsed by default; expanded when they're missing.
     const bool hasCreds = currentCredentials().valid();
@@ -259,6 +280,7 @@ void SpectateDialog::onMatchesReceived(QVector<FFBLiveMatch> matches)
     rebuildFilterCombos();
     applyFilters();
     m_status->setText(tr("%1 live match(es) found.").arg(m_matches.size()));
+    emit listLoaded();
 }
 
 void SpectateDialog::rebuildFilterCombos()
@@ -340,11 +362,60 @@ void SpectateDialog::applyFilters()
 
 int SpectateDialog::selectedGameId() const
 {
-    const auto sel = m_table->selectionModel()->selectedRows();
-    if (sel.isEmpty())
-        return -1;
-    QTableWidgetItem *it = m_table->item(sel.first().row(), 1);
+    // The row the cursor is on (a click/double-click sets it) is the
+    // authoritative pick; fall back to the first selected row otherwise.
+    int r = m_table->currentRow();
+    if (r < 0) {
+        const auto sel = m_table->selectionModel()->selectedRows();
+        if (sel.isEmpty())
+            return -1;
+        r = sel.first().row();
+    }
+    QTableWidgetItem *it = m_table->item(r, 1);
     return it ? it->data(Qt::UserRole).toInt() : -1;
+}
+
+int SpectateDialog::currentTableRow() const
+{
+    return m_table ? m_table->currentRow() : -1;
+}
+
+int SpectateDialog::tableRowCount() const
+{
+    return m_table ? m_table->rowCount() : 0;
+}
+
+void SpectateDialog::loadMatchesForTest(const QVector<FFBLiveMatch> &matches)
+{
+    onMatchesReceived(matches);
+}
+
+// Selects the row for the given game id (tools/tests; same effect as a
+// click). Returns false when no visible row matches.
+bool SpectateDialog::selectGame(int gameId)
+{
+    for (int r = 0; r < m_table->rowCount(); ++r) {
+        QTableWidgetItem *it = m_table->item(r, 1);
+        if (it && it->data(Qt::UserRole).toInt() == gameId) {
+            m_table->clearSelection();
+            m_table->selectRow(r);
+            m_table->setCurrentCell(r, 0);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SpectateDialog::selectFirstGame()
+{
+    if (m_table->rowCount() < 1)
+        return false;
+    // The table is sorted by game id (column 1) ascending; the first row
+    // is the current top of the list.
+    m_table->clearSelection();
+    m_table->selectRow(0);
+    m_table->setCurrentCell(0, 0);
+    return true;
 }
 
 void SpectateDialog::spectateBtnState()

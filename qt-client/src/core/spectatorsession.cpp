@@ -8,6 +8,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QTimer>
 
 SpectatorSession::SpectatorSession(QObject *parent)
     : QObject(parent)
@@ -22,6 +23,29 @@ SpectatorSession::SpectatorSession(QObject *parent)
     connect(m_ws, &FumbblWs::opened, this, [this]() {
         emit progress(QStringLiteral("WebSocket open (ws://fumbbl.com:22223/command)"));
     });
+    connect(m_ws, &FumbblWs::statusReceived, this, [this](const QString &status, const QString &message) {
+        emit statusReceived(status, message);
+        emit progress(QStringLiteral("serverStatus: %1 %2").arg(status, message));
+        // A status while not joined = the join was rejected (e.g. the
+        // one-time token was already consumed or the server-side auth check
+        // failed). Retry with a fresh token — never replay the old join.
+        if (!m_joined)
+            retryJoinWithFreshToken(QStringLiteral("serverStatus %1").arg(status));
+    });
+    connect(m_ws, &FumbblWs::reopenNeedsToken, this, [this]() {
+        // The socket re-opened after a network blip; its join token was
+        // already consumed. Fetch a fresh one and re-join.
+        emit reopenScheduled();
+        emit progress(QStringLiteral("Socket re-opened — fetching a fresh one-time token to re-join …"));
+        m_auth->fetchSessionToken();
+    });
+    // Watchdog: clientJoin sent but no serverJoin (the server-side FUMBBL
+    // auth check can fail or hang silently).
+    m_joinWatchdog = new QTimer(this);
+    m_joinWatchdog->setSingleShot(true);
+    connect(m_joinWatchdog, &QTimer::timeout, this, &SpectatorSession::onJoinWatchdog);
+    connect(m_ws, &FumbblWs::sending, this, [this](const QString &id, const QJsonObject &)
+            { if (id == QLatin1String("clientJoin") && !m_joined) m_joinWatchdog->start(kJoinWatchdogMs); });
     connect(m_ws, &FumbblWs::serverVersionReceived, this,
             [this](const QJsonObject &p) {
                 emit progress(QStringLiteral("serverVersion: %1")
@@ -30,6 +54,8 @@ SpectatorSession::SpectatorSession(QObject *parent)
             });
     connect(m_ws, &FumbblWs::joined, this, [this](const QJsonObject &p) {
         m_joined = true;
+        m_joinRetries = 0;
+        m_joinWatchdog->stop();
         emit progress(QStringLiteral("serverJoin: coach=%1 mode=%2 game=%3")
                           .arg(p.value("coach").toString())
                           .arg(p.value("clientMode").toString())
@@ -85,6 +111,14 @@ SpectatorSession::SpectatorSession(QObject *parent)
     connect(m_ws, &FumbblWs::closed, this, [this](int code, const QString &reason) {
         emit progress(QStringLiteral("WebSocket closed: %1 %2").arg(code).arg(reason));
         emit wsClosed(code, reason);
+        // A game switch delivered its session token while this (old) socket
+        // was still closing: join now that it is gone.
+        if (!m_pendingToken.isEmpty()) {
+            const QString token = m_pendingToken;
+            m_pendingToken.clear();
+            m_ws->connectTo(); // join was configured in onSessionToken()
+            Q_UNUSED(token)
+        }
     });
     connect(m_ws, &FumbblWs::reconnectScheduled, this, [this](int attempt) {
         emit progress(QStringLiteral("Reconnect scheduled (attempt %1)").arg(attempt));
@@ -103,6 +137,16 @@ void SpectatorSession::connectAsSpectator(const QString &clientId, const QString
     m_username = username;
     m_gameId = gameId;
     m_joined = false;
+    m_pendingToken.clear();
+    m_joinRetries = 0;
+    m_joinWatchdog->stop();
+
+    // GAME SWITCH: tear down any existing session first. A still-open socket
+    // would swallow the new join (FumbblWs::connectTo() only opens when the
+    // socket is Unconnected), leaving the user on the OLD match. abort() is
+    // synchronous, so the subsequent connectTo() is guaranteed to connect.
+    if (!m_ws->isUnconnected())
+        m_ws->abortFromServer();
 
     emit progress(QStringLiteral("OAuth2 client_credentials -> /api/oauth/token …"));
     m_auth->authenticate(clientId, clientSecret);
@@ -123,13 +167,56 @@ void SpectatorSession::onAccessToken(const QString &token)
 
 void SpectatorSession::onSessionToken(const QString &token)
 {
-    emit progress(QStringLiteral("session_token received — opening WebSocket and joining as "
-                                 "spectator (game %1) …")
+    emit progress(QStringLiteral("session_token received — joining as spectator (game %1) …")
                       .arg(m_gameId));
-    // Fresh token + coach + game: the WS fires clientRequestVersion ->
-    // clientJoin automatically right after open.
+    // Fresh token + coach + game.
     m_ws->configureJoin(m_username, token, m_gameId, /*spectator=*/true);
-    m_ws->connectTo();
+    if (m_ws->isOpen()) {
+        // Re-join on the ALREADY-OPEN socket (reconnect or join retry):
+        // send the join now instead of opening a new socket.
+        m_ws->sendJoin();
+        return;
+    }
+    if (m_ws->isUnconnected()) {
+        // First join: the WS fires clientRequestVersion -> clientJoin
+        // automatically right after open.
+        m_ws->connectTo();
+    } else {
+        // Defensive: the old socket is still draining. The closed() handler
+        // fires the join once it is actually gone.
+        m_pendingToken = token;
+    }
+}
+
+// Joins were sent but the server never confirmed (or rejected) them: the
+// one-time token may have been consumed or the server-side FUMBBL auth
+// check may have failed/hung. Fetch a FRESH token and re-join. Bounded:
+// after kMaxJoinRetries give up with a visible error.
+void SpectatorSession::onJoinWatchdog()
+{
+    if (m_joined)
+        return;
+    retryJoinWithFreshToken(QStringLiteral("join not confirmed after %1 ms").arg(kJoinWatchdogMs));
+}
+
+void SpectatorSession::retryJoinWithFreshToken(const QString &reason)
+{
+    if (m_joined)
+        return;
+    if (m_joinRetries >= kMaxJoinRetries) {
+        emit fatal(QStringLiteral("Cannot join game %1: the server did not confirm the join "
+                                  "after %2 attempts (%3). Check the connection and try again.")
+                       .arg(m_gameId)
+                       .arg(kMaxJoinRetries + 1)
+                       .arg(reason));
+        return;
+    }
+    ++m_joinRetries;
+    emit progress(QStringLiteral("Join not confirmed (%1) — retry %2/%3 with a fresh session token …")
+                      .arg(reason)
+                      .arg(m_joinRetries)
+                      .arg(kMaxJoinRetries));
+    m_auth->fetchSessionToken();
 }
 
 void SpectatorSession::onAuthFailed(const QString &step, const QString &error)

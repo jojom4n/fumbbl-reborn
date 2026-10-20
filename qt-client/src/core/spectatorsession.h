@@ -19,6 +19,7 @@
 
 class FumbblAuth;
 class FumbblWs;
+class QTimer;
 
 class SpectatorSession : public QObject
 {
@@ -45,6 +46,11 @@ signals:
 
     // Re-exports of the WebSocket protocol surface for UI/tools.
     void serverVersionReceived(const QJsonObject &payload);
+    // serverStatus re-export (visible errors, e.g. a rejected join).
+    void statusReceived(const QString &status, const QString &message);
+    // The socket re-opened after a reconnect: a fresh one-time token is
+    // being fetched to re-join.
+    void reopenScheduled();
     void joined(const QJsonObject &payload);
     void gameStateReceived(const QJsonObject &game);
     void modelSyncReceived(const QJsonArray &changes, const QJsonArray &reports);
@@ -59,6 +65,8 @@ private slots:
     void onAccessToken(const QString &token);
     void onSessionToken(const QString &token);
     void onAuthFailed(const QString &step, const QString &error);
+    void onJoinWatchdog();
+    void retryJoinWithFreshToken(const QString &reason);
 
 private:
     FumbblAuth *m_auth = nullptr;
@@ -68,4 +76,15 @@ private:
     QString m_username;
     int m_gameId = 0;
     bool m_joined = false;
+    // Session token received while the previous socket was still closing;
+    // the join fires from the closed() handler.
+    QString m_pendingToken;
+    // Join watchdog: if the server never confirms the join (serverJoin) or
+    // rejects it (serverStatus), retry with a FRESH one-time session token.
+    // The FUMBBL auth check (fumbbl.com/xml:auth) is async on the server and
+    // can fail/hang; a consumed token must never be replayed.
+    QTimer *m_joinWatchdog = nullptr;
+    int m_joinRetries = 0;
+    static constexpr int kMaxJoinRetries = 3;
+    static constexpr int kJoinWatchdogMs = 10000;
 };

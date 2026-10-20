@@ -73,6 +73,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_session, &SpectatorSession::progress, this, &MainWindow::onSessionProgress);
     connect(m_session, &SpectatorSession::fatal, this, &MainWindow::onSessionFatal);
     connect(m_session, &SpectatorSession::wsClosed, this, &MainWindow::onWsClosed);
+    connect(m_session, &SpectatorSession::statusReceived, this, &MainWindow::onSessionStatus);
+    connect(m_session, &SpectatorSession::reopenScheduled, this,
+            [this]() { setConnectionStatus(tr("Connection restored — re-joining…"), false); });
     connect(m_session, &SpectatorSession::protocolSending, this,
             [this](const QString &id, const QJsonObject &)
             { this->appendProtocol(QStringLiteral(">> send "), id); });
@@ -509,8 +512,28 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         if (report.isEmpty())
             continue;
         for (const DiceLogLine &line : parseReport(report))
-            m_diceLog->appendEntry(line.text, line.color);
+            m_diceLog->appendEntry(diceLineText(line.text, line.playerId), line.color);
     }
+}
+
+// Replaces the raw numeric player id (first token of the parser's text) with
+// the player's display name from the current model, e.g.
+// "18234934 Dodge ✓ …" -> "Adrian Custennin (1) Dodge ✓ …". Unknown players
+// (or team-level reports) leave the text untouched.
+QString MainWindow::diceLineText(const QString &text, const QString &playerId) const
+{
+    if (playerId.isEmpty())
+        return text;
+    const FFBPlayer *p = m_model ? m_model->findPlayerById(playerId) : nullptr;
+    if (!p)
+        return text;
+    const QString label = p->number > 0
+        ? QStringLiteral("%1 (%2)").arg(p->name).arg(p->number)
+        : p->name;
+    const int at = text.indexOf(playerId);
+    if (at < 0)
+        return text;
+    return text.left(at) + label + text.mid(at + playerId.size());
 }
 
 void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
@@ -558,6 +581,17 @@ void MainWindow::onWsClosed(int code, const QString &reason)
     appendProtocol(QStringLiteral("ws closed "), QStringLiteral("%1 %2").arg(code).arg(reason));
 }
 
+// serverStatus from the server (e.g. ERROR_WRONG_PASSWORD when a join's
+// one-time token was rejected). The session layer retries automatically;
+// the banner shows the real server error instead of dead silence.
+void MainWindow::onSessionStatus(const QString &status, const QString &message)
+{
+    const bool isError = status.startsWith(QLatin1String("ERROR"), Qt::CaseInsensitive);
+    if (isError)
+        setConnectionStatus(tr("Server: %1 %2").arg(status, message), false);
+    appendProtocol(QStringLiteral("status "), QStringLiteral("%1 %2").arg(status, message));
+}
+
 void MainWindow::onConnectRequested()
 {
     openSpectateDialog();
@@ -571,8 +605,35 @@ void MainWindow::openSpectateDialog()
     connect(&dialog, &SpectateDialog::connectRequested, this,
             [this](const QString &clientId, const QString &clientSecret,
                    const QString &username, int gameId)
-            { m_session->connectAsSpectator(clientId, clientSecret, username, gameId); });
+            {
+                // Starting (or SWITCHING) a match: clear the previous state
+                // first, so the UI doesn't stay on the old match while the
+                // new session is being established.
+                clearMatchUi();
+                setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
+                m_session->connectAsSpectator(clientId, clientSecret, username, gameId);
+            });
     dialog.exec();
+}
+
+// Wipes all match state (model, field, rosters, logs, selection) — used
+// when the user picks a different game from "Spectate Game".
+void MainWindow::clearMatchUi()
+{
+    m_model->reset();
+    onFieldPlayerClicked(QString()); // deselect (no-op when nothing selected)
+    m_field->setPlayers({}, {});
+    m_field->setBall(-1, -1, false);
+    m_field->setHomeTeamName(QString());
+    m_field->setAwayTeamName(QString());
+    m_homeRoster->clearRoster();
+    m_awayRoster->clearRoster();
+    m_diceLog->clearLog();
+    m_chat->clearChat();
+    setTeams(QString(), QString());
+    setScore(0, 0);
+    setTurn(1);
+    m_header->setSpectators(0);
 }
 
 void MainWindow::showPlayerInfo(int number, bool homeSide)

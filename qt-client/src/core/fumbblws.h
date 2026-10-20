@@ -46,8 +46,13 @@ public:
                        bool spectator);
     void connectTo();
     void disconnectFromServer();
+    // Immediate, synchronous teardown (game switching): abort() the socket so
+    // it is Unconnected at once — a subsequent connectTo() then actually
+    // connects instead of returning early against the old close handshake.
+    void abortFromServer();
 
     bool isOpen() const;
+    bool isUnconnected() const;
 
     // Outgoing commands (LZString-compressed internally).
     void sendVersionRequest();
@@ -65,6 +70,15 @@ signals:
     // Raw protocol visibility (for the Protocol Log dock / debugging).
     void sending(const QString &netCommandId, const QJsonObject &payload);
     void received(const QString &netCommandId, const QJsonObject &payload);
+
+    // A serverStatus arrived (e.g. ERROR_WRONG_PASSWORD when the join's
+    // one-time session token was rejected). The session layer turns this
+    // into a visible error + a retry with a fresh token.
+    void statusReceived(const QString &status, const QString &message);
+    // The socket (re)opened but the previous join already consumed its
+    // one-time session token: the session layer must fetch a fresh token
+    // and re-join (FumbblWs deliberately does NOT re-send the stale join).
+    void reopenNeedsToken();
 
     // Routed server commands (subset relevant to a client; the rest only
     // surface via `received`).
@@ -101,6 +115,14 @@ private:
     QString m_sessionToken;
     int m_gameId = 0;
     bool m_spectator = true;
+    // True once a join was sent. A later socket open is a RECONNECT:
+    // re-sending the stored join would replay a CONSUMED one-time session
+    // token (the server would reject it), so reopenNeedsToken() is emitted
+    // instead.
+    bool m_joinSent = false;
+    // True once clientRequestVersion was sent on the CURRENT socket. The
+    // protocol requires it before every clientJoin; it must go out once per
+    // socket (reset in handleOpen).
     bool m_versionSent = false;
     bool m_manualDisconnect = false;
     int m_reconnectAttempts = 0;

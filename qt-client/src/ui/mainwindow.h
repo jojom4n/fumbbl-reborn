@@ -49,6 +49,9 @@ public:
     void setConnectionStatus(const QString &status, bool connected);
 
     void appendDiceLog(const QString &text, const QColor &color = QColor());
+    // Dice-log display text: resolves the leading raw player id to the
+    // player's name against the current model (public so tests can drive it).
+    QString diceLineText(const QString &text, const QString &playerId) const;
     void appendChat(const QString &sender, const QString &text);
     void appendProtocol(const QString &direction, const QString &text);
 
@@ -93,6 +96,17 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
+    // Wipe all match state (model/field/rosters/logs/selection) when the
+    // user starts a different game from "Spectate Game". Public (it is a
+    // controller entry point — the Spectate Game lambda calls it — so tests
+    // and tooling can drive the exact same path).
+public:
+    void clearMatchUi();
+
+    // The spectator session (for tooling/tests).
+    SpectatorSession *session() const { return m_session; }
+
+private:
     void createActions();
     void createMenus();
     void createToolbar();
@@ -110,6 +124,7 @@ private:
     QRect defaultGeometryFor(const QString &name) const;
 
     void onWsClosed(int code, const QString &reason);
+    void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
     void showPlayerInfo(int number, bool homeSide);
     // Field click: empty id = deselect.

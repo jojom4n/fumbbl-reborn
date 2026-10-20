@@ -50,6 +50,9 @@ void FumbblWs::configureJoin(const QString &coach, const QString &sessionToken, 
     m_sessionToken = sessionToken;
     m_gameId = gameId;
     m_spectator = spectator;
+    // A freshly configured join arms the next socket open to actually join
+    // (clears the "already joined" state left by a previous game/reconnect).
+    m_joinSent = false;
 }
 
 void FumbblWs::connectTo()
@@ -70,9 +73,23 @@ void FumbblWs::disconnectFromServer()
         m_ws->close();
 }
 
+void FumbblWs::abortFromServer()
+{
+    m_manualDisconnect = true;
+    m_reconnectTimer->stop();
+    stopPingTimer();
+    if (m_ws->state() != QAbstractSocket::UnconnectedState)
+        m_ws->abort(); // immediate -> Unconnected (no close handshake)
+}
+
 bool FumbblWs::isOpen() const
 {
     return m_ws->state() == QAbstractSocket::ConnectedState;
+}
+
+bool FumbblWs::isUnconnected() const
+{
+    return m_ws->state() == QAbstractSocket::UnconnectedState;
 }
 
 // -----------------------------------------------------------------------------
@@ -90,6 +107,9 @@ void FumbblWs::handleOpen()
     startPingTimer();
     sendPing();
 
+    // Fresh socket: the version request (which must precede any join) has
+    // not been sent on it yet.
+    m_versionSent = false;
     sendJoinInternal();
 }
 
@@ -162,6 +182,14 @@ void FumbblWs::sendJoin()
     cmd["gameName"] = QStringLiteral("");
     cmd["teamId"] = QStringLiteral(""); // spectator mode
     cmd["teamName"] = QStringLiteral("");
+    // CRITICAL: clientRequestVersion must precede clientJoin. It goes out
+    // once per socket (m_versionSent is reset in handleOpen), so a retry on
+    // the same socket re-sends only the join, a re-opened socket sends both.
+    if (!m_versionSent) {
+        m_versionSent = true;
+        sendVersionRequest();
+    }
+    m_joinSent = true; // the token was just consumed by this join
     sendRaw(cmd);
 }
 
@@ -170,12 +198,14 @@ void FumbblWs::sendJoinInternal()
     if (m_sessionToken.isEmpty() || m_gameId == 0)
         return; // nothing configured yet
 
-    // CRITICAL: clientRequestVersion before clientJoin (official pattern),
-    // sent only once per socket.
-    if (!m_versionSent) {
-        m_versionSent = true;
-        sendVersionRequest();
+    if (m_joinSent) {
+        // RECONNECT: the stored join already consumed its one-time session
+        // token. Re-sending it would be rejected by the server. Ask the
+        // session layer for a fresh token; it re-joins via sendJoin().
+        emit reopenNeedsToken();
+        return;
     }
+
     sendJoin();
 }
 
@@ -273,6 +303,9 @@ void FumbblWs::handleMessage(const QString &raw)
         emit socketClosedByServer(msg);
     else if (commandId == QLatin1String("serverPong"))
         emit pongReceived(msg.value("timestamp").toVariant().toLongLong());
+    else if (commandId == QLatin1String("serverStatus"))
+        emit statusReceived(msg.value("serverStatus").toString(),
+                            msg.value("message").toString());
     // serverPing and the remaining commands: no action for a spectator.
 }
 

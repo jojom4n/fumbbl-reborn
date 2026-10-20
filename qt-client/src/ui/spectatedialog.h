@@ -32,7 +32,23 @@ class SpectateDialog : public QDialog
 public:
     explicit SpectateDialog(QWidget *parent = nullptr);
 
+    // Drive the dialog programmatically (tools/tests): select a row and
+    // fire the same path a double-click / the "Spectate" button takes.
+    bool selectGame(int gameId);
+    bool selectFirstGame();
+    void spectate();
+    // Read-outs for tools/tests.
+    int selectedGameId() const;
+    int currentTableRow() const;
+    int tableRowCount() const;
+    // Test seams: inject a match list without a network round-trip and reach
+    // the manual game-id field.
+    void loadMatchesForTest(const QVector<FFBLiveMatch> &matches);
+    QSpinBox *manualGameIdForTest() const { return m_manualGameId; }
+
 signals:
+    // The match list table has been populated (diagnostic/tests).
+    void listLoaded();
     // Same contract ConnectDialog used: emit right before accept().
     void connectRequested(const QString &clientId, const QString &clientSecret,
                           const QString &username, int gameId);
@@ -44,7 +60,6 @@ private slots:
     void onAuthFailed(const QString &step, const QString &error);
     void refreshList();
     void applyFilters();
-    void spectate();
 
 private:
     struct Credentials {
@@ -61,7 +76,6 @@ private:
     void saveCredentials() const;
     Credentials currentCredentials() const;
     void rebuildFilterCombos();
-    int selectedGameId() const; // row selection, or -1
     void spectateBtnState();    // enable/disable the Spectate button
 
     FumbblAuth *m_auth = nullptr;

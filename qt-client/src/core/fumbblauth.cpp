@@ -32,8 +32,13 @@ FumbblAuth::FumbblAuth(QObject *parent)
 
 void FumbblAuth::authenticate(const QString &clientId, const QString &clientSecret)
 {
-    if (m_pendingReply)
-        return;
+    // A new authentication supersedes any pending one (rapid "Spectate
+    // Game" switches): abort the stale request so the new flow is not
+    // silently ignored.
+    if (m_pendingReply) {
+        m_pendingReply->abort();
+        m_pendingReply = nullptr;
+    }
 
     QNetworkRequest req(QUrl(defaultBaseUrl() + QStringLiteral("/api/oauth/token")));
     req.setHeader(QNetworkRequest::ContentTypeHeader,
