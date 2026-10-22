@@ -124,50 +124,73 @@ def clean_grass(im, zone, med=9, strength=0.55, seed=3):
     return Image.fromarray(np.clip(res, 0, 255).astype(np.uint8))
 
 def erase_center_line(im, field, halfwin=110):
-    """Find the AI's thick center line (brightest column near the middle)
-    and replace its band with local grass from both sides."""
+    """Erase the AI's center line COMPLETELY (its whole bright extent, not a
+    fixed ±9px) with local grass from both sides — otherwise the redrawn
+    single line looks 'double'."""
     x0, y0, fw, fh = field
     a = np.asarray(im).astype(float)
     band = a[y0:y0+fh, x0:x0+fw, :].sum(axis=2)
-    cx_local = int(np.argmax(band.max(axis=0)[fw//2-halfwin:fw//2+halfwin])
+    colmax = band.max(axis=0)
+    cx_local = int(np.argmax(colmax[fw//2-halfwin:fw//2+halfwin])
                    + fw//2 - halfwin)
     cx = x0 + cx_local
-    h = a.shape[0]
-    for dx in range(-9, 10):
+    # grass reference (per-row mean, 10px strips 35-45px away from center)
+    left_ref = a[y0:y0+fh, max(0, cx-45):max(1, cx-35), :].mean(axis=1)
+    right_ref = a[y0:y0+fh, min(a.shape[1]-1, cx+35):min(a.shape[1], cx+45), :].mean(axis=1)
+    grass = float(np.concatenate([left_ref, right_ref]).mean())
+    thr = (float(colmax[cx_local - x0]) + grass) / 2.0
+    # measure the contiguous bright extent of the AI line
+    ext = 6
+    for sgn in (-1, 1):
+        x = cx
+        while 0 <= x + sgn < a.shape[1] and ext < 50:
+            x += sgn
+            if colmax[x - x0] > thr:
+                ext = max(ext, abs(x - cx))
+            else:
+                break
+    ext += 3
+    for dx in range(-ext, ext + 1):
         x = cx + dx
-        if 0 <= x < a.shape[1]:
-            lo = max(0, cx - 40)
-            hi = max(1, cx - 28)
-            lo2 = min(a.shape[1]-1, cx + 28)
-            hi2 = min(a.shape[1], cx + 40)
-            left = a[y0:y0+fh, lo:hi, :].mean(axis=1)
-            right = a[y0:y0+fh, lo2:hi2, :].mean(axis=1)
-            t = (abs(dx) - 1.5) / 7.5
-            t = max(0.0, min(1.0, t))
-            a[y0:y0+fh, x, :] = a[y0:y0+fh, x, :] * (1 - t) + (left + right) / 2 * t
+        if not (0 <= x < a.shape[1]):
+            continue
+        lo = max(0, cx - 40); hi = max(1, cx - 30)
+        lo2 = min(a.shape[1]-1, cx + 30); hi2 = min(a.shape[1], cx + 40)
+        L = a[y0:y0+fh, lo:hi, :].mean(axis=1)
+        R = a[y0:y0+fh, lo2:hi2, :].mean(axis=1)
+        t = 1.0 - min(1.0, abs(dx) / float(ext)) * 0.30  # >= 0.70 blend
+        a[y0:y0+fh, x, :] = a[y0:y0+fh, x, :] * (1 - t) + (L + R) / 2 * t
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)), cx
 
 def draw_exact_grid(im, field, banner_x):
-    """Crisp exact 26x15 grid: vertical inner lines between the banners,
-    horizontal lines across the same span, thick center line at the true
-    midpoint."""
+    """Crisp exact 26x15 grid across the WHOLE field: the two TD columns
+    (col 0 / col 25, per the official field) are each a single column of
+    15 visible cells, so horizontal lines run full width. Side-zone rows
+    (row 0 / row 14) get slightly emphasized boundary lines. Single thick
+    center line at the true midpoint (the i=13 grid line is skipped so it
+    never renders double)."""
     x0, y0, fw, fh = field
     cw, ch = fw / 26, fh / 15
     layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     soft = (255, 255, 255, 110)
-    # vertical lines (skip the ones under the banners)
+    side = (255, 255, 255, 150)
+    # vertical lines i=1..25 (i=13 = center line, drawn separately)
     for i in range(1, 26):
+        if i == 13:
+            continue
         x = x0 + i * cw
-        if banner_x[0] < x < banner_x[1]:
-            d.line((x, y0, x, y0 + fh), fill=soft, width=2)
-    # horizontal lines
+        d.line((x, y0, x, y0 + fh), fill=soft, width=2)
+    # horizontal lines j=0..15 across the FULL width (incl. TD columns)
     for j in range(0, 16):
         y = y0 + j * ch
-        d.line((banner_x[0], y, banner_x[1], y), fill=soft, width=2)
-    # center line (thick, crisp)
+        if j in (1, 14):  # side-zone boundary lines (rows 0 and 14)
+            d.line((x0, y, x0 + fw, y), fill=side, width=3)
+        else:
+            d.line((x0, y, x0 + fw, y), fill=soft, width=2)
+    # center line: SINGLE, emphasized
     cx = x0 + 13 * cw
-    d.line((cx, y0, cx, y0 + fh), fill=(255, 255, 255, 235), width=7)
+    d.line((cx, y0, cx, y0 + fh), fill=(255, 255, 255, 240), width=5)
     im.paste(Image.alpha_composite(im.convert("RGBA"), layer).convert("RGB"))
     return cw, ch
 
@@ -271,67 +294,89 @@ def number_badge(size, nr):
     return img
 
 def block_dice(value, size=26):
-    """GW-official-style block die face (crisp vector redraw): dark rounded
-    die + white symbol.  Values (ffb BlockDiceCategory):
-      1 skull (player down)   2 skull+star (both down)
-      3 arrow (push 1)        4 double arrow (push 2)
-      5 star+arrow (stumble)  6 star (POW)"""
+    """Official GW block die: RED die, WHITE symbols (BB2025 set). Faces:
+      1 skull (player down)      2 skull in burst (both down)
+      3 chubby arrow (push)      4 chubby arrow (push, SAME symbol)
+      5 '!' in burst (stumble)   6 burst (POW)
+    Symbol shapes follow the official GW dice (verified on official 2025
+    edition photos + the modern physical dice)."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((1, 1, size - 2, size - 2), radius=size // 5,
-                        fill=(32, 34, 40, 255), outline=(255, 255, 255, 200), width=1)
-    c = size / 2
+    RED = (176, 32, 28, 255)
+    RED_D = (118, 16, 14, 255)
     WT = (255, 255, 255, 255)
+    d.rounded_rectangle((1, 1, size - 2, size - 2), radius=size // 5,
+                        fill=RED, outline=RED_D, width=1)
+    c = size / 2
 
-    def star(cx, cy, r, n=5):
+    def burst(cx, cy, r_out, r_in, n=11, rot=-math.pi / 2):
         pts = []
         for i in range(n * 2):
-            rr = r if i % 2 == 0 else r * 0.46
-            ang = -math.pi / 2 + i * math.pi / n
+            rr = r_out if i % 2 == 0 else r_in
+            ang = rot + i * math.pi / n
             pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
         return pts
 
-    def skull(cx, cy, r):
-        d.ellipse((cx - r * 0.9, cy - r * 0.95, cx + r * 0.9, cy + r * 0.5), fill=WT)
-        d.rectangle((cx - r * 0.5, cy + r * 0.25, cx + r * 0.5, cy + r * 0.9), fill=WT)
-        dc = (32, 34, 40, 255)
-        d.ellipse((cx - r * 0.62, cy - r * 0.55, cx - r * 0.1, cy + r * 0.02), fill=dc)
-        d.ellipse((cx + r * 0.1, cy - r * 0.55, cx + r * 0.62, cy + r * 0.02), fill=dc)
-        for tx in (-0.3, 0.0, 0.3):
-            d.line((cx + tx * r, cy + r * 0.42, cx + tx * r, cy + r * 0.82),
-                   fill=dc, width=1)
+    def skull(cx, cy, r, col, eye):
+        # cranium + jaw
+        d.ellipse((cx - r * 0.95, cy - r * 1.0, cx + r * 0.95, cy + r * 0.45), fill=col)
+        d.rectangle((cx - r * 0.6, cy + r * 0.2, cx + r * 0.6, cy + r * 0.95), fill=col)
+        # angular slanted eyes
+        d.polygon([(cx - r * 0.68, cy - r * 0.35), (cx - r * 0.15, cy - r * 0.2),
+                   (cx - r * 0.22, cy + r * 0.08), (cx - r * 0.68, cy + r * 0.0)], fill=eye)
+        d.polygon([(cx + r * 0.68, cy - r * 0.35), (cx + r * 0.15, cy - r * 0.2),
+                   (cx + r * 0.22, cy + r * 0.08), (cx + r * 0.68, cy + r * 0.0)], fill=eye)
+        # nose + teeth gaps + crack
+        d.polygon([(cx, cy + r * 0.12), (cx - r * 0.16, cy + r * 0.42),
+                   (cx + r * 0.16, cy + r * 0.42)], fill=eye)
+        tw = max(1, int(size * 0.05))
+        for tx in (-0.38, -0.13, 0.13, 0.38):
+            d.line((cx + tx * r, cy + r * 0.32, cx + tx * r, cy + r * 0.85), fill=eye, width=tw)
+        d.line((cx + r * 0.3, cy - r * 0.95, cx + r * 0.12, cy - r * 0.6), fill=eye,
+               width=max(1, int(size * 0.04)))
 
-    def arrow(cx, cy, r, thin=False):
-        wgt = max(1, int(r * 0.34)) if thin else max(2, int(r * 0.46))
-        d.line((cx, cy - r, cx, cy + r * 0.25), fill=WT, width=wgt)
-        d.polygon([(cx - wgt * 1.5, cy), (cx + wgt * 1.5, cy), (cx, cy + r)],
-                  fill=WT)
+    def arrow_push(cx, cy, s):
+        # chubby diagonal arrow with lightning tail (official push symbol)
+        v = (math.cos(math.radians(45)), math.sin(math.radians(45)))
+        p = (-v[1], v[0])
+        tip = (cx + v[0] * s * 0.95, cy + v[1] * s * 0.95)
+        bx = cx + v[0] * s * 0.35; by = cy + v[1] * s * 0.35
+        d.polygon([tip, (bx + p[0] * s * 0.62, by + p[1] * s * 0.62),
+                   (bx - p[0] * s * 0.62, by - p[1] * s * 0.62)], fill=WT)
+        t0 = (bx + p[0] * s * 0.18, by + p[1] * s * 0.18)
+        t1 = (cx - v[0] * s * 0.25 + p[0] * s * 0.32, cy - v[1] * s * 0.25 + p[1] * s * 0.32)
+        t2 = (cx - v[0] * s * 0.55 - p[0] * s * 0.12, cy - v[1] * s * 0.55 - p[1] * s * 0.12)
+        t3 = (cx - v[0] * s * 0.95 + p[0] * s * 0.10, cy - v[1] * s * 0.95 + p[1] * s * 0.10)
+        d.line([t0, t1, t2, t3], fill=WT, width=max(2, int(s * 0.42)), joint="curve")
 
     if value == 1:
-        skull(c, c, size * 0.21)
+        skull(c, c + size * 0.02, size * 0.26, WT, RED)
     elif value == 2:
-        skull(c + size * 0.07, c + size * 0.10, size * 0.165)
-        d.polygon(star(c - size * 0.19, c - size * 0.19, size * 0.115), fill=WT)
-    elif value == 3:
-        arrow(c, c, size * 0.26)
-    elif value == 4:
-        arrow(c - size * 0.14, c, size * 0.22, thin=True)
-        arrow(c + size * 0.14, c, size * 0.22, thin=True)
+        d.polygon(burst(c, c, size * 0.46, size * 0.30), fill=WT)
+        skull(c, c + size * 0.01, size * 0.20, RED, WT)
+    elif value in (3, 4):  # SAME chubby arrow on both push faces
+        arrow_push(c, c, size * 0.36)
     elif value == 5:
-        d.polygon(star(c, c - size * 0.14, size * 0.125), fill=WT)
-        arrow(c, c + size * 0.17, size * 0.175)
+        d.polygon(burst(c, c, size * 0.46, size * 0.30), fill=WT)
+        bw = max(2, int(size * 0.09))
+        d.line((c, c - size * 0.14, c, c + size * 0.06), fill=RED, width=bw)
+        d.ellipse((c - bw / 2, c + size * 0.12, c + bw / 2, c + size * 0.12 + bw), fill=RED)
     elif value == 6:
-        d.polygon(star(c, c, size * 0.27), fill=WT)
+        d.polygon(burst(c, c, size * 0.48, size * 0.32, n=12), fill=WT)
     return img
 
-def reroll_icon(d, cx, cy, r=6.5):
-    """Dedicated small reroll glyph: circular arrow."""
-    d.arc((cx - r, cy - r, cx + r, cy + r), start=290, end=200,
-          fill=INK2 + (235,), width=2)
-    ax = cx + r * math.cos(math.radians(200))
-    ay = cy + r * math.sin(math.radians(200))
-    d.polygon([(ax - 1.5, ay - 4.5), (ax + 4.0, ay - 1.5), (ax - 2.5, ay + 2.0)],
-              fill=INK2 + (235,))
+def coin(d, cx, cy, r, active=True):
+    d.ellipse((cx - r, cy - r, cx + r, cy + r),
+              fill=(212, 175, 55, 255) if active else (196, 198, 204, 255),
+              outline=(150, 118, 30, 255) if active else (160, 162, 170, 255), width=1)
+    if active:
+        d.ellipse((cx - r * 0.55, cy - r * 0.6, cx + r * 0.3, cy + r * 0.05),
+                  fill=(240, 216, 130, 200))
+
+def gold_emboss(d, x, y, s, fnt):
+    """Team name of the team on turn: gold, raised (embossed)."""
+    d.text((x, y + 2), s, font=fnt, fill=(122, 88, 22, 255))
+    d.text((x, y), s, font=fnt, fill=GOLD + (255,))
 
 def remove_skulls(im, boxes):
     """Inpaint TD-banner skulls by texture transfer: copy a clean banner
@@ -465,7 +510,7 @@ def compose(key):
     for path, col in ((LOGOS / "637106.png", 6.5), (LOGOS / "486361.png", 19.5)):
         cx = fx + (col) * cw
         cy = fy + fh / 2
-        lg = team_logo(path, logo_sz, alpha=0.10)
+        lg = team_logo(path, logo_sz, alpha=0.13)
         canvas.paste(lg, (int(cx - logo_sz / 2), int(cy - logo_sz / 2)), lg)
 
     d = ImageDraw.Draw(canvas)
@@ -548,17 +593,31 @@ def compose(key):
 
     nm_h = th["teamName"].upper()
     nm_a = ta["teamName"].upper()
-    d.text((64, 8), nm_h, font=font(14, "bold"), fill=INK + (255,))
+    # team on turn: its name in GOLD, raised (embossed) — the other stays plain
+    if live["home_playing"]:
+        gold_emboss(d, 64, 8, nm_h, font(14, "bold"))
+        d.text((W - 64 - text_w(d, nm_a, font(14, "bold")), 8), nm_a,
+               font=font(14, "bold"), fill=INK + (255,))
+    else:
+        d.text((64, 8), nm_h, font=font(14, "bold"), fill=INK + (255,))
+        gold_emboss(d, W - 64 - text_w(d, nm_a, font(14, "bold")), 8, nm_a,
+                    font(14, "bold"))
     d.text((64, 28), f"{th['coach']}  ·  {th['race']}", font=font(10), fill=INK2 + (255,))
-    d.text((W - 64 - text_w(d, nm_a, font(14, "bold")), 8), nm_a,
-           font=font(14, "bold"), fill=INK + (255,))
     sub_a = f"{ta['coach']}  ·  {ta['race']}"
     d.text((W - 64 - text_w(d, sub_a, font(10)), 28), sub_a, font=font(10),
            fill=INK2 + (255,))
 
+    # rerolls: dots (3 slots, filled = remaining)
     n_rh, n_ra = th["reRolls"], ta["reRolls"]
+    x0 = 64 + text_w(d, nm_h, font(14, "bold")) + 16
+    for i in range(3):
+        coin(d, x0 + i * 19, 17, 7, active=i < n_rh)
+    x0 = W - 64 - 3 * 19 - 16 - text_w(d, nm_a, font(14, "bold"))
+    for i in range(3):
+        coin(d, x0 + i * 19, 17, 7, active=i < n_ra)
+
+    # END TURN button next to the active human coach
     sub_h = f"{th['coach']}  ·  {th['race']}"
-    # END TURN button next to the active human coach (home is playing)
     if live["home_playing"]:
         ex = 64 + text_w(d, sub_h, font(10)) + 14
         d.rounded_rectangle((ex, 24, ex + 82, 46), radius=11, fill=HOME + (255,),
@@ -566,47 +625,39 @@ def compose(key):
                             width=1)
         d.text((ex + 8, 29), "END TURN", font=font(10, "bold"),
                fill=(255, 255, 255, 255))
-        rr_x = ex + 94
-    else:
-        rr_x = 64 + text_w(d, sub_h, font(10)) + 14
-    reroll_icon(d, rr_x + 7, 35)
-    d.text((rr_x + 18, 27), str(n_rh), font=font(12, "bold"), fill=INK + (255,))
-    # away: rerolls just left of the coach text
-    rr_x2 = W - 64 - text_w(d, sub_a, font(10)) - 44
-    reroll_icon(d, rr_x2 + 7, 35)
-    d.text((rr_x2 + 18, 27), str(n_ra), font=font(12, "bold"), fill=INK + (255,))
 
-    # center: score + turn indicator + chips + timer + weather
+    # center: score + one clean row: [TURN n][HALF] [timer pill time] [weather]
     score = "0 : 0"
     fs = font(22, "black")
-    scw = text_w(d, score, fs)
-    d.text((W / 2 - scw / 2, 6), score, font=fs, fill=INK + (255,))
-    dotc = HOME if live["home_playing"] else AWAY
-    if live["home_playing"]:
-        d.ellipse((W / 2 - scw / 2 - 15, 13, W / 2 - scw / 2 - 5, 23), fill=dotc + (255,))
-    else:
-        d.ellipse((W / 2 + scw / 2 + 5, 13, W / 2 + scw / 2 + 15, 23), fill=dotc + (255,))
-
-    ty = 36
-    def chip(s, col, x):
-        d.rounded_rectangle((x, ty, x + text_w(d, s, font(10, "bold")) + 14, ty + 16),
-                            radius=8, outline=col + (200,), width=1)
-        d.text((x + 7, ty + 2), s, font=font(10, "bold"), fill=col + (255,))
-        return x + text_w(d, s, font(10, "bold")) + 14
-    cx0 = W / 2 - 132
-    nx = chip(f"TURN {live['turn']}", HOME, cx0) + 8
-    nx = chip(f"{live['half']}ST HALF", INK2, nx)
+    d.text((W / 2 - text_w(d, score, fs) / 2, 5), score, font=fs, fill=INK + (255,))
+    ty = 34
     remain = max(0, live["turn_limit"] - live["turn_time"] / 1000)
     frac = remain / live["turn_limit"]
-    bx0, by0 = nx + 12, ty + 2
-    d.rounded_rectangle((bx0, by0, bx0 + 110, by0 + 12), radius=6,
-                        fill=(226, 228, 234, 255))
-    if frac > 0:
-        d.rounded_rectangle((bx0, by0, bx0 + max(12, 110 * frac), by0 + 12),
-                            radius=6, fill=GREEN + (230,))
     t = f"{int(remain // 60)}:{int(remain % 60):02d}"
-    d.text((bx0 + 118, ty), t, font=font(11, "bold"), fill=INK + (255,))
-    rain_icon(d, bx0 + 118 + text_w(d, t, font(11, "bold")) + 12, ty - 4, s=18)
+    wx_txt = live.get("weather") or "Pouring Rain"
+    w1 = text_w(d, f"TURN {live['turn']}", font(10, "bold")) + 14
+    w2 = text_w(d, f"{live['half']}ST HALF", font(10, "bold")) + 14
+    wbar = 96
+    w3 = text_w(d, t, font(11, "bold"))
+    w4 = 24 + text_w(d, wx_txt, font(10))
+    total = w1 + 8 + w2 + 12 + wbar + 8 + w3 + 12 + w4
+    x = W / 2 - total / 2
+    d.rounded_rectangle((x, ty, x + w1, ty + 16), radius=8, outline=HOME + (200,), width=1)
+    d.text((x + 7, ty + 2), f"TURN {live['turn']}", font=font(10, "bold"), fill=HOME + (255,))
+    x += w1 + 8
+    d.rounded_rectangle((x, ty, x + w2, ty + 16), radius=8, outline=INK2 + (200,), width=1)
+    d.text((x + 7, ty + 2), f"{live['half']}ST HALF", font=font(10, "bold"), fill=INK2 + (255,))
+    x += w2 + 12
+    d.rounded_rectangle((x, ty + 2, x + wbar, ty + 14), radius=6,
+                        fill=(226, 228, 234, 255), outline=(196, 200, 208, 255), width=1)
+    if frac > 0:
+        d.rounded_rectangle((x, ty + 2, x + max(12, wbar * frac), ty + 14),
+                            radius=6, fill=GREEN + (230,))
+    x += wbar + 8
+    d.text((x, ty), t, font=font(11, "bold"), fill=INK + (255,))
+    x += w3 + 12
+    rain_icon(d, x, ty - 3, s=18)
+    d.text((x + 24, ty + 2), wx_txt, font=font(10), fill=INK2 + (255,))
 
     # box strips (ultra-thin vertical, left = home, right = away)
     def box_strip(x, team, color, box_players):
@@ -691,16 +742,16 @@ def compose(key):
     ALY = H - 12 - al_h
     log_strip = (ALX, ALY, ALX + ALW, ALY + al_h)
     shadow_box(log_strip, r=9)
-    d.rounded_rectangle(log_strip, radius=9, fill=PAPER + (170,),
-                        outline=(180, 188, 200, 150), width=1)
+    d.rounded_rectangle(log_strip, radius=9, fill=PAPER + (95,),
+                        outline=(180, 188, 200, 70), width=1)
     # expand chevron (top right of the strip)
     cxx = ALX + ALW - 16
     cyy = ALY + row_h / 2
     d.polygon([(cxx - 5, cyy + 3), (cxx + 5, cyy + 3), (cxx, cyy - 4)],
               fill=INK2 + (220,))
     y1 = ALY + 8
-    d.text((ALX + 12, y1), "Move:  Gerirr  2 squares", font=font(11),
-           fill=INK + (235,))
+    d.text((ALX + 12, y1), "Move:  Gerirr  2 squares", font=font(11, "bold"),
+           fill=INK + (255,))
     y1 += row_h + gap
     d.text((ALX + 12, y1 + 8), "Block:", font=font(11, "bold"), fill=INK + (235,))
     dx = ALX + 12 + text_w(d, "Block:", font(11, "bold")) + 8
@@ -713,7 +764,7 @@ def compose(key):
     y1 += row_h + gap
     d.text((ALX + 12, y1 + 7), "Fumble:", font=font(12, "bold"), fill=RED + (255,))
     d.text((ALX + 12 + text_w(d, "Fumble:", font(12, "bold")) + 6, y1 + 8),
-           "the ball is loose!", font=font(11), fill=INK + (235,))
+           "the ball is loose!", font=font(11, "bold"), fill=INK + (255,))
 
     # chat button (bottom right) with unread badge
     cb = (W - 148, 702, W - 20, 746)
