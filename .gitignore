@@ -19,3 +19,7 @@ FUMBBL __*.pdf
 .idea/
 .vscode/
 *.sw?
+
+# mockup tooling artifacts
+*.log
+__pycache__/
