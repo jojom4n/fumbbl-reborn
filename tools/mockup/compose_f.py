@@ -155,16 +155,16 @@ def draw_exact_grid(im, field, banner_x):
     cw, ch = fw / 26, fh / 15
     layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    soft = (255, 255, 255, 46)
+    soft = (255, 255, 255, 110)
     # vertical lines (skip the ones under the banners)
     for i in range(1, 26):
         x = x0 + i * cw
         if banner_x[0] < x < banner_x[1]:
-            d.line((x, y0, x, y0 + fh), fill=soft, width=1)
+            d.line((x, y0, x, y0 + fh), fill=soft, width=2)
     # horizontal lines
     for j in range(0, 16):
         y = y0 + j * ch
-        d.line((banner_x[0], y, banner_x[1], y), fill=soft, width=1)
+        d.line((banner_x[0], y, banner_x[1], y), fill=soft, width=2)
     # center line (thick, crisp)
     cx = x0 + 13 * cw
     d.line((cx, y0, cx, y0 + fh), fill=(255, 255, 255, 235), width=7)
@@ -270,33 +270,86 @@ def number_badge(size, nr):
                 str(nr), f, (255, 255, 255, 255))
     return img
 
-_PIPS = {
-    1: [(0.5, 0.5)],
-    2: [(0.3, 0.3), (0.7, 0.7)],
-    3: [(0.28, 0.28), (0.5, 0.5), (0.72, 0.72)],
-    4: [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)],
-    5: [(0.3, 0.3), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.7, 0.7)],
-    6: [(0.3, 0.26), (0.7, 0.26), (0.3, 0.5), (0.7, 0.5), (0.3, 0.74), (0.7, 0.74)],
-}
-
-def dice(value, size):
+def block_dice(value, size=26):
+    """GW-official-style block die face (crisp vector redraw): dark rounded
+    die + white symbol.  Values (ffb BlockDiceCategory):
+      1 skull (player down)   2 skull+star (both down)
+      3 arrow (push 1)        4 double arrow (push 2)
+      5 star+arrow (stumble)  6 star (POW)"""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((1, 1, size - 2, size - 2), radius=4,
-                        fill=(255, 255, 255, 255), outline=(90, 96, 108, 255), width=1)
-    pr = max(2, size // 9)
-    for px, py in _PIPS[value]:
-        cx, cy = int(2 + px * (size - 4)), int(2 + py * (size - 4))
-        d.ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=(30, 34, 42, 255))
+    d.rounded_rectangle((1, 1, size - 2, size - 2), radius=size // 5,
+                        fill=(32, 34, 40, 255), outline=(255, 255, 255, 200), width=1)
+    c = size / 2
+    WT = (255, 255, 255, 255)
+
+    def star(cx, cy, r, n=5):
+        pts = []
+        for i in range(n * 2):
+            rr = r if i % 2 == 0 else r * 0.46
+            ang = -math.pi / 2 + i * math.pi / n
+            pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
+        return pts
+
+    def skull(cx, cy, r):
+        d.ellipse((cx - r * 0.9, cy - r * 0.95, cx + r * 0.9, cy + r * 0.5), fill=WT)
+        d.rectangle((cx - r * 0.5, cy + r * 0.25, cx + r * 0.5, cy + r * 0.9), fill=WT)
+        dc = (32, 34, 40, 255)
+        d.ellipse((cx - r * 0.62, cy - r * 0.55, cx - r * 0.1, cy + r * 0.02), fill=dc)
+        d.ellipse((cx + r * 0.1, cy - r * 0.55, cx + r * 0.62, cy + r * 0.02), fill=dc)
+        for tx in (-0.3, 0.0, 0.3):
+            d.line((cx + tx * r, cy + r * 0.42, cx + tx * r, cy + r * 0.82),
+                   fill=dc, width=1)
+
+    def arrow(cx, cy, r, thin=False):
+        wgt = max(1, int(r * 0.34)) if thin else max(2, int(r * 0.46))
+        d.line((cx, cy - r, cx, cy + r * 0.25), fill=WT, width=wgt)
+        d.polygon([(cx - wgt * 1.5, cy), (cx + wgt * 1.5, cy), (cx, cy + r)],
+                  fill=WT)
+
+    if value == 1:
+        skull(c, c, size * 0.21)
+    elif value == 2:
+        skull(c + size * 0.07, c + size * 0.10, size * 0.165)
+        d.polygon(star(c - size * 0.19, c - size * 0.19, size * 0.115), fill=WT)
+    elif value == 3:
+        arrow(c, c, size * 0.26)
+    elif value == 4:
+        arrow(c - size * 0.14, c, size * 0.22, thin=True)
+        arrow(c + size * 0.14, c, size * 0.22, thin=True)
+    elif value == 5:
+        d.polygon(star(c, c - size * 0.14, size * 0.125), fill=WT)
+        arrow(c, c + size * 0.17, size * 0.175)
+    elif value == 6:
+        d.polygon(star(c, c, size * 0.27), fill=WT)
     return img
 
-def coin(d, cx, cy, r, active=True):
-    d.ellipse((cx - r, cy - r, cx + r, cy + r),
-              fill=(212, 175, 55, 255) if active else (196, 198, 204, 255),
-              outline=(150, 118, 30, 255) if active else (160, 162, 170, 255), width=1)
-    if active:
-        d.ellipse((cx - r * 0.55, cy - r * 0.6, cx + r * 0.3, cy + r * 0.05),
-                  fill=(240, 216, 130, 200))
+def reroll_icon(d, cx, cy, r=6.5):
+    """Dedicated small reroll glyph: circular arrow."""
+    d.arc((cx - r, cy - r, cx + r, cy + r), start=290, end=200,
+          fill=INK2 + (235,), width=2)
+    ax = cx + r * math.cos(math.radians(200))
+    ay = cy + r * math.sin(math.radians(200))
+    d.polygon([(ax - 1.5, ay - 4.5), (ax + 4.0, ay - 1.5), (ax - 2.5, ay + 2.0)],
+              fill=INK2 + (235,))
+
+def remove_skulls(im, boxes):
+    """Inpaint TD-banner skulls by texture transfer: copy a clean banner
+    patch from just above each skull (same x range), jittered + slight noise."""
+    a = np.asarray(im.convert("RGB")).astype(np.int16)
+    rng = np.random.RandomState(11)
+    for (x0, y0, x1, y1) in boxes:
+        x0, y0, x1, y1 = x0 - 3, y0 - 3, x1 + 4, y1 + 4
+        h, w = y1 - y0, x1 - x0
+        src_y0 = max(0, y0 - h - 6)
+        src_y1 = src_y0 + h
+        if src_y1 <= src_y0:
+            continue
+        patch = a[src_y0:src_y1, x0:x1, :].copy()
+        patch = np.roll(patch, int(rng.randint(2, 6)), axis=0)
+        noise = rng.randint(-5, 6, (h, w, 3)).astype(np.int16)
+        a[y0:y1, x0:x1, :] = patch + noise
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 def rain_icon(d, x, y, s=20):
     d.ellipse((x, y + s * 0.25, x + s * 0.75, y + s * 0.85), fill=(168, 180, 196, 255))
@@ -307,47 +360,56 @@ def rain_icon(d, x, y, s=20):
         d.line((x0, y + s * 0.9, x0 - s * 0.08, y + s * 1.3),
                fill=(90, 140, 200, 255), width=2)
 
-def draw_wheel(d, cx, cy, cell):
-    R = cell * 1.75
-    r = max(11, cell * 0.30)
-    icons = ["move", "block", "blitz", "pass", "foul", "attack"]
-    for i, name in enumerate(icons):
-        ang = math.radians(-90 + i * 60)
-        bx = cx + R * math.cos(ang)
-        by = cy + R * math.sin(ang)
-        d.ellipse((bx - r, by - r, bx + r, by + r),
-                  fill=(26, 28, 34, 235), outline=(255, 255, 255, 130), width=1)
-        s = r * 0.55
-        if name == "move":
-            d.line((bx, by + s, bx, by - s), fill=(255, 255, 255, 255), width=3)
-            d.polygon([(bx - s * 0.6, by - s * 0.4), (bx + s * 0.6, by - s * 0.4),
-                       (bx, by - s * 1.1)], fill=(255, 255, 255, 255))
-        elif name == "block":
-            d.polygon([(bx - s * 0.7, by - s * 0.7), (bx + s * 0.7, by - s * 0.7),
-                       (bx + s * 0.7, by + s * 0.1), (bx, by + s * 0.9),
-                       (bx - s * 0.7, by + s * 0.1)],
-                      outline=(255, 255, 255, 255), width=2)
-        elif name == "blitz":
-            d.polygon([(bx + s * 0.2, by - s), (bx - s * 0.5, by + s * 0.15),
-                       (bx - 0.5, by + s * 0.15), (bx - s * 0.2, by + s),
-                       (bx + s * 0.5, by - s * 0.1), (bx + 0.5, by - s * 0.1)],
-                      fill=(255, 255, 255, 255))
-        elif name == "pass":
-            d.arc((bx - s, by - s, bx + s, by + s), 90, 360,
-                  fill=(255, 255, 255, 255), width=3)
-            d.polygon([(bx + s, by - s * 0.2), (bx + s, by + s * 0.5),
-                       (bx + s * 0.3, by - s * 0.1)], fill=(255, 255, 255, 255))
-        elif name == "foul":
-            for dx in (-s * 0.5, 0, s * 0.5):
-                d.line((bx + dx, by - s * 0.8, bx + dx, by + s * 0.3),
-                       fill=(255, 255, 255, 255), width=3)
-            d.line((bx - s * 0.5, by + s * 0.5, bx + s * 0.5, by + s * 0.5),
-                   fill=(255, 255, 255, 255), width=3)
-        elif name == "attack":
-            d.line((bx - s * 0.7, by - s * 0.7, bx + s * 0.7, by + s * 0.7),
-                   fill=(255, 255, 255, 255), width=3)
-            d.line((bx + s * 0.7, by - s * 0.7, bx - s * 0.7, by + s * 0.7),
-                   fill=(255, 255, 255, 255), width=3)
+def draw_wheel(canvas, cx, cy, cell):
+    """White circular action wheel around the acting player: clean disc,
+    dark icons, tight ring (standard game-UI pattern)."""
+    R = cell * 1.28
+    sh = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).ellipse((cx - R + 2, cy - R + 5, cx + R + 2, cy + R + 5),
+                               fill=(20, 26, 34, 70))
+    sh = sh.filter(ImageFilter.GaussianBlur(5))
+    canvas.alpha_composite(sh)
+    disc = Image.new("RGBA", (int(R * 2) + 4, int(R * 2) + 4), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(disc)
+    dd.ellipse((2, 2, int(R * 2) + 2, int(R * 2) + 2),
+               fill=(252, 252, 254, 218), outline=(168, 176, 190, 255), width=2)
+    canvas.alpha_composite(disc, (int(cx - R - 2), int(cy - R - 2)))
+    d = ImageDraw.Draw(canvas)
+    INKc = INK + (255,)
+    ic = cell * 0.30
+    rr = R * 0.60
+    # move (up arrow)
+    d.line((cx, cy - rr - ic * 0.5, cx, cy - rr + ic * 0.35), fill=INKc, width=3)
+    d.polygon([(cx - ic * 0.42, cy - rr + ic * 0.05), (cx + ic * 0.42, cy - rr + ic * 0.05),
+               (cx, cy - rr - ic * 0.55)], fill=INKc)
+    # block (two shields)
+    bx, by = cx + rr * 0.87, cy - rr * 0.5
+    for off in (-ic * 0.42, ic * 0.14):
+        d.rounded_rectangle((bx + off - ic * 0.18, by - ic * 0.3,
+                             bx + off + ic * 0.18, by + ic * 0.3), radius=2, fill=INKc)
+    # blitz (zigzag)
+    zx, zy = cx + rr * 0.87, cy + rr * 0.5
+    d.line((zx - ic * 0.45, zy - ic * 0.35, zx - ic * 0.05, zy,
+            zx - ic * 0.35, zy + ic * 0.35, zx + ic * 0.4, zy - ic * 0.1),
+           fill=INKc, width=3)
+    # pass (arc + arrowhead)
+    px, py = cx - rr * 0.87, cy + rr * 0.5
+    d.arc((px - ic * 0.5, py - ic * 0.5, px + ic * 0.5, py + ic * 0.5),
+          180, 20, fill=INKc, width=3)
+    d.polygon([(px + ic * 0.32, py - ic * 0.42), (px + ic * 0.62, py - ic * 0.18),
+               (px + ic * 0.18, py - ic * 0.05)], fill=INKc)
+    # foul (crossed swords)
+    fx, fy = cx - rr * 0.87, cy - rr * 0.5
+    d.line((fx - ic * 0.4, fy - ic * 0.4, fx + ic * 0.4, fy + ic * 0.4),
+           fill=INKc, width=3)
+    d.line((fx + ic * 0.4, fy - ic * 0.4, fx - ic * 0.4, fy + ic * 0.4),
+           fill=INKc, width=3)
+    # attack (dagger)
+    ax, ay = cx, cy + rr
+    d.polygon([(ax, ay + ic * 0.5), (ax - ic * 0.28, ay - ic * 0.3),
+               (ax, ay - ic * 0.55), (ax + ic * 0.28, ay - ic * 0.3)], fill=INKc)
+    d.line((ax - ic * 0.4, ay - ic * 0.35, ax + ic * 0.4, ay - ic * 0.35),
+           fill=INKc, width=2)
 
 def target_brackets(d, rect, color=(255, 255, 255, 215)):
     x0, y0, x1, y1 = rect
@@ -369,10 +431,13 @@ def team_logo(path, size, alpha=0.13):
 CONFIGS = {
     "71": {"in": "/home/saruman/ComfyUI-Shared/output/mockups/F_field_s71_00001_.png",
            "field": (31, 0, 1278, 739), "banner_x": (136, 1206),
-           "out": "FINAL_F_71.png"},
+           "out": "FINAL_F_71.png",
+           # AI-painted TD skull bboxes (removed via texture transfer)
+           "skulls": [(55, 129, 106, 187), (1234, 129, 1286, 187)]},
     "72": {"in": "/home/saruman/ComfyUI-Shared/output/mockups/F_field_s72_00001_.png",
            "field": (51, 23, 1244, 705), "banner_x": (131, 1212),
-           "out": "FINAL_F_72.png"},
+           "out": "FINAL_F_72.png",
+           "skulls": [(64, 190, 108, 243), (1231, 190, 1275, 243)]},
 }
 
 def compose(key):
@@ -382,6 +447,7 @@ def compose(key):
 
     # --- 1. field: clean the AI grid, draw the exact 26x15
     field = Image.open(cfg["in"]).convert("RGB")
+    field = remove_skulls(field, cfg.get("skulls", []))
     fx, fy, fw, fh = cfg["field"]
     zone = (cfg["banner_x"][0] + 4, cfg["banner_x"][1] - 4, fy, fy + fh)
     field = clean_grass(field, zone)
@@ -399,7 +465,7 @@ def compose(key):
     for path, col in ((LOGOS / "637106.png", 6.5), (LOGOS / "486361.png", 19.5)):
         cx = fx + (col) * cw
         cy = fy + fh / 2
-        lg = team_logo(path, logo_sz, alpha=0.16)
+        lg = team_logo(path, logo_sz, alpha=0.10)
         canvas.paste(lg, (int(cx - logo_sz / 2), int(cy - logo_sz / 2)), lg)
 
     d = ImageDraw.Draw(canvas)
@@ -408,9 +474,14 @@ def compose(key):
     for (tx, ty) in ((12, 8), (13, 8)):
         target_brackets(d, cell_rect(tx, ty))
 
-    # --- 4. tokens (real coordinates, real faces, real states)
+    # --- 4. white action wheel on the acting player (under the token)
+    act_p = next(p for p in live["players"] if p["name"] == ACTING_NAME)
+    ax, ay = cell_center(act_p["x"], act_p["y"])
+    draw_wheel(canvas, ax, ay, min(cw, ch))
+    d = ImageDraw.Draw(canvas)
+
+    # --- 5. tokens (real coordinates, real faces, real states)
     ball = live["ball"]
-    ball_xy = None
     for p in live["players"]:
         ring = HOME if p["side"] == "H" else AWAY
         slug = home_face(p["name"]) if p["side"] == "H" else away_face(p)
@@ -429,11 +500,7 @@ def compose(key):
                 sy = cy - size * 0.72
                 d.regular_polygon((sx, sy, 4), 5, rotation=0,
                                   fill=(255, 220, 90, 255), outline=(120, 90, 20, 255))
-        if acting:
-            rr = size * 0.56
-            d.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
-                      outline=(255, 255, 255, 235), width=2)
-            ball_xy = (cx, cy)
+        # acting player is indicated by the white wheel (drawn below)
     # loose ball (drawn peeking from under the token standing on the square)
     if live["ball_in_play"] and ball:
         ox, oy = cell_center(ball[0], ball[1])
@@ -441,18 +508,20 @@ def compose(key):
                    oy + ch * 0.22 + ch * 0.32),
                   fill=(139, 90, 43, 255), outline=(64, 38, 18, 255), width=1)
 
-    # --- 5. dark radial wheel on the acting thrower
-    ax, ay = cell_center(11, 8)
-    draw_wheel(d, ax, ay, min(cw, ch))
-
-    # --- 6. rain streaks (weather: Pouring Rain)
+    # --- 6. rain (MicroProse-Soccer style: fine top-down droplet specks)
     rng = random.Random(7)
-    for _ in range(150):
+    for _ in range(520):
         x0 = rng.uniform(0, W)
         y0 = rng.uniform(0, H)
-        L = rng.uniform(14, 30)
-        a = rng.randint(8, 16)
-        d.line((x0, y0, x0 - L * 0.22, y0 + L), fill=(235, 240, 250, a), width=1)
+        a = rng.randint(35, 115)
+        r = rng.choice((0.9, 0.9, 1.1, 1.5))
+        d.ellipse((x0, y0, x0 + r, y0 + r), fill=(235, 240, 250, a))
+    for _ in range(90):
+        x0 = rng.uniform(0, W)
+        y0 = rng.uniform(0, H)
+        L = rng.uniform(2.5, 6.0)
+        a = rng.randint(28, 72)
+        d.line((x0, y0, x0, y0 + L), fill=(235, 240, 250, a), width=1)
 
     # --- 7. chrome (light strips + shadow)
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -488,12 +557,24 @@ def compose(key):
            fill=INK2 + (255,))
 
     n_rh, n_ra = th["reRolls"], ta["reRolls"]
-    x0 = 64 + text_w(d, nm_h, font(14, "bold")) + 16
-    for i in range(3):
-        coin(d, x0 + i * 19, 17, 7, active=i < n_rh)
-    x0 = W - 64 - 3 * 19 - 16 - text_w(d, nm_a, font(14, "bold"))
-    for i in range(3):
-        coin(d, x0 + i * 19, 17, 7, active=i < n_ra)
+    sub_h = f"{th['coach']}  ·  {th['race']}"
+    # END TURN button next to the active human coach (home is playing)
+    if live["home_playing"]:
+        ex = 64 + text_w(d, sub_h, font(10)) + 14
+        d.rounded_rectangle((ex, 24, ex + 82, 46), radius=11, fill=HOME + (255,),
+                            outline=tuple(max(0, c - 60) for c in HOME) + (255,),
+                            width=1)
+        d.text((ex + 8, 29), "END TURN", font=font(10, "bold"),
+               fill=(255, 255, 255, 255))
+        rr_x = ex + 94
+    else:
+        rr_x = 64 + text_w(d, sub_h, font(10)) + 14
+    reroll_icon(d, rr_x + 7, 35)
+    d.text((rr_x + 18, 27), str(n_rh), font=font(12, "bold"), fill=INK + (255,))
+    # away: rerolls just left of the coach text
+    rr_x2 = W - 64 - text_w(d, sub_a, font(10)) - 44
+    reroll_icon(d, rr_x2 + 7, 35)
+    d.text((rr_x2 + 18, 27), str(n_ra), font=font(12, "bold"), fill=INK + (255,))
 
     # center: score + turn indicator + chips + timer + weather
     score = "0 : 0"
@@ -518,7 +599,6 @@ def compose(key):
     remain = max(0, live["turn_limit"] - live["turn_time"] / 1000)
     frac = remain / live["turn_limit"]
     bx0, by0 = nx + 12, ty + 2
-    d.text((bx0 - 2, ty - 12), "END OF TURN", font=font(8, "bold"), fill=INK2 + (255,))
     d.rounded_rectangle((bx0, by0, bx0 + 110, by0 + 12), radius=6,
                         fill=(226, 228, 234, 255))
     if frac > 0:
@@ -604,35 +684,36 @@ def compose(key):
                         radius=9, fill=HOME + (215,))
     center_text(d, cxm, CY0 + CH_ - 38, "ACTING", font(9, "bold"), (255, 255, 255, 255))
 
-    # ticker + expanded history (bottom center, BB2 style, real dice)
-    TW_ = 560
-    TX = (W - TW_) // 2
-    hist = [(TX, 610, TX + TW_, 650), (TX, 656, TX + TW_, 696)]
-    for hb in hist:
-        shadow_box(hb, r=9)
-    d.rounded_rectangle(hist[0], radius=9, fill=PAPER + (210,))
-    d.rounded_rectangle(hist[1], radius=9, fill=PAPER + (210,))
-    d = ImageDraw.Draw(chrome)
-    y1 = hist[0][1] + 8
-    d.text((TX + 12, y1), "Block:", font=font(12, "bold"), fill=INK + (255,))
-    dx = TX + 12 + text_w(d, "Block:", font(12, "bold")) + 8
-    for v in (5, 6, 3):
-        chrome.paste(dice(v, 24), (dx, y1 - 2), dice(v, 24))
-        dx += 30
-    d = ImageDraw.Draw(chrome)
-    d.text((dx + 4, y1), "— success", font=font(12, "bold"), fill=GREEN + (255,))
-    d.text((TX + 12, hist[1][1] + 8), "Move: Gerirr 2 squares", font=font(12),
-           fill=INK + (255,))
-    tick = (TX, 702, TX + TW_, 746)
-    shadow_box(tick, r=10)
-    d.rounded_rectangle(tick, radius=10, fill=PAPER + (232,))
-    d.rounded_rectangle(tick, radius=10, outline=RED + (90,), width=1)
-    d.ellipse((TX + 12, 718, TX + 20, 726), fill=RED + (255,))
-    d.text((TX + 28, 715), "Fumble:", font=font(13, "bold"), fill=RED + (255,))
-    d.text((TX + 28 + text_w(d, "Fumble:", font(13, "bold")) + 8, 715),
-           "the ball is loose!", font=font(13), fill=INK + (255,))
-    d.polygon([(TX + TW_ - 24, 726), (TX + TW_ - 14, 726), (TX + TW_ - 19, 718)],
-              fill=INK2 + (255,))
+    # action log (left side, 3 compact rows, translucent, expand chevron)
+    ALX, ALW = 148, 470
+    row_h, gap = 28, 3
+    al_h = 3 * row_h + 2 * gap
+    ALY = H - 12 - al_h
+    log_strip = (ALX, ALY, ALX + ALW, ALY + al_h)
+    shadow_box(log_strip, r=9)
+    d.rounded_rectangle(log_strip, radius=9, fill=PAPER + (170,),
+                        outline=(180, 188, 200, 150), width=1)
+    # expand chevron (top right of the strip)
+    cxx = ALX + ALW - 16
+    cyy = ALY + row_h / 2
+    d.polygon([(cxx - 5, cyy + 3), (cxx + 5, cyy + 3), (cxx, cyy - 4)],
+              fill=INK2 + (220,))
+    y1 = ALY + 8
+    d.text((ALX + 12, y1), "Move:  Gerirr  2 squares", font=font(11),
+           fill=INK + (235,))
+    y1 += row_h + gap
+    d.text((ALX + 12, y1 + 8), "Block:", font=font(11, "bold"), fill=INK + (235,))
+    dx = ALX + 12 + text_w(d, "Block:", font(11, "bold")) + 8
+    for v in (6, 2, 3):
+        di = block_dice(v, 26)
+        chrome.paste(di, (int(dx), int(y1 + 1)), di)
+        dx += 31
+    d.text((dx + 2, y1 + 8), "— success", font=font(11, "bold"),
+           fill=GREEN + (255,))
+    y1 += row_h + gap
+    d.text((ALX + 12, y1 + 7), "Fumble:", font=font(12, "bold"), fill=RED + (255,))
+    d.text((ALX + 12 + text_w(d, "Fumble:", font(12, "bold")) + 6, y1 + 8),
+           "the ball is loose!", font=font(11), fill=INK + (235,))
 
     # chat button (bottom right) with unread badge
     cb = (W - 148, 702, W - 20, 746)

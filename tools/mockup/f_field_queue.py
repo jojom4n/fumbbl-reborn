@@ -11,7 +11,7 @@ radial wheel) and the TOUCHDOWN banner text.
 Prompt goals (per final UI spec, 22/ott — "spettacolare"):
   * real grass texture (visible blades), mowing stripes
   * rain sheen (the live match weather is Pouring Rain)
-  * gorgeous TOUCHDOWN zones at both ends (banner + skulls + big letters)
+  * gorgeous TOUCHDOWN zones at both ends (red banner + big letters, no skulls)
   * thick crisp center line, fine precise 26x15 grid
   * NO coordinates, NO team logos, NO players, NO ball, NO UI
 
@@ -38,8 +38,9 @@ PROMPT = (
     "exactly in half, from the top edge to the bottom edge. At each of the "
     "two short ends, the outermost column of the grid is a touchdown zone "
     "painted as a deep crimson-red banner band spanning the full height of "
-    "the field, decorated with a white skull icon and the word TOUCHDOWN in "
-    "huge bold white display letters running vertically down the band. "
+    "the field, carrying ONLY the word TOUCHDOWN in "
+    "huge bold white display letters running vertically down the band, "
+    "with no skulls and no other icons. "
     "Dramatic floodlight ambiance, hyper-detailed grass texture, cinematic "
     "AAA game quality, wide 16:9. STRICT: no players, no ball, no team "
     "logos, no emblems, no watermarks, no numbers, no grid coordinates, no "
