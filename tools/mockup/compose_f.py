@@ -9,8 +9,9 @@ Pipeline (mockup only, NO Qt implementation involved):
      erased in the grass area (median pass + procedural grass-blade overlay
      to restore micro-texture) and a CRISP EXACT 26x15 grid is redrawn,
      aligned to the banners, with the center line at the true midpoint.
-  3. REAL FUMBBL data is composited (match 1955576, live-dumped via
-     spectator_smoke):
+  3. REAL FUMBBL data is composited (match 1956717 — Simply good (Orc) vs
+     Plobando Latas (Skaven) — live-dumped via spectator_smoke; the WS
+     serverGameState format, score from /api/match/current):
        * REAL team logos (fumbbl.com /i/<id>) at ~13% alpha, centered on
          each half. THE LOGO SYSTEM: per-match, data-driven (the match API
          returns `logo`/`logolarge` per team); the Qt client will do the
@@ -31,7 +32,7 @@ Pipeline (mockup only, NO Qt implementation involved):
              the acting player
            - dark radial wheel + BB2-style target brackets on the acting
              player
-       * subtle rain streaks (live match weather: Pouring Rain)
+       * rain overlay only when the live weather is rain
 
 Usage: python3 compose_f.py [71|72|all]
 """
@@ -60,11 +61,13 @@ W, H = 1344, 768
 INK = (34, 40, 50)          # primary text
 INK2 = (104, 114, 128)      # secondary text
 PAPER = (250, 250, 253)     # strip base
-HOME = (52, 108, 180)       # Pearls before a Dog (Old World Alliance) accent
-AWAY = (193, 152, 55)       # Wyldyr Heartseekers (Wood Elf) accent
+HOME = (52, 108, 180)       # home (left) accent
+AWAY = (193, 152, 55)       # away (right) accent
 RED = (196, 60, 52)         # injury / failure ONLY
 GREEN = (60, 142, 84)       # success
 GOLD = (212, 175, 55)
+AMBER = (186, 128, 24)      # caution (prone / stunned)
+API_MATCH = Path("/tmp/mockF/api_cur.json")  # /api/match/current (same match)
 
 _FONT_CACHE = {}
 def font(size, weight="reg"):
@@ -162,6 +165,69 @@ def erase_center_line(im, field, halfwin=110):
         a[y0:y0+fh, x, :] = a[y0:y0+fh, x, :] * (1 - t) + (L + R) / 2 * t
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)), cx
 
+def narrow_td_zone(im, field, banner_x, text="TOUCHDOWN"):
+    """The official field TD zone is ONE single column (col 0 / col 25).
+    The Qwen art painted a ~2-column-wide red banner, so:
+      * rebuild the TD column (col 0/25): solid crimson + the banner's
+        high-frequency texture + vertical TOUCHDOWN text (GW-mat style);
+      * repaint everything between the TD column and the banner's inner
+        edge (banner_x) back to grass, sampled from a clean neighbour
+        grass column (the overhang can reach ~0.14cw into the 2nd/24th
+        column, so the repaint must go all the way to banner_x)."""
+    x0, y0, fw, fh = field
+    a = np.asarray(im).astype(np.int16)
+    cw = fw / 26
+    for s in (0, 1):
+        if s == 0:
+            td0, td1 = int(x0), int(x0 + cw)
+            g0, g1 = td1, int(banner_x[0])  # TD end .. banner inner edge
+            src0 = int(x0 + 3 * cw)          # clean grass source column
+        else:
+            td0, td1 = int(x0 + 25 * cw), int(x0 + 26 * cw)
+            g0, g1 = int(banner_x[1]), td0  # banner inner edge .. TD start
+            src0 = int(x0 + 22 * cw)         # clean grass source column
+        # 1) the banner overhang back to grass (sampled full-height strip,
+        #    exactly the destination width)
+        gw = g1 - g0
+        grass = a[y0:y0+fh, src0:src0 + gw, :]
+        rng = np.random.RandomState(5 + s)
+        noise = rng.randint(-4, 5, (fh, gw, 3)).astype(np.int16)
+        a[y0:y0+fh, g0:g1, :] = np.clip(grass + noise, 0, 255)
+        # 2) TD column: solid crimson + fine matte grain (sampling the AI
+        #    banner would ghost its big TOUCHDOWN letters onto the column)
+        base = np.array([128, 30, 28], float)
+        tdw = td1 - td0
+        grain = rng.randint(-7, 8, (fh, tdw, 3))
+        a[y0:y0+fh, td0:td1, :] = np.clip(base + grain, 0, 255)
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+    # 3) vertical TOUCHDOWN text, centered in each TD column
+    t = Image.new("RGBA", (320, 60), (0, 0, 0, 0))
+    dt = ImageDraw.Draw(t)
+    f = font(34, "black")
+    dt.text(((320 - text_w(dt, text, f)) / 2, 6), text, font=f,
+            fill=(255, 255, 255, 235))
+    t = t.rotate(90, expand=True)  # reads top-to-bottom
+    im2 = im.convert("RGBA")
+    for s in (0, 1):
+        cx = x0 + (0.5 if s == 0 else 25.5) * cw  # middle of the TD column
+        im2.alpha_composite(t, (int(cx - t.width / 2), int(y0 + (fh - t.height) / 2)))
+    return im2.convert("RGB")
+
+def grid_mow_tint(im, field, strength=0.85, light=1.20, dark=0.80, brighten=1.08):
+    """Mowing stripes PERFECTLY aligned to the grid: every grass column is
+    tinted light or dark (alternating), so each cell is clearly light-grass
+    or dark-grass; plus a global slight brightening of the pitch (TD
+    columns excluded — they keep their banner colour)."""
+    x0, y0, fw, fh = field
+    a = np.asarray(im).astype(float)
+    cw = fw / 26.0
+    for i in range(1, 25):  # grass columns only (0/25 = TD)
+        c0, c1 = int(x0 + i * cw), int(x0 + (i + 1) * cw)
+        m = (light if i % 2 == 0 else dark) * brighten
+        seg = a[y0:y0+fh, c0:c1, :]
+        a[y0:y0+fh, c0:c1, :] = np.clip(seg * (1 + (m - 1) * strength), 0, 255)
+    return Image.fromarray(a.astype(np.uint8))
+
 def draw_exact_grid(im, field, banner_x):
     """Crisp exact 26x15 grid across the WHOLE field: the two TD columns
     (col 0 / col 25, per the official field) are each a single column of
@@ -195,66 +261,117 @@ def draw_exact_grid(im, field, banner_x):
     return cw, ch
 
 # =================================================================== data
+# PlayerState (ffb PlayerState.java): base = state & 0xFF: 1 STANDING,
+# 2 MOVING, 3 PRONE, 4 STUNNED, 5 KNOCKED_OUT, 6 BADLY_HURT, 7 SERIOUS_INJURY,
+# 8 RIP, 9 RESERVE, 10 MISSING  (bit 0x100 = active)
+def _posmap(team):
+    return {p["positionId"]: p["positionName"] for p in
+            (team.get("roster") or {}).get("positionArray", [])}
+
 def load_live():
     d = json.load(open(LIVE))
     g = d["game"]
     th, ta = g["teamHome"], g["teamAway"]
     hmap = {p["playerId"]: p for p in th["playerArray"]}
     amap = {p["playerId"]: p for p in ta["playerArray"]}
+    hp, ap = _posmap(th), _posmap(ta)
     players = []
     for p in g["fieldModel"]["playerDataArray"]:
         x, y = p["playerCoordinate"]
-        if x < 0:  # in the box (no field coordinate)
+        if x < 0 or x > 25 or y < 0 or y > 14:  # in the box
             continue
         src = hmap.get(p["playerId"]) or amap.get(p["playerId"])
+        if not src:
+            continue
+        side = "H" if p["playerId"] in hmap else "A"
         players.append({
-            "side": "H" if p["playerId"] in hmap else "A",
-            "name": src["playerName"], "nr": src["playerNr"],
-            "x": x, "y": y, "state": p["playerState"],
+            "side": side, "name": src["playerName"], "nr": src["playerNr"],
+            "x": x, "y": y, "state": p["playerState"] & 0xFF,
             "posId": src["positionId"],
+            "posName": (hp if side == "H" else ap).get(src["positionId"], "Player"),
+            "race": (th if side == "H" else ta)["race"],
         })
     boxes = {"H": [], "A": []}
-    for side, team, hmap_ in (("H", th, hmap), ("A", ta, amap)):
+    for side, team, mmap, pmap in (("H", th, hmap, hp), ("A", ta, amap, ap)):
         for p in team["playerArray"]:
-            st = next(q["playerState"] for q in g["fieldModel"]["playerDataArray"]
-                      if q["playerId"] == p["playerId"])
-            if st & 0xFF in (9, 11, 12, 0xA):
-                boxes[side].append((p["playerName"], st & 0xFF, p))
+            q = next((q for q in g["fieldModel"]["playerDataArray"]
+                      if q["playerId"] == p["playerId"]), None)
+            if not q:
+                continue
+            st = q["playerState"] & 0xFF
+            if st in (5, 6, 7, 8, 9, 10):  # KO / hurt / SI / RIP / reserve / missing
+                boxes[side].append((p["playerName"], st,
+                                    pmap.get(p["positionId"], "Player")))
+    # score from the match API (looked up by match id), fallback 0:0
+    score = "0 : 0"
+    try:
+        for m in json.load(open(API_MATCH)):
+            if m["id"] == g.get("gameId"):
+                tm = {t["side"]: t for t in m["teams"]}
+                score = f"{tm['home']['score']} : {tm['away']['score']}"
+                break
+    except Exception:
+        pass
+    # acting-player spotlight: server actingPlayer if set, else the closest
+    # standing player of the team on turn to the ball (ties: more skills —
+    # makes a nicer card for the mockup)
+    ball = g["fieldModel"]["ballCoordinate"]
+    ap_id = (g.get("actingPlayer") or {}).get("playerId")
+    if ap_id:
+        pd = next(q for q in g["fieldModel"]["playerDataArray"]
+                  if q["playerId"] == ap_id)
+    else:
+        pm = hmap if g["homePlaying"] else amap
+        cands = [q for q in g["fieldModel"]["playerDataArray"]
+                 if q["playerCoordinate"][0] >= 0 and q["playerId"] in pm
+                 and (q["playerState"] & 0xFF) in (1, 2)]
+        cands.sort(key=lambda q: (abs(q["playerCoordinate"][0] - ball[0])
+                                  + abs(q["playerCoordinate"][1] - ball[1]),
+                                 -len(pm[q["playerId"]].get("skillArray") or [])))
+        pd = cands[0]
+    side = "H" if pd["playerId"] in hmap else "A"
+    src = hmap[pd["playerId"]] if side == "H" else amap[pd["playerId"]]
+    pmap = hp if side == "H" else ap
+    acting = {
+        "side": side, "name": src["playerName"], "nr": src["playerNr"],
+        "x": pd["playerCoordinate"][0], "y": pd["playerCoordinate"][1],
+        "state": pd["playerState"] & 0xFF, "posId": src["positionId"],
+        "posName": pmap.get(src["positionId"], "Player"),
+        "race": (th if side == "H" else ta)["race"],
+        "skills": src.get("skillArray") or [],
+        "mv": src.get("movement"), "st": src.get("strength"),
+        "ag": src.get("agility"), "pa": src.get("armour"),
+    }
     return {
         "home": th, "away": ta, "players": players, "boxes": boxes,
-        "ball": g["fieldModel"]["ballCoordinate"],
-        "ball_in_play": g["fieldModel"]["ballInPlay"],
+        "ball": ball, "ball_in_play": g["fieldModel"]["ballInPlay"],
         "weather": g["fieldModel"].get("weather"),
-        "half": g["half"],
-        "turn": g["turnDataHome"]["turnNr"],
-        "home_playing": g["homePlaying"],
-        "turn_time": g["turnTime"],
-        "turn_limit": 240,  # gameOptions.turntime (seconds)
+        "half": g["half"], "turn": g["turnDataHome"]["turnNr"],
+        "home_playing": g["homePlaying"], "turn_time": g["turnTime"],
+        "turn_limit": 240, "score": score, "acting": acting,
     }
 
-# face slug per player (position-based; OWA = mixed human/dwarf, Wood Elf = elves)
-def home_face(name):
-    n = name.lower()
-    if "halfling" in n: return "halfling_hopeful"
-    if "d blitzer" in n: return "dwarf_blitzer"
-    if "d slayer" in n: return "troll_slayer"
-    if "ogre" in n: return "ogre"
-    if "d lino" in n: return "dwarf_lineman"
-    if "h blitzer" in n: return "human_blitzer"
-    if "h catcher" in n: return "human_catcher"
-    if "h thrower" in n: return "human_thrower"
+# face slug per player (race + position; slugs from assets/faces/)
+def face_for(race, pos_name):
+    r, pl = race.lower(), pos_name.lower()
+    if "wood elf" in r:
+        if "thrower" in pl: return "wood_elf_thrower"
+        if "catcher" in pl: return "wood_elf_catcher"
+        if "blitzer" in pl: return "elf_blitzer"
+        return "wood_elf_lineman"
+    if "skaven" in r:
+        if "thrower" in pl: return "skaven_thrower"
+        if "blitzer" in pl: return "skaven_blitzer"
+        return "skaven_clanrat"
+    if "orc" in r:
+        if "thrower" in pl: return "orc_thrower"
+        if "blitzer" in pl: return "orc_blitzer"
+        if "lineman" in pl: return "orc_lineman"
+        return "black_orc"
+    if "thrower" in pl: return "human_thrower"
+    if "blitzer" in pl: return "human_blitzer"
+    if "catcher" in pl: return "human_catcher"
     return "human_lineman"
-
-AWAY_POS = {  # positionId -> slug (from the team roster)
-    66176: "wood_elf_lineman", 66177: "wood_elf_thrower",
-    66178: "wood_elf_catcher", 66179: "elf_blitzer",
-    66180: "loren_forest_treeman",
-}
-
-def away_face(p):
-    return AWAY_POS.get(p["posId"], "wood_elf_lineman")
-
-ACTING_NAME = "H Thrower Gerirr"  # the player the mockup spotlights
 
 # =================================================================== parts
 def token_image(slug, size, ring, prone=False):
@@ -405,6 +522,16 @@ def rain_icon(d, x, y, s=20):
         d.line((x0, y + s * 0.9, x0 - s * 0.08, y + s * 1.3),
                fill=(90, 140, 200, 255), width=2)
 
+def sun_icon(d, x, y, s=18):
+    c = (x + s * 0.5, y + s * 0.5)
+    d.ellipse((x + s * 0.28, y + s * 0.28, x + s * 0.72, y + s * 0.72),
+              fill=(240, 196, 80, 255), outline=(190, 140, 40, 255), width=1)
+    for k in range(8):
+        ang = k * math.pi / 4
+        d.line((x + s * (0.5 + 0.36 * math.cos(ang)), y + s * (0.5 + 0.36 * math.sin(ang)),
+                x + s * (0.5 + 0.48 * math.cos(ang)), y + s * (0.5 + 0.48 * math.sin(ang))),
+               fill=(240, 196, 80, 255), width=2)
+
 def draw_wheel(canvas, cx, cy, cell):
     """White circular action wheel around the acting player: clean disc,
     dark icons, tight ring (standard game-UI pattern)."""
@@ -497,6 +624,8 @@ def compose(key):
     zone = (cfg["banner_x"][0] + 4, cfg["banner_x"][1] - 4, fy, fy + fh)
     field = clean_grass(field, zone)
     field, _ = erase_center_line(field, cfg["field"])
+    field = narrow_td_zone(field, cfg["field"], cfg["banner_x"])  # TD = 1 column
+    field = grid_mow_tint(field, cfg["field"])           # grid-aligned mowing bands
     cw, ch = draw_exact_grid(field, cfg["field"], cfg["banner_x"])
     canvas = field.convert("RGBA")
 
@@ -507,7 +636,7 @@ def compose(key):
 
     # --- 2. TEAM LOGOS: per-match real logos, ~13% alpha, center of each half
     logo_sz = int(fh * 0.52)
-    for path, col in ((LOGOS / "637106.png", 6.5), (LOGOS / "486361.png", 19.5)):
+    for path, col in ((LOGOS / "h_big.png", 6.5), (LOGOS / "a_big.png", 19.5)):
         cx = fx + (col) * cw
         cy = fy + fh / 2
         lg = team_logo(path, logo_sz, alpha=0.13)
@@ -515,13 +644,27 @@ def compose(key):
 
     d = ImageDraw.Draw(canvas)
 
-    # --- 3. target brackets (BB2 style) on empty cells ahead of the thrower
-    for (tx, ty) in ((12, 8), (13, 8)):
+    # --- 3. target brackets (BB2 style) on two empty cells adjacent to the
+    # acting player (prefer the cell towards the ball, then the ones ahead)
+    act = live["acting"]
+    occupied = {(p["x"], p["y"]) for p in live["players"]}
+    occupied.add(tuple(live["ball"]))
+    bx_, by_ = act["x"], act["y"]
+    bdir = -1 if live["ball"][0] < bx_ else (1 if live["ball"][0] > bx_ else 0)
+    neigh = [(bx_ + s, by_) for s in (bdir, -bdir if bdir else 1)] \
+            + [(bx_, by_ - 1), (bx_, by_ + 1)]
+    picks = []
+    for (nx, ny) in neigh:
+        if 0 <= nx <= 25 and 0 <= ny <= 14 and (nx, ny) not in occupied \
+                and (nx, ny) not in picks:
+            picks.append((nx, ny))
+        if len(picks) == 2:
+            break
+    for (tx, ty) in picks:
         target_brackets(d, cell_rect(tx, ty))
 
     # --- 4. white action wheel on the acting player (under the token)
-    act_p = next(p for p in live["players"] if p["name"] == ACTING_NAME)
-    ax, ay = cell_center(act_p["x"], act_p["y"])
+    ax, ay = cell_center(act["x"], act["y"])
     draw_wheel(canvas, ax, ay, min(cw, ch))
     d = ImageDraw.Draw(canvas)
 
@@ -529,10 +672,9 @@ def compose(key):
     ball = live["ball"]
     for p in live["players"]:
         ring = HOME if p["side"] == "H" else AWAY
-        slug = home_face(p["name"]) if p["side"] == "H" else away_face(p)
-        st = p["state"] & 0xFF
-        acting = (p["name"] == ACTING_NAME)
-        prone = (st == 3)
+        slug = face_for(p["race"], p["posName"])
+        st = p["state"]
+        prone = (st == 3)  # PRONE (FFB PlayerState base)
         size = min(cw, ch) * 0.95
         cx, cy = cell_center(p["x"], p["y"])
         tok = token_image(slug, size, ring, prone=prone)
@@ -553,20 +695,22 @@ def compose(key):
                    oy + ch * 0.22 + ch * 0.32),
                   fill=(139, 90, 43, 255), outline=(64, 38, 18, 255), width=1)
 
-    # --- 6. rain (MicroProse-Soccer style: fine top-down droplet specks)
-    rng = random.Random(7)
-    for _ in range(520):
-        x0 = rng.uniform(0, W)
-        y0 = rng.uniform(0, H)
-        a = rng.randint(35, 115)
-        r = rng.choice((0.9, 0.9, 1.1, 1.5))
-        d.ellipse((x0, y0, x0 + r, y0 + r), fill=(235, 240, 250, a))
-    for _ in range(90):
-        x0 = rng.uniform(0, W)
-        y0 = rng.uniform(0, H)
-        L = rng.uniform(2.5, 6.0)
-        a = rng.randint(28, 72)
-        d.line((x0, y0, x0, y0 + L), fill=(235, 240, 250, a), width=1)
+    # --- 6. rain (MicroProse-Soccer style: fine top-down droplet specks) —
+    # only when the live weather is rain
+    if "rain" in (live.get("weather") or "").lower():
+        rng = random.Random(7)
+        for _ in range(520):
+            x0 = rng.uniform(0, W)
+            y0 = rng.uniform(0, H)
+            a = rng.randint(35, 115)
+            r = rng.choice((0.9, 0.9, 1.1, 1.5))
+            d.ellipse((x0, y0, x0 + r, y0 + r), fill=(235, 240, 250, a))
+        for _ in range(90):
+            x0 = rng.uniform(0, W)
+            y0 = rng.uniform(0, H)
+            L = rng.uniform(2.5, 6.0)
+            a = rng.randint(28, 72)
+            d.line((x0, y0, x0, y0 + L), fill=(235, 240, 250, a), width=1)
 
     # --- 7. chrome (light strips + shadow)
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -585,8 +729,8 @@ def compose(key):
     d.rectangle(HDR, fill=PAPER + (225,))
     d.line((0, 61, W, 61), fill=(0, 0, 0, 40), width=1)
 
-    crest_h = Image.open(LOGOS / "637109.png").convert("RGBA").resize((40, 40), Image.LANCZOS)
-    crest_a = Image.open(LOGOS / "486359.png").convert("RGBA").resize((40, 40), Image.LANCZOS)
+    crest_h = Image.open(LOGOS / "h_small.png").convert("RGBA").resize((40, 40), Image.LANCZOS)
+    crest_a = Image.open(LOGOS / "a_small.png").convert("RGBA").resize((40, 40), Image.LANCZOS)
     chrome.paste(crest_h, (14, 11), crest_h)
     chrome.paste(crest_a, (W - 54, 11), crest_a)
     d = ImageDraw.Draw(chrome)
@@ -616,105 +760,116 @@ def compose(key):
     for i in range(3):
         coin(d, x0 + i * 19, 17, 7, active=i < n_ra)
 
-    # END TURN button next to the active human coach
+    # END TURN button next to the active human coach (the team on turn) —
+    # spaced clearly below the reroll dots
     sub_h = f"{th['coach']}  ·  {th['race']}"
     if live["home_playing"]:
         ex = 64 + text_w(d, sub_h, font(10)) + 14
-        d.rounded_rectangle((ex, 24, ex + 82, 46), radius=11, fill=HOME + (255,),
+        d.rounded_rectangle((ex, 28, ex + 82, 50), radius=11, fill=HOME + (255,),
                             outline=tuple(max(0, c - 60) for c in HOME) + (255,),
                             width=1)
-        d.text((ex + 8, 29), "END TURN", font=font(10, "bold"),
+        d.text((ex + 8, 33), "END TURN", font=font(10, "bold"),
+               fill=(255, 255, 255, 255))
+    else:
+        ex = W - 64 - 82 - text_w(d, sub_a, font(10)) - 14
+        d.rounded_rectangle((ex, 28, ex + 82, 50), radius=11, fill=AWAY + (255,),
+                            outline=tuple(max(0, c - 60) for c in AWAY) + (255,),
+                            width=1)
+        d.text((ex + 8, 33), "END TURN", font=font(10, "bold"),
                fill=(255, 255, 255, 255))
 
-    # center: score + one clean row: [TURN n][HALF] [timer pill time] [weather]
-    score = "0 : 0"
+    # center: score + one clean row: [TURN n][HALF]  time  weather
+    # (the FUMBBL turn timer COUNTS UP — no decreasing progress bar)
+    score = live["score"]
     fs = font(22, "black")
     d.text((W / 2 - text_w(d, score, fs) / 2, 5), score, font=fs, fill=INK + (255,))
     ty = 34
-    remain = max(0, live["turn_limit"] - live["turn_time"] / 1000)
-    frac = remain / live["turn_limit"]
-    t = f"{int(remain // 60)}:{int(remain % 60):02d}"
-    wx_txt = live.get("weather") or "Pouring Rain"
+    el = int(live["turn_time"] / 1000)
+    t = f"{el // 60}:{el % 60:02d}"
+    wx_txt = live.get("weather") or "Nice Weather"
     w1 = text_w(d, f"TURN {live['turn']}", font(10, "bold")) + 14
     w2 = text_w(d, f"{live['half']}ST HALF", font(10, "bold")) + 14
-    wbar = 96
-    w3 = text_w(d, t, font(11, "bold"))
-    w4 = 24 + text_w(d, wx_txt, font(10))
-    total = w1 + 8 + w2 + 12 + wbar + 8 + w3 + 12 + w4
+    w3 = text_w(d, t, font(12, "black"))
+    w4 = 26 + text_w(d, wx_txt, font(10))
+    total = w1 + 8 + w2 + 16 + w3 + 16 + w4
     x = W / 2 - total / 2
     d.rounded_rectangle((x, ty, x + w1, ty + 16), radius=8, outline=HOME + (200,), width=1)
     d.text((x + 7, ty + 2), f"TURN {live['turn']}", font=font(10, "bold"), fill=HOME + (255,))
     x += w1 + 8
     d.rounded_rectangle((x, ty, x + w2, ty + 16), radius=8, outline=INK2 + (200,), width=1)
     d.text((x + 7, ty + 2), f"{live['half']}ST HALF", font=font(10, "bold"), fill=INK2 + (255,))
-    x += w2 + 12
-    d.rounded_rectangle((x, ty + 2, x + wbar, ty + 14), radius=6,
-                        fill=(226, 228, 234, 255), outline=(196, 200, 208, 255), width=1)
-    if frac > 0:
-        d.rounded_rectangle((x, ty + 2, x + max(12, wbar * frac), ty + 14),
-                            radius=6, fill=GREEN + (230,))
-    x += wbar + 8
-    d.text((x, ty), t, font=font(11, "bold"), fill=INK + (255,))
-    x += w3 + 12
-    rain_icon(d, x, ty - 3, s=18)
-    d.text((x + 24, ty + 2), wx_txt, font=font(10), fill=INK2 + (255,))
+    x += w2 + 16
+    d.text((x, ty - 2), t, font=font(12, "black"), fill=INK + (255,))
+    x += w3 + 16
+    if "rain" in wx_txt.lower():
+        rain_icon(d, x, ty - 3, s=18)
+    else:
+        sun_icon(d, x, ty - 3, s=18)
+    d.text((x + 26, ty + 2), wx_txt, font=font(10), fill=INK2 + (255,))
 
     # box strips (ultra-thin vertical, left = home, right = away)
-    def box_strip(x, team, color, box_players):
-        bx = (x, 120, x + 46, 430)
+    def box_strip(x, team, color, race, box_players):
+        # FFB PlayerState bases: 9 RESERVE, 5 KNOCKED_OUT,
+        # 6 BADLY_HURT / 7 SERIOUS_INJURY / 8 RIP / 10 MISSING
+        bx = (x, 120, x + 46, 470)
         shadow_box(bx, r=12)
         d.rounded_rectangle(bx, radius=12, fill=PAPER + (205,))
         d.rounded_rectangle((x + 4, 124, x + 42, 130), radius=3, fill=color + (220,))
         y = 140
-        for label, code in (("RESERVE", 9), ("KO", 11), ("INJURED", 12)):
+        for label, codes in (("RESERVE", (9,)), ("KO", (5,)),
+                             ("INJURED", (6, 7, 8, 10))):
             d.text((x + 8, y), label, font=font(7, "bold"), fill=INK2 + (220,))
             y += 13
-            mine = [b for b in box_players if b[1] == code]
+            mine = [b for b in box_players if b[1] in codes]
             n = max(2, len(mine))
             for i in range(n):
-                sy = y + i * 36 + 16
+                sy = y + i * 24 + 12
                 if i < len(mine):
-                    nm, _, _ = mine[i]
-                    slug = (home_face(nm) if team == "H" else "wood_elf_lineman")
+                    nm, _, pname = mine[i]
+                    slug = face_for(race, pname)
                     face = Image.open(FACES / f"{slug}.png").convert("RGBA")
-                    face = face.resize((26, 26), Image.LANCZOS)
+                    face = face.resize((20, 20), Image.LANCZOS)
                     mask = Image.new("L", face.size, 0)
-                    ImageDraw.Draw(mask).ellipse((0, 0, 26, 26), fill=255)
-                    chrome.paste(face, (x + 23 - 13, sy - 13), mask)
-                    d.ellipse((x + 8, sy - 15, x + 38, sy + 15),
+                    ImageDraw.Draw(mask).ellipse((0, 0, 20, 20), fill=255)
+                    chrome.paste(face, (x + 23 - 10, sy - 10), mask)
+                    d.ellipse((x + 10, sy - 12, x + 36, sy + 12),
                               outline=color + (230,), width=2)
                 else:
-                    d.ellipse((x + 8, sy - 15, x + 38, sy + 15),
+                    d.ellipse((x + 10, sy - 12, x + 36, sy + 12),
                               outline=(160, 166, 178, 160), width=2)
-            y += n * 36 + 8
+            y += n * 24 + 6
 
-    box_strip(8, "H", HOME, live["boxes"]["H"])
-    box_strip(W - 54, "A", AWAY, live["boxes"]["A"])
+    box_strip(8, "H", HOME, th["race"], live["boxes"]["H"])
+    box_strip(W - 54, "A", AWAY, ta["race"], live["boxes"]["A"])
 
-    # player card (acting thrower; side opposite the player -> right edge)
-    p = next(q for q in th["playerArray"] if "Gerirr" in q["playerName"])
+    # player card (the acting player; placed on the side opposite his cell)
+    ac = live["acting"]
+    card_team = th if ac["side"] == "H" else ta
+    ACC = HOME if ac["side"] == "H" else AWAY
     CW_, CH_ = 224, 316
-    CX0, CY0 = W - 54 - CW_ - 12, 96
+    CX0 = 66 if ac["x"] >= 13 else W - 54 - CW_ - 12
+    CY0 = 96
     card = (CX0, CY0, CX0 + CW_, CY0 + CH_)
     shadow_box(card, r=14)
     d.rounded_rectangle(card, radius=14, fill=PAPER + (232,))
-    d.rounded_rectangle(card, radius=14, outline=HOME + (160,), width=1)
-    d.rectangle((CX0 + 4, CY0 + 12, CX0 + 8, CY0 + CH_ - 12), fill=HOME + (230,))
+    d.rounded_rectangle(card, radius=14, outline=ACC + (160,), width=1)
+    d.rectangle((CX0 + 4, CY0 + 12, CX0 + 8, CY0 + CH_ - 12), fill=ACC + (230,))
     cxm = CX0 + CW_ // 2 + 2
     fsz = 88
-    face = Image.open(FACES / "human_thrower.png").convert("RGBA").resize((fsz, fsz), Image.LANCZOS)
+    face = Image.open(FACES / f"{face_for(ac['race'], ac['posName'])}.png") \
+        .convert("RGBA").resize((fsz, fsz), Image.LANCZOS)
     mask = Image.new("L", face.size, 0)
     ImageDraw.Draw(mask).ellipse((0, 0, fsz, fsz), fill=255)
     chrome.paste(face, (cxm - fsz // 2, CY0 + 14), mask)
     d = ImageDraw.Draw(chrome)
     d.ellipse((cxm - fsz // 2, CY0 + 14, cxm + fsz // 2, CY0 + 14 + fsz),
-              outline=HOME + (220,), width=2)
-    center_text(d, cxm, CY0 + 108, p["playerName"].upper(), font(16, "bold"), INK + (255,))
-    center_text(d, cxm, CY0 + 128, f"#{p['playerNr']}  ·  H Thrower", font(10), INK2 + (255,))
-    center_text(d, cxm, CY0 + 142, th["teamName"], font(9), INK2 + (235,))
+              outline=ACC + (220,), width=2)
+    center_text(d, cxm, CY0 + 108, ac["name"].upper(), font(15, "bold"), INK + (255,))
+    center_text(d, cxm, CY0 + 128, f"#{ac['nr']}  ·  {ac['posName']}", font(10), INK2 + (255,))
+    center_text(d, cxm, CY0 + 142, card_team["teamName"], font(9), INK2 + (235,))
     d.line((CX0 + 16, CY0 + 160, CX0 + CW_ - 16, CY0 + 160), fill=(0, 0, 0, 40), width=1)
-    stats = [("MA", p["movement"]), ("ST", p["strength"]), ("AG", p["agility"]),
-             ("PA", p["armour"]), ("AV", p["armour"] + p["strength"])]
+    stats = [("MA", ac["mv"]), ("ST", ac["st"]), ("AG", ac["ag"]),
+             ("PA", ac["pa"]), ("AV", ac["pa"] + ac["st"])]
     colw = (CW_ - 24) // 5
     for i, (lb, v) in enumerate(stats):
         px = CX0 + 12 + i * colw + colw // 2
@@ -723,48 +878,56 @@ def compose(key):
     sy = CY0 + 212
     center_text(d, cxm, sy, "SKILLS", font(8, "bold"), INK2 + (235,))
     sx = CX0 + 14
-    for sk in p["skillArray"][:3]:
+    for sk in ac["skills"][:3]:
         lbl = sk.upper()
         tw_ = text_w(d, lbl, font(9, "bold"))
         d.rounded_rectangle((sx, sy + 14, sx + tw_ + 14, sy + 34), radius=10,
-                            fill=(238, 240, 246, 255), outline=HOME + (150,), width=1)
+                            fill=(238, 240, 246, 255), outline=ACC + (150,), width=1)
         d.text((sx + 7, sy + 16), lbl, font=font(9, "bold"), fill=INK + (245,))
         sx += tw_ + 22
-    center_text(d, cxm, CY0 + CH_ - 52, "STANDING", font(11, "bold"), GREEN + (255,))
-    d.rounded_rectangle((cxm - 34, CY0 + CH_ - 40, cxm + 34, CY0 + CH_ - 22),
-                        radius=9, fill=HOME + (215,))
-    center_text(d, cxm, CY0 + CH_ - 38, "ACTING", font(9, "bold"), (255, 255, 255, 255))
+    # state only (Standing / Prone / Stunned) — no "ACTING" chip
+    st_txt = {1: "STANDING", 2: "MOVING", 3: "PRONE", 4: "STUNNED"}.get(
+        ac["state"], "STANDING")
+    st_col = GREEN if ac["state"] in (1, 2) else AMBER
+    center_text(d, cxm, CY0 + CH_ - 44, st_txt, font(12, "black"), st_col + (255,))
 
-    # action log (left side, 3 compact rows, translucent, expand chevron)
-    ALX, ALW = 148, 470
+    # action log — flush in the bottom-left CORNER, very translucent,
+    # truly bold (black weight), dark expand chevron
+    ALX, ALW = 16, 470
     row_h, gap = 28, 3
-    al_h = 3 * row_h + 2 * gap
+    al_h = 3 * row_h + 2 * gap + 12
     ALY = H - 12 - al_h
     log_strip = (ALX, ALY, ALX + ALW, ALY + al_h)
     shadow_box(log_strip, r=9)
     d.rounded_rectangle(log_strip, radius=9, fill=PAPER + (95,),
                         outline=(180, 188, 200, 70), width=1)
-    # expand chevron (top right of the strip)
+    # expand chevron (top right of the strip): dark and clearly visible
     cxx = ALX + ALW - 16
     cyy = ALY + row_h / 2
-    d.polygon([(cxx - 5, cyy + 3), (cxx + 5, cyy + 3), (cxx, cyy - 4)],
-              fill=INK2 + (220,))
-    y1 = ALY + 8
-    d.text((ALX + 12, y1), "Move:  Gerirr  2 squares", font=font(11, "bold"),
+    d.polygon([(cxx - 7, cyy + 5), (cxx + 7, cyy + 5), (cxx, cyy - 5)],
+              fill=INK + (255,))
+    y1 = ALY + 6
+    d.text((ALX + 12, y1 + 1), f"Move:  {ac['name']}  2 squares", font=font(11, "black"),
            fill=INK + (255,))
     y1 += row_h + gap
-    d.text((ALX + 12, y1 + 8), "Block:", font=font(11, "bold"), fill=INK + (235,))
-    dx = ALX + 12 + text_w(d, "Block:", font(11, "bold")) + 8
+    # block participants: two real players of the acting team near the ball
+    bball = tuple(live["ball"])
+    act_ps = sorted((p for p in live["players"] if p["side"] == act["side"]),
+                    key=lambda p: abs(p["x"] - bball[0]) + abs(p["y"] - bball[1]))
+    b1, b2 = act_ps[0]["name"], act_ps[1]["name"]
+    blk = f"Block:  {b1} + {b2}"
+    fb = font(10, "black")
+    d.text((ALX + 12, y1 + 9), blk, font=fb, fill=INK + (235,))
+    dx = ALX + 12 + text_w(d, blk, fb) + 10
     for v in (6, 2, 3):
         di = block_dice(v, 26)
-        chrome.paste(di, (int(dx), int(y1 + 1)), di)
+        chrome.paste(di, (int(dx), int(y1 + 2)), di)
         dx += 31
-    d.text((dx + 2, y1 + 8), "— success", font=font(11, "bold"),
-           fill=GREEN + (255,))
+    d.text((dx + 4, y1 + 9), "— success", font=fb, fill=GREEN + (255,))
     y1 += row_h + gap
-    d.text((ALX + 12, y1 + 7), "Fumble:", font=font(12, "bold"), fill=RED + (255,))
-    d.text((ALX + 12 + text_w(d, "Fumble:", font(12, "bold")) + 6, y1 + 8),
-           "the ball is loose!", font=font(11, "bold"), fill=INK + (255,))
+    on_turn = th["teamName"] if live["home_playing"] else ta["teamName"]
+    d.text((ALX + 12, y1 + 9), f"Turn {live['turn']}:  {on_turn} on the ball",
+           font=font(11, "black"), fill=INK2 + (255,))
 
     # chat button (bottom right) with unread badge
     cb = (W - 148, 702, W - 20, 746)
