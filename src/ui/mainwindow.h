@@ -24,9 +24,10 @@ class DiceLogWidget;
 class FieldView;
 class FloatingPanel;
 class GameModel;
+class HeaderView;
 class QCloseEvent;
 class QPlainTextEdit;
-class HeaderBar;
+class QToolBar;
 class PlayerInfoWidget;
 class RosterWidget;
 class SpectatorSession;
@@ -44,7 +45,6 @@ public:
     void setTeams(const QString &homeName, const QString &awayName);
     void setScore(int home, int away);
     void setTurn(int turn);
-    void setTimerSeconds(int remaining);
     void setSpectators(int count);
     void setConnectionStatus(const QString &status, bool connected);
 
@@ -139,7 +139,8 @@ private:
 
     // Widgets
     QWidget *m_stage = nullptr; // central container: field + overlay panels
-    HeaderBar *m_header = nullptr;
+    QToolBar *m_headerToolbar = nullptr;
+    HeaderView *m_headerView = nullptr; // Mockup F header (custom-painted)
     FieldView *m_field = nullptr;
     RosterWidget *m_homeRoster = nullptr;
     RosterWidget *m_awayRoster = nullptr;
@@ -160,4 +161,5 @@ private:
 
     QLabel *m_statusLabel = nullptr;
     QLabel *m_connectionLabel = nullptr;
+    QLabel *m_spectatorsLabel = nullptr;
 };

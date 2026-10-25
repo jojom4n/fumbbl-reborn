@@ -61,8 +61,8 @@ add_executable(fumbbl-qt
     src/ui/dicelogwidget.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
-    src/ui/headerbar.h
-    src/ui/headerbar.cpp
+    src/ui/headerview.h
+    src/ui/headerview.cpp
     src/ui/playerinfowidget.h
     src/ui/playerinfowidget.cpp
     src/ui/panel.h
@@ -118,7 +118,7 @@ add_executable(ui_connect_probe
     src/ui/rosterwidget.cpp
     src/ui/dicelogwidget.cpp
     src/ui/chatwidget.cpp
-    src/ui/headerbar.cpp
+    src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
 )

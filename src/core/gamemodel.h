@@ -105,6 +105,12 @@ public:
     // Team race (live players usually carry no per-player race).
     QString teamHomeRace() const { return m_teamHomeRace; }
     QString teamAwayRace() const { return m_teamAwayRace; }
+    // Team coach names (header sublines; the team on turn gets END TURN).
+    QString teamHomeCoach() const { return m_teamHomeCoach; }
+    QString teamAwayCoach() const { return m_teamAwayCoach; }
+    // Remaining rerolls (header dots: 3 slots, filled = remaining).
+    int reRollsHome() const { return m_reRollsHome; }
+    int reRollsAway() const { return m_reRollsAway; }
     int scoreHome() const { return m_scoreHome; }
     int scoreAway() const { return m_scoreAway; }
     int turn() const { return m_turn; }
@@ -178,6 +184,10 @@ private:
     QString m_teamAwayName;
     QString m_teamHomeRace;
     QString m_teamAwayRace;
+    QString m_teamHomeCoach;
+    QString m_teamAwayCoach;
+    int m_reRollsHome = 0;
+    int m_reRollsAway = 0;
 
     // Position lookup: positionId -> positionName/shorthand/keywords,
     // filled from teamX.roster.positionArray (live players carry only the

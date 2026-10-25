@@ -53,6 +53,10 @@ void GameModel::clearState()
     m_teamAwayName.clear();
     m_teamHomeRace.clear();
     m_teamAwayRace.clear();
+    m_teamHomeCoach.clear();
+    m_teamAwayCoach.clear();
+    m_reRollsHome = 0;
+    m_reRollsAway = 0;
     m_scoreHome = 0;
     m_scoreAway = 0;
     m_turn = 1;
@@ -97,6 +101,10 @@ bool GameModel::initialize(const QJsonObject &game)
     m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
     m_teamHomeRace = home.value(QStringLiteral("race")).toString();
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
+    m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();
+    m_teamAwayCoach = away.value(QStringLiteral("coach")).toString();
+    m_reRollsHome = readInt(home.value(QStringLiteral("reRolls")));
+    m_reRollsAway = readInt(away.value(QStringLiteral("reRolls")));
 
     // Position lookup first: live players carry only the positionId.
     parseRosterPositions(home, true);

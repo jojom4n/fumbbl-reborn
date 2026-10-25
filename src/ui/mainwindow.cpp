@@ -16,7 +16,7 @@
 #include "ui/spectatedialog.h"
 #include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
-#include "ui/headerbar.h"
+#include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
 #include "ui/rosterwidget.h"
@@ -33,6 +33,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
+#include <QToolBar>
 #include <QSettings>
 #include <QStatusBar>
 
@@ -164,8 +165,20 @@ void MainWindow::createMenus()
 // -----------------------------------------------------------------------------
 void MainWindow::createToolbar()
 {
-    m_header = new HeaderBar(this);
-    addToolBar(Qt::TopToolBarArea, m_header);
+    // The Mockup F header is a custom-painted strip (gold embossed team on
+    // turn, reroll dots, END TURN, count-up timer, weather). It lives in a
+    // plain toolbar so it keeps the toolbar's movable behavior.
+    m_headerToolbar = new QToolBar(this);
+    m_headerToolbar->setObjectName(QStringLiteral("header_toolbar"));
+    m_headerToolbar->setMovable(true);
+    addToolBar(Qt::TopToolBarArea, m_headerToolbar);
+    m_headerView = new HeaderView(m_headerToolbar);
+    m_headerToolbar->addWidget(m_headerView);
+    connect(m_headerView, &HeaderView::endTurnRequested, this, [this]() {
+        // Spectator convenience: request the turn to end (wired to the
+        // session's endTurn command once the server flow supports it).
+        appendProtocol(QStringLiteral("-> "), QStringLiteral("endTurn (requested)"));
+    });
 }
 
 void MainWindow::createCentralWidget()
@@ -371,6 +384,10 @@ void MainWindow::createStatusBar()
     m_connectionLabel = new QLabel(tr("Not connected"), this);
     m_connectionLabel->setStyleSheet(QStringLiteral("color: #888;"));
     statusBar()->addPermanentWidget(m_connectionLabel);
+
+    // The Mockup F header has no spectators slot — it lives in the status bar.
+    m_spectatorsLabel = new QLabel(tr("Spectators: 0"), this);
+    statusBar()->addPermanentWidget(m_spectatorsLabel);
 }
 
 // -----------------------------------------------------------------------------
@@ -378,7 +395,11 @@ void MainWindow::createStatusBar()
 // -----------------------------------------------------------------------------
 void MainWindow::setTeams(const QString &homeName, const QString &awayName)
 {
-    m_header->setTeams(homeName, awayName);
+    m_headerView->setTeams(homeName, awayName);
+    if (m_model) {
+        m_headerView->setRaces(m_model->teamHomeRace(), m_model->teamAwayRace());
+        m_headerView->setCoaches(m_model->teamHomeCoach(), m_model->teamAwayCoach());
+    }
     m_field->setHomeTeamName(homeName);
     m_field->setAwayTeamName(awayName);
     m_field->setHomeColor(PlayerInfoWidget::teamColor(homeName, true));
@@ -393,23 +414,18 @@ void MainWindow::setTeams(const QString &homeName, const QString &awayName)
 
 void MainWindow::setScore(int home, int away)
 {
-    m_header->setScore(home, away);
+    m_headerView->setScores(home, away);
 }
 
 void MainWindow::setTurn(int turn)
 {
-    m_header->setTurn(turn);
+    m_headerView->setTurn(turn, m_model ? m_model->half() : 1);
     m_field->setTurn(turn);
-}
-
-void MainWindow::setTimerSeconds(int remaining)
-{
-    m_header->setTimerSeconds(remaining);
 }
 
 void MainWindow::setSpectators(int count)
 {
-    m_header->setSpectators(count);
+    m_spectatorsLabel->setText(tr("Spectators: %1").arg(count));
 }
 
 void MainWindow::setConnectionStatus(const QString &status, bool connected)
@@ -450,8 +466,19 @@ void MainWindow::applyModelToUi()
         return;
 
     setTeams(m_model->teamHomeName(), m_model->teamAwayName());
-    m_header->setScore(m_model->scoreHome(), m_model->scoreAway());
+    setScore(m_model->scoreHome(), m_model->scoreAway());
     setTurn(m_model->turn());
+
+    // Header (Mockup F): reroll dots, on-turn gold emphasis, weather, team
+    // accents — all straight from the model.
+    m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway());
+    m_headerView->setHomePlaying(m_model->homePlaying());
+    m_headerView->setWeather(m_model->weather());
+    m_headerView->setAccents(
+        PlayerInfoWidget::teamColor(m_model->teamHomeName(), true),
+        PlayerInfoWidget::teamColor(m_model->teamAwayName(), false));
+    m_headerView->setRaces(m_model->teamHomeRace(), m_model->teamAwayRace());
+    m_headerView->setCoaches(m_model->teamHomeCoach(), m_model->teamAwayCoach());
 
     // Field: split the model tokens by side (box players are already filtered
     // out by the model).
@@ -541,10 +568,9 @@ QString MainWindow::diceLineText(const QString &text, const QString &playerId) c
 
 void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
 {
-    // serverGameTime.turnTime = ELAPSED ms of the 30s turn; UI shows the
-    // remaining seconds (TS reference).
-    const int remaining = qMax(0, 30 - static_cast<int>(turnTimeMs / 1000));
-    m_header->setTimerSeconds(remaining);
+    // serverGameTime.turnTime = ELAPSED ms of the turn. The Mockup F header
+    // counts UP (FUMBBL semantics) — no decreasing progress bar.
+    m_headerView->setTurnElapsedSeconds(static_cast<int>(turnTimeMs / 1000));
 }
 
 void MainWindow::onTalk(const QJsonObject &payload)
@@ -560,7 +586,7 @@ void MainWindow::onTalk(const QJsonObject &payload)
 
 void MainWindow::onJoined(const QJsonObject &payload)
 {
-    m_header->setSpectators(payload.value(QStringLiteral("spectators")).toInt());
+    setSpectators(payload.value(QStringLiteral("spectators")).toInt());
     setConnectionStatus(tr("Spectating as %1")
                             .arg(payload.value(QStringLiteral("coach")).toString()),
                         true);
@@ -636,7 +662,11 @@ void MainWindow::clearMatchUi()
     setTeams(QString(), QString());
     setScore(0, 0);
     setTurn(1);
-    m_header->setSpectators(0);
+    m_headerView->setTurnElapsedSeconds(0);
+    m_headerView->setRerolls(0, 0);
+    m_headerView->setWeather(QString());
+    m_headerView->setLogos(QPixmap(), QPixmap());
+    setSpectators(0);
 }
 
 void MainWindow::showPlayerInfo(int number, bool homeSide)
