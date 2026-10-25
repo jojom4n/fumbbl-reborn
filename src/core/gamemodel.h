@@ -108,6 +108,9 @@ public:
     // Team coach names (header sublines; the team on turn gets END TURN).
     QString teamHomeCoach() const { return m_teamHomeCoach; }
     QString teamAwayCoach() const { return m_teamAwayCoach; }
+    // Team logo URLs (absolute; empty when the state carries no logo).
+    QString teamHomeLogoUrl() const { return m_teamHomeLogoUrl; }
+    QString teamAwayLogoUrl() const { return m_teamAwayLogoUrl; }
     // Remaining rerolls (header dots: 3 slots, filled = remaining).
     int reRollsHome() const { return m_reRollsHome; }
     int reRollsAway() const { return m_reRollsAway; }
@@ -186,6 +189,8 @@ private:
     QString m_teamAwayRace;
     QString m_teamHomeCoach;
     QString m_teamAwayCoach;
+    QString m_teamHomeLogoUrl;
+    QString m_teamAwayLogoUrl;
     int m_reRollsHome = 0;
     int m_reRollsAway = 0;
 

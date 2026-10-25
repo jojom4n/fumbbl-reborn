@@ -65,6 +65,13 @@ void FieldView::setPlayers(const QVector<PlayerToken> &home,
     update();
 }
 
+void FieldView::setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> &away)
+{
+    m_homeBox = home;
+    m_awayBox = away;
+    update();
+}
+
 void FieldView::setBall(int x, int y, bool inPlay)
 {
     m_ballX = x;
@@ -153,6 +160,94 @@ QRectF FieldView::cellRect(int x, int y) const
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
     return QRectF(f.x() + x * cellW, f.y() + y * cellH, cellW, cellH);
+}
+
+// Bench box strip (Mockup F): a thin translucent vertical card on the field
+// edge with RESERVE / KO / INJURED sections. Filled slots show the player's
+// face in a team-colored ring; empty slots are plain gray rings. Scaled
+// against the field height (the mockup was authored at a 739px field).
+void FieldView::paintBoxStrip(QPainter &p, const QRectF &f, const QColor &accent,
+                              const QVector<BoxEntry> &entries, bool leftSide) const
+{
+    if (f.isEmpty())
+        return;
+    const qreal s = f.height() / 739.0;
+    const qreal stripW = 46 * s;
+    const qreal x = leftSide ? f.x() + 8 * s : f.right() - 8 * s - stripW;
+    const qreal y0 = f.y() + 120 * s;
+    const qreal y1 = f.y() + 470 * s;
+
+    // Card background (translucent paper) + team-color top bar.
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(250, 250, 253, 205));
+    p.drawRoundedRect(QRectF(x, y0, stripW, y1 - y0), 12 * s, 12 * s);
+    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 220));
+    p.drawRoundedRect(QRectF(x + 4 * s, y0 + 4 * s, stripW - 8 * s, 6 * s), 3 * s, 3 * s);
+
+    // Group entries by section (FFB PlayerState bases).
+    const auto inSection = [](int st, const QVector<int> &codes) {
+        st &= 0xFF;
+        return codes.contains(st);
+    };
+
+    const QColor INK2(104, 114, 128);
+    const QColor EMPTY(160, 166, 178);
+    const struct { const char *label; QVector<int> codes; } sections[] = {
+        { "RESERVE", { 9 } },
+        { "KO", { 5 } },
+        { "INJURED", { 6, 7, 8, 10 } },
+    };
+
+    qreal y = y0 + 20 * s;
+    QFont base = font();
+    for (const auto &sec : sections) {
+        // Section label.
+        QFont lf = base;
+        lf.setPixelSize(qMax(6, int(7 * s))); // mockup: 7px at 739px field
+        lf.setBold(true);
+        p.setFont(lf);
+        p.setPen(QColor(INK2.red(), INK2.green(), INK2.blue(), 220));
+        p.drawText(QRectF(x + 8 * s, y, stripW - 12 * s, 13 * s),
+                   Qt::AlignLeft | Qt::AlignVCenter, QString::fromUtf8(sec.label));
+        y += 13 * s;
+
+        const QVector<int> &codes = sec.codes;
+        QVector<const BoxEntry *> mine;
+        for (const BoxEntry &e : entries)
+            if (inSection(e.state, codes))
+                mine.append(&e);
+        const int n = qMax(2, mine.size());
+        const qreal ringR = 12 * s; // ring radius
+        const qreal cx = x + 23 * s;
+        for (int i = 0; i < n; ++i) {
+            const qreal sy = y + i * 24 * s + 12 * s;
+            QRectF ring(cx - ringR, sy - ringR, ringR * 2, ringR * 2);
+            if (i < mine.size()) {
+                const BoxEntry *e = mine[i];
+                const QPixmap pm = assets::playerFace(e->positionName, e->race);
+                if (!pm.isNull()) {
+                    const qreal fr = 10 * s; // face radius
+                    QRectF faceR(cx - fr, sy - fr, fr * 2, fr * 2);
+                    p.save();
+                    QPainterPath clip;
+                    clip.addEllipse(faceR);
+                    p.setClipPath(clip);
+                    p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
+                    p.restore();
+                }
+                p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 230),
+                              qMax(1.0, 2 * s)));
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(ring);
+            } else {
+                p.setPen(QPen(QColor(EMPTY.red(), EMPTY.green(), EMPTY.blue(), 160),
+                              qMax(1.0, 2 * s)));
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(ring);
+            }
+        }
+        y += n * 24 * s + 6 * s;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,13 +390,14 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cx = f.x() + 13 * cellW;
     p.drawLine(QPointF(cx, f.y()), QPointF(cx, f.bottom()));
 
-    // --- Team logos: per-match watermarks centered on each half (~18%) ----
+    // --- Team logos: per-match watermarks centered on each half (~19%;
+    // round 7: less transparent than the mockup's original 13%) ----------
     const auto drawLogo = [&](const QPixmap &pm, qreal col) {
         if (pm.isNull())
             return;
         const qreal s = f.height() * 0.52;
         p.save();
-        p.setOpacity(0.18);
+        p.setOpacity(0.19);
         p.drawPixmap(QRectF(f.x() + col * cellW - s / 2, f.center().y() - s / 2, s, s), pm,
                      QRectF(0, 0, pm.width(), pm.height()));
         p.restore();
@@ -456,6 +552,10 @@ void FieldView::paintEvent(QPaintEvent *)
 
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
+
+    // --- Bench box strips (left = home, right = away; Mockup F) -----------
+    paintBoxStrip(p, f, m_homeColor, m_homeBox, true);
+    paintBoxStrip(p, f, m_awayColor, m_awayBox, false);
 
     // --- Rain (MicroProse-Soccer style: fine top-down droplet specks) ------
     if (m_weather.toLower().contains(QLatin1String("rain"))) {

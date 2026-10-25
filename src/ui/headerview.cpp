@@ -194,9 +194,9 @@ void HeaderView::layoutEndTurn()
     const QString subH = m_homeCoach + QStringLiteral("  ·  ") + m_homeRace;
     const QString subA = m_awayCoach + QStringLiteral("  ·  ") + m_awayRace;
     if (m_homePlaying)
-        m_endTurn->move(64 + int(fm.horizontalAdvance(subH)) + 14, 28);
+        m_endTurn->move(64 + int(fm.horizontalAdvance(subH)) + 14, 32); // round 7: lower
     else
-        m_endTurn->move(width() - 64 - 82 - int(fm.horizontalAdvance(subA)) - 14, 28);
+        m_endTurn->move(width() - 64 - 82 - int(fm.horizontalAdvance(subA)) - 14, 32);
     const QColor accent = m_homePlaying ? m_homeAccent : m_awayAccent;
     const QColor dark = accent.darker(160);
     m_endTurn->setStyleSheet(QStringLiteral(

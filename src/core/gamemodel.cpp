@@ -37,6 +37,23 @@ int readInt(const QJsonValue &v)
     return v.toString().toInt();
 }
 
+// Absolute team logo URL: the game state carries a relative logoUrl
+// ("i/<id>") and a CDN base (baseIconPath, e.g. "https://cdn.fumbbl.com/").
+QString teamLogoUrl(const QJsonObject &team)
+{
+    const QString rel = team.value(QStringLiteral("logoUrl")).toString();
+    if (rel.isEmpty())
+        return QString();
+    if (rel.startsWith(QLatin1String("http")))
+        return rel;
+    QString base = team.value(QStringLiteral("baseIconPath")).toString();
+    if (base.isEmpty())
+        base = QStringLiteral("https://cdn.fumbbl.com/");
+    if (!base.endsWith(QLatin1Char('/')))
+        base += QLatin1Char('/');
+    return base + rel;
+}
+
 } // namespace
 
 GameModel::GameModel(QObject *parent) : QObject(parent)
@@ -55,6 +72,8 @@ void GameModel::clearState()
     m_teamAwayRace.clear();
     m_teamHomeCoach.clear();
     m_teamAwayCoach.clear();
+    m_teamHomeLogoUrl.clear();
+    m_teamAwayLogoUrl.clear();
     m_reRollsHome = 0;
     m_reRollsAway = 0;
     m_scoreHome = 0;
@@ -103,6 +122,9 @@ bool GameModel::initialize(const QJsonObject &game)
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
     m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();
     m_teamAwayCoach = away.value(QStringLiteral("coach")).toString();
+    // Logo: relative path ("i/<id>") against the team's icon CDN base.
+    m_teamHomeLogoUrl = teamLogoUrl(home);
+    m_teamAwayLogoUrl = teamLogoUrl(away);
     m_reRollsHome = readInt(home.value(QStringLiteral("reRolls")));
     m_reRollsAway = readInt(away.value(QStringLiteral("reRolls")));
 

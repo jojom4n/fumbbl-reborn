@@ -26,6 +26,8 @@ class FloatingPanel;
 class GameModel;
 class HeaderView;
 class QCloseEvent;
+class QNetworkAccessManager;
+class QNetworkReply;
 class QPlainTextEdit;
 class QToolBar;
 class PlayerInfoWidget;
@@ -129,6 +131,10 @@ private:
     void showPlayerInfo(int number, bool homeSide);
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
+    // Per-match team logos (field watermarks + header crests): fetched from
+    // the game state's logoUrl once per match.
+    void loadTeamLogos();
+    void onLogoReplyFinished(QNetworkReply *reply);
 
     QString m_selectedPlayerId; // the player shown in the Player Info panel
     bool m_layoutApplied = false; // default/saved geometry applied once
@@ -136,6 +142,11 @@ private:
     // Core
     SpectatorSession *m_session = nullptr;
     GameModel *m_model = nullptr;
+    QNetworkAccessManager *m_logoNam = nullptr; // team logo downloads
+    QString m_homeLogoUrl; // currently loaded/loaded-in-flight logo URLs
+    QString m_awayLogoUrl;
+    QPixmap m_homeLogoPm;
+    QPixmap m_awayLogoPm;
 
     // Widgets
     QWidget *m_stage = nullptr; // central container: field + overlay panels

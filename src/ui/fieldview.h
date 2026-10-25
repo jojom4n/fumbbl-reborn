@@ -11,9 +11,10 @@
 // TOUCHDOWN, grid-aligned mowing stripes), exact 26x15 grid over the whole
 // field (the TD columns show their 15 cells), emphasized side-zone
 // boundaries (row 0 / row 14), a SINGLE center line, per-match team-logo
-// watermarks (~18% alpha), white circular action wheel + target brackets
-// on the acting player, and a MicroProse-style top-down rain overlay when
-// the weather is rain.
+// watermarks (~19% alpha), white circular action wheel + target brackets
+// on the acting player, the bench box strips on the left (home) and right
+// (away) edges — RESERVE / KO / INJURED sections with circular faces — and
+// a MicroProse-style top-down rain overlay when the weather is rain.
 // =============================================================================
 #pragma once
 
@@ -49,6 +50,16 @@ public:
     void setHomeRace(const QString &race);
     void setAwayRace(const QString &race);
     void setPlayers(const QVector<PlayerToken> &home, const QVector<PlayerToken> &away);
+    // Bench box strips (left = home, right = away): one entry per player in
+    // the box; grouped by base state into RESERVE (9) / KO (5) /
+    // INJURED (6,7,8,10) sections, like the Mockup F strips.
+    struct BoxEntry {
+        QString name;
+        QString positionName; // face lookup
+        QString race;         // team race (face fallback)
+        int state = 0;        // ffb PlayerState
+    };
+    void setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> &away);
     void setBall(int x, int y, bool inPlay);
     void setTurn(int turn);
     // Per-match team logos (FUMBBL /i/<id> PNGs) drawn as watermarks centered
@@ -85,6 +96,9 @@ private:
 
     QRectF fieldRect() const;
     QRectF cellRect(int x, int y) const;
+    // Paint one box strip (the Mockup F left/right bench strip).
+    void paintBoxStrip(QPainter &p, const QRectF &f, const QColor &accent,
+                       const QVector<BoxEntry> &entries, bool leftSide) const;
 
     QString m_homeName = QStringLiteral("Team 1");
     QString m_awayName = QStringLiteral("Team 2");
@@ -94,6 +108,8 @@ private:
     QString m_awayRace;
     QVector<PlayerToken> m_homePlayers;
     QVector<PlayerToken> m_awayPlayers;
+    QVector<BoxEntry> m_homeBox;
+    QVector<BoxEntry> m_awayBox;
     int m_ballX = 13;
     int m_ballY = 7;
     bool m_ballInPlay = false;

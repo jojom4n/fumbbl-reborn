@@ -25,12 +25,16 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QEvent>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QToolBar>
@@ -64,6 +68,9 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Core (spectator) wiring --------------------------------------------
     m_model = new GameModel(this);
     m_session = new SpectatorSession(this);
+
+    // Team logo downloads (field watermarks + header crests).
+    m_logoNam = new QNetworkAccessManager(this);
 
     connect(m_session, &SpectatorSession::gameStateReceived, this, &MainWindow::onGameState);
     connect(m_model, &GameModel::stateUpdated, this, &MainWindow::applyModelToUi);
@@ -482,6 +489,9 @@ void MainWindow::applyModelToUi()
     m_headerView->setRaces(m_model->teamHomeRace(), m_model->teamAwayRace());
     m_headerView->setCoaches(m_model->teamHomeCoach(), m_model->teamAwayCoach());
 
+    // Per-match team logos (fetched async; applied when the reply lands).
+    loadTeamLogos();
+
     // Field: split the model tokens by side (box players are already filtered
     // out by the model).
     QVector<FieldView::PlayerToken> homeTokens;
@@ -500,6 +510,26 @@ void MainWindow::applyModelToUi()
         (t.sideHome ? homeTokens : awayTokens).append(pt);
     }
     m_field->setPlayers(homeTokens, awayTokens);
+
+    // Bench box strips (left = home, right = away): players with a box
+    // coordinate (x < 0 or x > 25), grouped by state inside the field view.
+    auto boxEntries = [this](bool sideHome) {
+        const auto roster = sideHome ? m_model->rosterHome() : m_model->rosterAway();
+        const QString race = sideHome ? m_model->teamHomeRace() : m_model->teamAwayRace();
+        QVector<FieldView::BoxEntry> out;
+        for (const FFBPlayer &pl : roster) {
+            if (!pl.hasCoords || !GameModel::isBoxX(pl.fieldX))
+                continue;
+            FieldView::BoxEntry e;
+            e.name = pl.name;
+            e.positionName = pl.position;
+            e.race = race;
+            e.state = pl.state;
+            out.append(e);
+        }
+        return out;
+    };
+    m_field->setBoxes(boxEntries(true), boxEntries(false));
 
     // Keep the selection valid: if the selected player still exists refresh
     // the panel (state/skills may have changed); if it was removed, deselect.
@@ -566,6 +596,60 @@ QString MainWindow::diceLineText(const QString &text, const QString &playerId) c
     if (at < 0)
         return text;
     return text.left(at) + label + text.mid(at + playerId.size());
+}
+
+void MainWindow::loadTeamLogos()
+{
+    if (!m_model || !m_logoNam)
+        return;
+    const QString homeUrl = m_model->teamHomeLogoUrl();
+    const QString awayUrl = m_model->teamAwayLogoUrl();
+
+    const auto fetch = [this](const QString &url, int side) {
+        QNetworkRequest req;
+        req.setUrl(QUrl(url));
+        req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("fumbbl-reborn-qt"));
+        QNetworkReply *reply = m_logoNam->get(req);
+        reply->setProperty("side", QVariant(side));
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            onLogoReplyFinished(reply);
+        });
+    };
+    if (!homeUrl.isEmpty() && homeUrl != m_homeLogoUrl) {
+        m_homeLogoUrl = homeUrl;
+        fetch(homeUrl, 0);
+    }
+    if (!awayUrl.isEmpty() && awayUrl != m_awayLogoUrl) {
+        m_awayLogoUrl = awayUrl;
+        fetch(awayUrl, 1);
+    }
+}
+
+void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
+{
+    const int side = reply->property("side").toInt(0);
+    if (reply->error() != QNetworkReply::NoError) {
+        appendProtocol(QStringLiteral("< "),
+                       QStringLiteral("logo fetch failed: %1")
+                           .arg(reply->errorString()));
+        reply->deleteLater();
+        return;
+    }
+    const QByteArray data = reply->readAll();
+    reply->deleteLater();
+    QImage img;
+    if (!img.loadFromData(data)) // QPixmap(QByteArray) is unreliable here
+        return;
+    const QPixmap pm = QPixmap::fromImage(img);
+    if (side == 0) {
+        m_homeLogoPm = pm;
+        m_field->setTeamLogos(pm, m_awayLogoPm);
+        m_headerView->setLogos(pm, m_awayLogoPm);
+    } else {
+        m_awayLogoPm = pm;
+        m_field->setTeamLogos(m_homeLogoPm, pm);
+        m_headerView->setLogos(m_homeLogoPm, pm);
+    }
 }
 
 void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
@@ -654,6 +738,7 @@ void MainWindow::clearMatchUi()
     m_model->reset();
     onFieldPlayerClicked(QString()); // deselect (no-op when nothing selected)
     m_field->setPlayers({}, {});
+    m_field->setBoxes({}, {});
     m_field->setBall(-1, -1, false);
     m_field->setHomeTeamName(QString());
     m_field->setAwayTeamName(QString());
@@ -668,6 +753,11 @@ void MainWindow::clearMatchUi()
     m_headerView->setRerolls(0, 0);
     m_headerView->setWeather(QString());
     m_headerView->setLogos(QPixmap(), QPixmap());
+    m_field->setTeamLogos(QPixmap(), QPixmap());
+    m_homeLogoUrl.clear();
+    m_awayLogoUrl.clear();
+    m_homeLogoPm = QPixmap();
+    m_awayLogoPm = QPixmap();
     setSpectators(0);
 }
 
