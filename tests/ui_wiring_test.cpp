@@ -205,8 +205,9 @@ void UiWiringTest::fieldClickSelectsPlayer()
     QCOMPARE(w.selectedPlayerId(), QStringLiteral("18109690"));
     QCOMPARE(info->shownPlayerId(), QStringLiteral("18109690"));
     QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
-    // The panel shows the player's name and a stat (ST from the model).
-    QVERIFY(labelContains(info, p->name));
+    // The panel shows the player's name (uppercase, Mockup F card) and a
+    // stat (ST from the model).
+    QVERIFY(labelContains(info, p->name.toUpper()));
     QVERIFY(labelContains(info, QStringLiteral("ST")));
 }
 

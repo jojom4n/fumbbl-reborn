@@ -13,26 +13,37 @@
 
 namespace {
 
-// Dark theme palette matching the FUMBBL aesthetic (dark background,
-// green/gold team accents).
-void applyDarkTheme(QApplication &app)
+// Mockup F light theme: white/light-gray translucent surfaces, dark ink
+// text, team accent colors, red reserved for injury/failure.
+void applyLightTheme(QApplication &app)
 {
     app.setStyle("Fusion");
 
+    // Mockup F palette (see compose_f.py: PAPER / INK / INK2).
+    const QColor paper(0xfa, 0xfa, 0xfd);
+    const QColor ink(0x22, 0x28, 0x32);
+    const QColor ink2(0x68, 0x72, 0x80);
+    const QColor base(0xff, 0xff, 0xff);
+    const QColor altBase(0xf2, 0xf2, 0xf6);
+    const QColor button(0xf0, 0xf0, 0xf4);
+    const QColor accent(0x4a, 0x7c, 0xba); // neutral blue selection
+
     QPalette pal;
-    pal.setColor(QPalette::Window, QColor(0x1e, 0x1e, 0x26));
-    pal.setColor(QPalette::WindowText, QColor(0xdc, 0xdc, 0xdc));
-    pal.setColor(QPalette::Base, QColor(0x14, 0x14, 0x1a));
-    pal.setColor(QPalette::AlternateBase, QColor(0x22, 0x22, 0x2c));
-    pal.setColor(QPalette::ToolTipBase, QColor(0x2a, 0x2a, 0x34));
-    pal.setColor(QPalette::ToolTipText, QColor(0xdc, 0xdc, 0xdc));
-    pal.setColor(QPalette::Text, QColor(0xdc, 0xdc, 0xdc));
-    pal.setColor(QPalette::Button, QColor(0x2a, 0x2a, 0x34));
-    pal.setColor(QPalette::ButtonText, QColor(0xdc, 0xdc, 0xdc));
-    pal.setColor(QPalette::Highlight, QColor(0x4a, 0x7c, 0x3f));
+    pal.setColor(QPalette::Window, paper);
+    pal.setColor(QPalette::WindowText, ink);
+    pal.setColor(QPalette::Base, base);
+    pal.setColor(QPalette::AlternateBase, altBase);
+    pal.setColor(QPalette::ToolTipBase, base);
+    pal.setColor(QPalette::ToolTipText, ink);
+    pal.setColor(QPalette::Text, ink);
+    pal.setColor(QPalette::Button, button);
+    pal.setColor(QPalette::ButtonText, ink);
+    pal.setColor(QPalette::Highlight, accent);
     pal.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
-    pal.setColor(QPalette::Disabled, QPalette::Text, QColor(0x66, 0x66, 0x70));
-    pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x66, 0x66, 0x70));
+    pal.setColor(QPalette::Link, QColor(0x34, 0x6c, 0xb4));
+    pal.setColor(QPalette::Disabled, QPalette::WindowText, ink2);
+    pal.setColor(QPalette::Disabled, QPalette::Text, ink2);
+    pal.setColor(QPalette::Disabled, QPalette::ButtonText, ink2);
     app.setPalette(pal);
 }
 
@@ -45,7 +56,7 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationName("saruman");
     QApplication::setApplicationVersion("0.1.0");
 
-    applyDarkTheme(app);
+    applyLightTheme(app);
 
     MainWindow window;
     window.show();

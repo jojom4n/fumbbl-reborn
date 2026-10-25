@@ -22,10 +22,11 @@ FloatingPanel::FloatingPanel(const QString &title, QWidget *content, QWidget *pa
     m_close->setFixedSize(18, 18);
     m_close->setCursor(Qt::PointingHandCursor);
     m_close->setAutoRaise(true);
+    // Light chrome (Mockup F): the close glyph is dark ink on the paper card.
     m_close->setStyleSheet(
-        QStringLiteral("QToolButton { color: rgba(200, 210, 225, 160); background: transparent; "
-                       "font-size: 13px; font-weight: bold; } "
-                       "QToolButton:hover { color: white; }"));
+        QStringLiteral("QToolButton { color: rgba(90, 98, 112, 200); background: transparent; "
+                       "font-size: 14px; font-weight: bold; border: none; } "
+                       "QToolButton:hover { color: #222832; }"));
     connect(m_close, &QToolButton::clicked, this,
             [this] { emit hideRequested(); });
 }
@@ -121,25 +122,25 @@ void FloatingPanel::paintEvent(QPaintEvent *event)
 
     const QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
     p.setPen(Qt::NoPen);
-    // The panel is part of the scene — dark but clearly translucent, so the
-    // field glows through it.
-    p.setBrush(QColor(10, 14, 22, 150));
+    // The panel is part of the scene — a light, clearly translucent card so
+    // the field shows through it (Mockup F: white/light-gray strips).
+    p.setBrush(QColor(252, 252, 254, 238));
     p.drawRoundedRect(r, 10, 10);
 
-    QPen border(QColor(255, 255, 255, 90));
+    QPen border(QColor(0, 0, 0, 60));
     border.setWidthF(1.2);
     p.setPen(border);
     p.setBrush(Qt::NoBrush);
     p.drawRoundedRect(r, 10, 10);
 
-    // Accent line along the top edge.
+    // Accent line along the top edge (team color).
     QPen accent(m_accent);
     accent.setWidthF(2.4);
     p.setPen(accent);
     p.drawLine(QPointF(r.left() + 10, r.top() + 1.2), QPointF(r.right() - 10, r.top() + 1.2));
 
     // Title text (the "title bar" is part of the translucent chrome).
-    p.setPen(QColor(222, 230, 242, 235));
+    p.setPen(QColor(34, 40, 50, 240)); // INK
     QFont f = font();
     f.setBold(true);
     p.setFont(f);

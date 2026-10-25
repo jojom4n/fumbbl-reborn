@@ -186,8 +186,11 @@ void HeaderView::resizeEvent(QResizeEvent *)
 void HeaderView::layoutEndTurn()
 {
     // END TURN next to the active coach's subline, clearly below the dots.
-    const QFont subF = font();
-    QFontMetricsF fm(subF);
+    // The subline is painted with a 10pt font — measure with the same font
+    // or the pill overlaps the text.
+    QFont subF = font();
+    subF.setPointSizeF(10);
+    const QFontMetricsF fm(subF);
     const QString subH = m_homeCoach + QStringLiteral("  ·  ") + m_homeRace;
     const QString subA = m_awayCoach + QStringLiteral("  ·  ") + m_awayRace;
     if (m_homePlaying)

@@ -187,7 +187,9 @@ void MainWindow::createCentralWidget()
     // the floating overlay panels, so everything shares one top-level window.
     m_stage = new QWidget(this);
     m_stage->setObjectName(QStringLiteral("stage"));
-    m_stage->setStyleSheet(QStringLiteral("#stage { background: #0c1014; }"));
+    // Light stage (Mockup F): the field covers it; the paper color only shows
+    // if a sliver is ever exposed during resize.
+    m_stage->setStyleSheet(QStringLiteral("#stage { background: #e9e9ee; }"));
 
     m_field = new FieldView(m_stage);
     m_field->setObjectName(QStringLiteral("field"));
