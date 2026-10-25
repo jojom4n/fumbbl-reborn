@@ -487,6 +487,9 @@ void MainWindow::applyModelToUi()
     else
         m_field->setBall(-1, -1, false); // held / no coordinate: hidden
 
+    // Weather: drives the field's rain overlay ("Nice Weather" = none).
+    m_field->setWeather(m_model->weather());
+
     // Rosters: ALL roster players (the widget keeps its own order), with a
     // short status label for off-field states (KO/BH/SI/RIP/RES/BAN/...).
     m_homeRoster->clearRoster();

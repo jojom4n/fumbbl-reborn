@@ -5,6 +5,15 @@
 //   X in [0, 25]  -> horizontal, X=0 is the home end zone (left side)
 //   Y in [0, 14]  -> vertical,   Y=0 is the top row
 //   Column 0 = home TD, column 25 = away TD, center line between 12 and 13.
+//
+// Visual design (Mockup F, 23/ott): spectacular baked field texture
+// (assets/field/field.png: crimson 1-column TD zones with vertical
+// TOUCHDOWN, grid-aligned mowing stripes), exact 26x15 grid over the whole
+// field (the TD columns show their 15 cells), emphasized side-zone
+// boundaries (row 0 / row 14), a SINGLE center line, per-match team-logo
+// watermarks (~18% alpha), white circular action wheel + target brackets
+// on the acting player, and a MicroProse-style top-down rain overlay when
+// the weather is rain.
 // =============================================================================
 #pragma once
 
@@ -42,6 +51,12 @@ public:
     void setPlayers(const QVector<PlayerToken> &home, const QVector<PlayerToken> &away);
     void setBall(int x, int y, bool inPlay);
     void setTurn(int turn);
+    // Per-match team logos (FUMBBL /i/<id> PNGs) drawn as watermarks centered
+    // on each half (~18% alpha). Null pixmaps = no watermark.
+    void setTeamLogos(const QPixmap &home, const QPixmap &away);
+    // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
+    // ...). When it contains "rain" a top-down droplet overlay is drawn.
+    void setWeather(const QString &weather);
 
     // Selected player (highlighted with a ring). Empty id = nothing selected.
     void setSelectedPlayer(const QString &playerId);
@@ -84,4 +99,7 @@ private:
     bool m_ballInPlay = false;
     int m_turn = 1;
     QString m_selectedPlayer; // playerId highlighted with a ring
+    QPixmap m_homeLogo;  // watermark for the home half
+    QPixmap m_awayLogo;  // watermark for the away half
+    QString m_weather;   // display name; "rain" substring => droplet overlay
 };

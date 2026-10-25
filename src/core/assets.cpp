@@ -247,6 +247,11 @@ QPixmap playerFace(const QString &positionName, const QString &raceHint)
     return loadPixmap(QStringLiteral("faces/human_lineman.png"));
 }
 
+QPixmap fieldTexture()
+{
+    return loadPixmap(QStringLiteral("field/field.png"));
+}
+
 QPixmap skillPixmap(const QString &skillName)
 {
     return loadPixmap(QStringLiteral("skills/%1.png").arg(skillIconSlug(skillName)));

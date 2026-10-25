@@ -111,6 +111,9 @@ public:
     int half() const { return m_half; }
     QString turnMode() const { return m_turnMode; } // setup|first_turn|regular|halftime|overtime|ended
     bool homePlaying() const { return m_homePlaying; }
+    // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
+    // ...). Empty before the first state.
+    QString weather() const { return m_weather; }
 
     // Full rosters (ALL playerArray players, in server order).
     QVector<FFBPlayer> rosterHome() const;
@@ -191,6 +194,7 @@ private:
     int m_half = 0;
     QString m_turnMode = QStringLiteral("setup");
     bool m_homePlaying = true;
+    QString m_weather;
 
     // Players: single source of truth + per-side roster ordering.
     QHash<QString, int> m_playerIndex;     // playerId -> index into m_players

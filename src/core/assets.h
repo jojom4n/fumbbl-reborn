@@ -42,6 +42,12 @@ QString faceSlug(const QString &positionName);
 QPixmap playerFace(const QString &positionName, const QString &raceHint = QString());
 QPixmap skillPixmap(const QString &skillName);
 QPixmap cardPixmap(const QString &cardName);
+// The spectacular field texture (assets/field/field.png, baked by
+// tools/mockup/make_field_asset.py: crimson 1-column TD zones with vertical
+// TOUCHDOWN, grid-aligned mowing stripes, no grid lines — the client draws
+// those at runtime). Null pixmap when the file is missing (FieldView falls
+// back to the flat fill).
+QPixmap fieldTexture();
 
 // True when the face set is available.
 bool isAvailable();

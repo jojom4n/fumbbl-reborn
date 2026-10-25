@@ -133,6 +133,22 @@ target_link_libraries(ui_connect_probe PRIVATE
     Qt6::WebSockets
 )
 
+# Offscreen FieldView renderer for visual verification of the Mockup F
+# design (feeds a real serverGameState fixture, saves a PNG).
+add_executable(field_preview
+    tools/field_preview.cpp
+    src/core/assets.cpp
+    src/ui/fieldview.cpp
+)
+target_include_directories(field_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(field_preview PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(field_preview PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+)
+
 # -----------------------------------------------------------------------------
 # gen_assets — procedural icon generator (skill/card PNGs with QPainter;
 # no external art). Output: <source>/assets/{skills,cards}. Player faces are

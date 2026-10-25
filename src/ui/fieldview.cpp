@@ -7,8 +7,10 @@
 
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPaintEvent>
 #include <QPixmap>
+#include <QRandomGenerator>
 
 FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
@@ -77,6 +79,21 @@ void FieldView::setTurn(int turn)
     update();
 }
 
+void FieldView::setTeamLogos(const QPixmap &home, const QPixmap &away)
+{
+    m_homeLogo = home;
+    m_awayLogo = away;
+    update();
+}
+
+void FieldView::setWeather(const QString &weather)
+{
+    if (m_weather == weather)
+        return;
+    m_weather = weather;
+    update();
+}
+
 void FieldView::setSelectedPlayer(const QString &playerId)
 {
     if (m_selectedPlayer == playerId)
@@ -138,6 +155,95 @@ QRectF FieldView::cellRect(int x, int y) const
     return QRectF(f.x() + x * cellW, f.y() + y * cellH, cellW, cellH);
 }
 
+// ---------------------------------------------------------------------------
+// Action wheel (Mockup F): white disc around the acting player with the six
+// core action icons (move, block, blitz, pass, foul, attack). Ported from
+// the mockup compositor (tools/mockup/compose_f.py draw_wheel).
+// ---------------------------------------------------------------------------
+static void drawActionWheel(QPainter &p, const QPointF &ctr, qreal cell)
+{
+    const qreal R = cell * 1.28;
+    const QColor INK(34, 40, 50, 255);
+
+    // soft shadow, then the disc
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(20, 26, 34, 70));
+    p.drawEllipse(ctr + QPointF(2, 5), R, R);
+    p.setBrush(QColor(252, 252, 254, 218));
+    p.setPen(QPen(QColor(168, 176, 190, 255), 2.0));
+    p.drawEllipse(ctr, R, R);
+
+    const qreal ic = cell * 0.30;
+    const qreal rr = R * 0.60;
+
+    // move (up arrow)
+    {
+        p.setPen(QPen(INK, 3.0));
+        p.drawLine(ctr + QPointF(0, -rr - ic * 0.5), ctr + QPointF(0, -rr + ic * 0.35));
+        p.setPen(Qt::NoPen);
+        p.setBrush(INK);
+        QPolygonF tri;
+        tri << ctr + QPointF(-ic * 0.42, -rr + ic * 0.05)
+            << ctr + QPointF(ic * 0.42, -rr + ic * 0.05)
+            << ctr + QPointF(0, -rr - ic * 0.55);
+        p.drawPolygon(tri);
+    }
+    // block (two shields, top-right)
+    {
+        const QPointF b(ctr.x() + rr * 0.87, ctr.y() - rr * 0.5);
+        p.setPen(Qt::NoPen);
+        p.setBrush(INK);
+        for (const qreal off : { -ic * 0.42, ic * 0.14 })
+            p.drawRoundedRect(QRectF(b.x() + off - ic * 0.18, b.y() - ic * 0.3, ic * 0.36, ic * 0.6), 2, 2);
+    }
+    // blitz (zigzag, bottom-right)
+    {
+        const QPointF b(ctr.x() + rr * 0.87, ctr.y() + rr * 0.5);
+        QPen zp(INK, 3.0);
+        zp.setJoinStyle(Qt::RoundJoin);
+        p.setPen(zp);
+        p.drawPolyline(QPolygonF()
+            << b + QPointF(-ic * 0.45, -ic * 0.35)
+            << b + QPointF(-ic * 0.05, 0)
+            << b + QPointF(-ic * 0.35, ic * 0.35)
+            << b + QPointF(ic * 0.4, -ic * 0.1));
+    }
+    // pass (arc + arrowhead, bottom-left)
+    {
+        const QPointF b(ctr.x() - rr * 0.87, ctr.y() + rr * 0.5);
+        p.setPen(QPen(INK, 3.0));
+        p.drawArc(QRectF(b.x() - ic * 0.5, b.y() - ic * 0.5, ic, ic), 100 * 16, 160 * 16);
+        p.setPen(Qt::NoPen);
+        p.setBrush(INK);
+        QPolygonF ah;
+        ah << b + QPointF(ic * 0.32, -ic * 0.42)
+           << b + QPointF(ic * 0.62, -ic * 0.18)
+           << b + QPointF(ic * 0.18, -ic * 0.05);
+        p.drawPolygon(ah);
+    }
+    // foul (crossed swords, top-left)
+    {
+        const QPointF b(ctr.x() - rr * 0.87, ctr.y() - rr * 0.5);
+        p.setPen(QPen(INK, 3.0));
+        p.drawLine(b + QPointF(-ic * 0.4, -ic * 0.4), b + QPointF(ic * 0.4, ic * 0.4));
+        p.drawLine(b + QPointF(ic * 0.4, -ic * 0.4), b + QPointF(-ic * 0.4, ic * 0.4));
+    }
+    // attack (dagger, bottom)
+    {
+        const QPointF b(ctr.x(), ctr.y() + rr);
+        p.setPen(Qt::NoPen);
+        p.setBrush(INK);
+        QPolygonF dg;
+        dg << b + QPointF(0, ic * 0.5)
+           << b + QPointF(-ic * 0.28, -ic * 0.3)
+           << b + QPointF(0, -ic * 0.55)
+           << b + QPointF(ic * 0.28, -ic * 0.3);
+        p.drawPolygon(dg);
+        p.setPen(QPen(INK, 2.0));
+        p.drawLine(b + QPointF(-ic * 0.4, -ic * 0.35), b + QPointF(ic * 0.4, -ic * 0.35));
+    }
+}
+
 void FieldView::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
@@ -150,41 +256,58 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
 
-    // --- Grass ------------------------------------------------------------
-    p.fillRect(f, QColor(0x3d, 0x6b, 0x35));
+    // --- Field texture (baked Mockup-F art: grass, mowing stripes, crimson
+    //     1-column TD zones with vertical TOUCHDOWN) or flat fallback ------
+    const QPixmap tex = assets::fieldTexture();
+    if (!tex.isNull()) {
+        // Cover scaling (preserve aspect, center-crop to the widget).
+        const qreal scale = qMax(f.width() / tex.width(), f.height() / tex.height());
+        const QSize sz(int(tex.width() * scale) + 1, int(tex.height() * scale) + 1);
+        p.drawPixmap(QRectF(f.center().x() - sz.width() / 2, f.center().y() - sz.height() / 2,
+                            sz.width(), sz.height()),
+                     tex, QRectF(0, 0, tex.width(), tex.height()));
+    } else {
+        p.fillRect(f, QColor(0x3d, 0x6b, 0x35));
+        p.fillRect(cellRect(0, 0).united(cellRect(0, 14)), QColor(0x80, 0x20, 0x1e));
+        p.fillRect(cellRect(25, 0).united(cellRect(25, 14)), QColor(0x80, 0x20, 0x1e));
+    }
 
-    // --- End zones (column 0 = home TD, column 25 = away TD) -------------
-    p.fillRect(cellRect(0, 0).united(cellRect(0, 14)), QColor(0x2e, 0x52, 0x28));
-    p.fillRect(cellRect(25, 0).united(cellRect(25, 14)), QColor(0x54, 0x4a, 0x2e));
-
-    // --- Grid lines --------------------------------------------------------
-    QPen linePen(QColor(255, 255, 255, 60));
-    linePen.setWidthF(1.0);
+    // --- Exact 26x15 grid over the WHOLE field: the TD columns show their
+    //     15 cells (horizontal lines run full width), the side-zone rows
+    //     (row 0 / row 14) get emphasized boundary lines. ------------------
+    QPen linePen(QColor(255, 255, 255, 110));
+    linePen.setWidthF(qMax(1.0, cellW * 0.04));
     p.setPen(linePen);
-    for (int x = 0; x <= kFieldWidth; ++x) {
+    for (int x = 0; x <= kFieldWidth; ++x)
         p.drawLine(QPointF(f.x() + x * cellW, f.y()), QPointF(f.x() + x * cellW, f.bottom()));
-    }
     for (int y = 0; y <= kFieldHeight; ++y) {
+        if (y == 1 || y == kFieldHeight - 1) {  // side-zone boundaries
+            QPen sz(QColor(255, 255, 255, 150), qMax(1.5, cellW * 0.06));
+            p.setPen(sz);
+        }
         p.drawLine(QPointF(f.x(), f.y() + y * cellH), QPointF(f.right(), f.y() + y * cellH));
+        p.setPen(linePen);
     }
 
-    // --- Center line (between columns 12 and 13) --------------------------
-    QPen centerPen(QColor(0xd8, 0xc8, 0x6a, 160));
-    centerPen.setWidthF(2.0);
+    // --- Center line: SINGLE, emphasized (between columns 12 and 13) ------
+    QPen centerPen(QColor(255, 255, 255, 240), qMax(3.0, cellW * 0.10));
     p.setPen(centerPen);
     const qreal cx = f.x() + 13 * cellW;
     p.drawLine(QPointF(cx, f.y()), QPointF(cx, f.bottom()));
 
-    // --- End zone labels ----------------------------------------------------
-    p.setPen(QColor(255, 255, 255, 140));
-    QFont tdFont = p.font();
-    tdFont.setPointSizeF(qMax(6.0, cellW / 2.5));
-    tdFont.setBold(true);
-    p.setFont(tdFont);
-    const QRectF hz = cellRect(0, 7);
-    p.drawText(hz, Qt::AlignCenter, QStringLiteral("TD"));
-    const QRectF az = cellRect(25, 7);
-    p.drawText(az, Qt::AlignCenter, QStringLiteral("TD"));
+    // --- Team logos: per-match watermarks centered on each half (~18%) ----
+    const auto drawLogo = [&](const QPixmap &pm, qreal col) {
+        if (pm.isNull())
+            return;
+        const qreal s = f.height() * 0.52;
+        p.save();
+        p.setOpacity(0.18);
+        p.drawPixmap(QRectF(f.x() + col * cellW - s / 2, f.center().y() - s / 2, s, s), pm,
+                     QRectF(0, 0, pm.width(), pm.height()));
+        p.restore();
+    };
+    drawLogo(m_homeLogo, 6.5);
+    drawLogo(m_awayLogo, 19.5);
 
     // --- Ball on an empty square -------------------------------------------
     const auto atBall = [this](const QVector<PlayerToken> &team) {
@@ -201,6 +324,64 @@ void FieldView::paintEvent(QPaintEvent *)
         p.setPen(QPen(QColor(0x40, 0x26, 0x12), 1));
         p.setBrush(QColor(0x8b, 0x5a, 0x2b));
         p.drawEllipse(ballRect);
+    }
+
+    // --- Target brackets + action wheel on the acting player (drawn UNDER
+    //     the tokens, like the mockup) --------------------------------------
+    const PlayerToken *acting = nullptr;
+    for (const QVector<PlayerToken> *team : { &m_homePlayers, &m_awayPlayers })
+        for (const PlayerToken &t : *team)
+            if (t.isActing)
+                acting = &t;
+    if (acting && acting->x >= 0 && acting->x < kFieldWidth
+        && acting->y >= 0 && acting->y < kFieldHeight) {
+        // Target brackets: two empty cells adjacent to the acting player
+        // (prefer towards the ball, then the cells ahead).
+        const auto occupied = [this](int x, int y) {
+            for (const PlayerToken &t : m_homePlayers)
+                if (t.x == x && t.y == y)
+                    return true;
+            for (const PlayerToken &t : m_awayPlayers)
+                if (t.x == x && t.y == y)
+                    return true;
+            return false;
+        };
+        const int bdir = m_ballInPlay
+            ? (m_ballX < acting->x ? -1 : (m_ballX > acting->x ? 1 : 0)) : 0;
+        QVector<QPair<int, int>> cand;
+        if (bdir != 0) {
+            cand.append({ acting->x + bdir, acting->y });
+            cand.append({ acting->x - bdir, acting->y });
+        } else {
+            cand.append({ acting->x + 1, acting->y });
+        }
+        cand.append({ acting->x, acting->y - 1 });
+        cand.append({ acting->x, acting->y + 1 });
+        QPen brkPen(QColor(255, 255, 255, 215), qMax(2.0, cellW * 0.045));
+        p.setPen(brkPen);
+        int picks = 0;
+        for (const auto &cc : cand) {
+            if (picks == 2)
+                break;
+            const int tx = cc.first, ty = cc.second;
+            if (tx < 0 || tx >= kFieldWidth || ty < 0 || ty >= kFieldHeight)
+                continue;
+            if (occupied(tx, ty))
+                continue;
+            const QRectF tr = cellRect(tx, ty);
+            const qreal a = cellW * 0.16, m = cellW * 0.03;
+            p.drawLine(tr.topLeft() + QPointF(m, m), tr.topLeft() + QPointF(m + a, m));
+            p.drawLine(tr.topLeft() + QPointF(m, m), tr.topLeft() + QPointF(m, m + a));
+            p.drawLine(tr.topRight() - QPointF(m, m), tr.topRight() - QPointF(m + a, m));
+            p.drawLine(tr.topRight() - QPointF(m, m), tr.topRight() - QPointF(m, m + a));
+            p.drawLine(tr.bottomLeft() + QPointF(m, -m), tr.bottomLeft() + QPointF(m + a, -m));
+            p.drawLine(tr.bottomLeft() + QPointF(m, -m), tr.bottomLeft() + QPointF(m, -a));
+            p.drawLine(tr.bottomRight() - QPointF(m, -m), tr.bottomRight() - QPointF(m + a, -m));
+            p.drawLine(tr.bottomRight() - QPointF(m, -m), tr.bottomRight() - QPointF(m, -a));
+            ++picks;
+        }
+        // The white action wheel (disc + six action icons).
+        drawActionWheel(p, cellRect(acting->x, acting->y).center(), qMin(cellW, cellH));
     }
 
     // --- Player tokens -------------------------------------------------------
@@ -229,27 +410,24 @@ void FieldView::paintEvent(QPaintEvent *)
             p.drawEllipse(circ);
 
             // Face on top (slightly inset from the circle). Custom-named
-            // star pieces fall back to the side's race representative.
+            // star pieces fall back to the side's race representative. The
+            // face assets are square (RGB, no alpha), so the face is clipped
+            // to the team circle — the mockup does the same with a mask.
             const QString race = sideHome ? m_homeRace : m_awayRace;
             const QPixmap pm = assets::playerFace(t.positionName, race);
             if (!pm.isNull()) {
-                const qreal fs = s * 0.82;
+                const qreal fs = s * 0.78;
                 QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
-                if (down) {
-                    face = QRectF(ctr.x() - fs * 0.58, ctr.y() - fs * 0.27, fs * 1.16, fs * 0.54);
-                }
+                if (down)
+                    face = QRectF(ctr.x() - fs * 0.52, ctr.y() - fs * 0.24, fs * 1.04, fs * 0.48);
+                p.save();
+                QPainterPath clip;
+                clip.addEllipse(circ.adjusted(fs * 0.06, fs * 0.06, -fs * 0.06, -fs * 0.06));
+                p.setClipPath(clip);
                 p.drawPixmap(face, pm, QRectF(0, 0, pm.width(), pm.height()));
+                p.restore();
             }
 
-            // Acting player: thin white ring
-            if (t.isActing) {
-                const QRectF ring(c.center().x() - s * 0.52, c.center().y() - s * 0.52, s * 1.04,
-                                  s * 1.04);
-                QPen actPen(QColor(255, 255, 255, 200), 1.4, Qt::DashLine);
-                p.setPen(actPen);
-                p.setBrush(Qt::NoBrush);
-                p.drawEllipse(ring);
-            }
 
             // Number badge (bottom-right corner)
             const qreal br = qMin(cellW, cellH) * 0.24;
@@ -278,6 +456,29 @@ void FieldView::paintEvent(QPaintEvent *)
 
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
+
+    // --- Rain (MicroProse-Soccer style: fine top-down droplet specks) ------
+    if (m_weather.toLower().contains(QLatin1String("rain"))) {
+        QRandomGenerator rng(7);
+        p.setPen(Qt::NoPen);
+        for (int i = 0; i < 520; ++i) {
+            const qreal x0 = rng.bounded(int(f.width()));
+            const qreal y0 = rng.bounded(int(f.height()));
+            const int a = 35 + rng.bounded(81);
+            static constexpr qreal kRadii[] = { 0.9, 0.9, 1.1, 1.5 };
+            const qreal r = kRadii[rng.bounded(4)];
+            p.setBrush(QColor(235, 240, 250, a));
+            p.drawEllipse(QPointF(x0, y0), r, r);
+        }
+        for (int i = 0; i < 90; ++i) {
+            const qreal x0 = rng.bounded(int(f.width()));
+            const qreal y0 = rng.bounded(int(f.height()));
+            const qreal L = 2.5 + rng.bounded(40) / 10.0;
+            const int a = 28 + rng.bounded(45);
+            p.setPen(QPen(QColor(235, 240, 250, a), 1));
+            p.drawLine(QPointF(x0, y0), QPointF(x0, y0 + L));
+        }
+    }
 
     // --- Selection ring (drawn last so it is always visible) -----------------
     if (!m_selectedPlayer.isEmpty()) {

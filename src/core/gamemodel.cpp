@@ -73,6 +73,7 @@ void GameModel::clearState()
     m_ballOnField = false;
     m_ballX = -1;
     m_ballY = -1;
+    m_weather.clear();
 }
 
 void GameModel::reset()
@@ -277,6 +278,9 @@ void GameModel::applyFieldModel(const QJsonObject &fieldModel)
         m_ballX = -1;
         m_ballY = -1;
     }
+
+    // Weather display name ("Nice Weather", "Light Rain", ...).
+    m_weather = fieldModel.value(QStringLiteral("weather")).toString(m_weather);
 }
 
 // -----------------------------------------------------------------------------
@@ -352,6 +356,15 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
 
     if (id == QLatin1String("gameSetHomePlaying")) {
         m_homePlaying = value.toBool(m_homePlaying);
+        return;
+    }
+
+    if (id == QLatin1String("fieldModelSetWeather")) {
+        // Value: a Weather object ({name, shortName}) or a plain string.
+        const QJsonObject obj = value.toObject();
+        m_weather = obj.contains(QStringLiteral("name"))
+                        ? obj.value(QStringLiteral("name")).toString()
+                        : value.toString(m_weather);
         return;
     }
 
