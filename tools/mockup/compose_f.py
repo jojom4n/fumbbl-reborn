@@ -591,7 +591,7 @@ def target_brackets(d, rect, color=(255, 255, 255, 215)):
         d.line((cx, cy, cx + sx * a, cy), fill=color, width=w)
         d.line((cx, cy, cx, cy + sy * a), fill=color, width=w)
 
-def team_logo(path, size, alpha=0.13):
+def team_logo(path, size, alpha=0.19):
     img = Image.open(path).convert("RGBA")
     img = img.resize((size, size), Image.LANCZOS)
     img.putalpha(img.getchannel("A").point(lambda v: int(v * alpha)))
@@ -634,12 +634,13 @@ def compose(key):
     def cell_center(x, y):
         return (fx + (x + 0.5) * cw, fy + (y + 0.5) * ch)
 
-    # --- 2. TEAM LOGOS: per-match real logos, ~13% alpha, center of each half
+    # --- 2. TEAM LOGOS: per-match real logos, ~19% alpha (round 7: less
+    # transparent than round 6's 13%), center of each half
     logo_sz = int(fh * 0.52)
     for path, col in ((LOGOS / "h_big.png", 6.5), (LOGOS / "a_big.png", 19.5)):
         cx = fx + (col) * cw
         cy = fy + fh / 2
-        lg = team_logo(path, logo_sz, alpha=0.13)
+        lg = team_logo(path, logo_sz, alpha=0.19)
         canvas.paste(lg, (int(cx - logo_sz / 2), int(cy - logo_sz / 2)), lg)
 
     d = ImageDraw.Draw(canvas)
@@ -761,21 +762,21 @@ def compose(key):
         coin(d, x0 + i * 19, 17, 7, active=i < n_ra)
 
     # END TURN button next to the active human coach (the team on turn) —
-    # spaced clearly below the reroll dots
+    # round 7: a little lower (pill y 32..54, was 28..50)
     sub_h = f"{th['coach']}  ·  {th['race']}"
     if live["home_playing"]:
         ex = 64 + text_w(d, sub_h, font(10)) + 14
-        d.rounded_rectangle((ex, 28, ex + 82, 50), radius=11, fill=HOME + (255,),
+        d.rounded_rectangle((ex, 32, ex + 82, 54), radius=11, fill=HOME + (255,),
                             outline=tuple(max(0, c - 60) for c in HOME) + (255,),
                             width=1)
-        d.text((ex + 8, 33), "END TURN", font=font(10, "bold"),
+        d.text((ex + 8, 37), "END TURN", font=font(10, "bold"),
                fill=(255, 255, 255, 255))
     else:
         ex = W - 64 - 82 - text_w(d, sub_a, font(10)) - 14
-        d.rounded_rectangle((ex, 28, ex + 82, 50), radius=11, fill=AWAY + (255,),
+        d.rounded_rectangle((ex, 32, ex + 82, 54), radius=11, fill=AWAY + (255,),
                             outline=tuple(max(0, c - 60) for c in AWAY) + (255,),
                             width=1)
-        d.text((ex + 8, 33), "END TURN", font=font(10, "bold"),
+        d.text((ex + 8, 37), "END TURN", font=font(10, "bold"),
                fill=(255, 255, 255, 255))
 
     # center: score + one clean row: [TURN n][HALF]  time  weather
