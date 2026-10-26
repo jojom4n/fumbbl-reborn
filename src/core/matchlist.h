@@ -28,6 +28,10 @@ struct FFBMatchTeam
     QString race;     // race name (may be a custom team race)
     QString rating;
     int score = 0;
+    // Round 10: team logo path from the match list (e.g. "/i/486335"). The
+    // GAME STATE often carries logoUrl = null, but the match list always has
+    // it — MainWindow uses this as the fallback logo source.
+    QString logo;
 };
 
 struct FFBLiveMatch

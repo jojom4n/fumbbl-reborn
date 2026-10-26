@@ -375,6 +375,15 @@ int SpectateDialog::selectedGameId() const
     return it ? it->data(Qt::UserRole).toInt() : -1;
 }
 
+QPair<QString, QString> SpectateDialog::selectedTeamLogos() const
+{
+    const int id = selectedGameId();
+    for (const FFBLiveMatch &m : m_matches)
+        if (m.id == id)
+            return { m.home.logo, m.away.logo };
+    return {};
+}
+
 int SpectateDialog::currentTableRow() const
 {
     return m_table ? m_table->currentRow() : -1;

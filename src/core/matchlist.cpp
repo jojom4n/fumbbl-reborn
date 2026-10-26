@@ -19,6 +19,7 @@ FFBMatchTeam parseTeam(const QJsonObject &o)
     t.race = o.value(QStringLiteral("race")).toString();
     t.rating = o.value(QStringLiteral("rating")).toString();
     t.score = o.value(QStringLiteral("score")).toInt();
+    t.logo = o.value(QStringLiteral("logo")).toString();
     return t;
 }
 } // namespace

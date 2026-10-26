@@ -265,29 +265,37 @@ void HeaderView::paintEvent(QPaintEvent *)
     const qreal w4 = 26 + fmLab.horizontalAdvance(m_weather);
     const qreal total = w1 + 8 + w2 + 16 + w3 + 16 + w4;
     const qreal y = 38; // round 9: below the score with a real gap (was 34)
+    // Round 10: the TURN / HALF pills were 16px tall and the glyph's descent
+    // touched the bottom border. Taller pills (20px) with the text vertically
+    // centered leave a real gap below the font.
+    const qreal chipH = 20.0;
+    const auto chipBase = [y, chipH](const QFontMetricsF &fm) {
+        return y + (chipH - (fm.ascent() + fm.descent())) / 2.0 + fm.ascent();
+    };
     qreal x = W / 2 - total / 2;
 
     p.setPen(QPen(m_homeAccent, 1));
     p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(QRectF(x, y, w1, 16), 8, 8);
+    p.drawRoundedRect(QRectF(x, y, w1, chipH), 10, 10);
     p.setPen(m_homeAccent);
     p.setFont(chipF);
-    p.drawText(x + 7, y + 2 + int(fmChip.ascent()), turnT);
+    p.drawText(x + 7, chipBase(fmChip), turnT);
     x += w1 + 8;
     p.setPen(QPen(INK2, 1));
-    p.drawRoundedRect(QRectF(x, y, w2, 16), 8, 8);
+    p.drawRoundedRect(QRectF(x, y, w2, chipH), 10, 10);
     p.setPen(INK2);
-    p.drawText(x + 7, y + 2 + int(fmChip.ascent()), halfT);
+    p.drawText(x + 7, chipBase(fmChip), halfT);
     x += w2 + 16;
     p.setPen(INK);
     p.setFont(timeF);
-    p.drawText(x, y - 2 + int(fmTime.ascent()), timeT);
+    p.drawText(x, chipBase(fmTime), timeT);
     x += w3 + 16;
+    const qreal iconY = y + (chipH - 18) / 2.0;
     if (m_weather.toLower().contains(QLatin1String("rain")))
-        rainIcon(p, x, y - 4, 18);
+        rainIcon(p, x, iconY, 18);
     else
-        sunIcon(p, x, y - 4, 18);
+        sunIcon(p, x, iconY, 18);
     p.setPen(INK2);
     p.setFont(labF);
-    p.drawText(x + 26, y + 2 + int(fmLab.ascent()), m_weather);
+    p.drawText(x + 26, chipBase(fmLab), m_weather);
 }

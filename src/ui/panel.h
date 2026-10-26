@@ -27,6 +27,11 @@ public:
     QWidget *contentWidget() const { return m_content; }
     QString panelTitle() const { return m_title; }
     void setAccent(const QColor &color);
+    // Round 10: chromeless mode for the hover Player Info card — no title
+    // text, no close button; the content fills the whole panel. (The
+    // protocol log panel keeps the full chrome.)
+    void setChromeless(bool c = true);
+    bool isChromeless() const { return m_chromeless; }
 
     // Minimum allowed size (kept so the panel can't be resized away).
     static constexpr int kMinWidth = 200;
@@ -69,6 +74,7 @@ private:
     QWidget *m_content = nullptr;
     QToolButton *m_close = nullptr;
     QColor m_accent{0x8f, 0xa6, 0xc0};
+    bool m_chromeless = false; // round 10: no title text / close button
     bool m_dragging = false;
     bool m_resizing = false;
     int m_edge = EdgeNone;

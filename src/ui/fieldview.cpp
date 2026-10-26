@@ -791,6 +791,30 @@ void FieldView::paintEvent(QPaintEvent *)
                 p.restore();
             }
 
+            // Round 10: player state mark over the face — prone = "/",
+            // stunned = "X" (white with a dark under-stroke for contrast).
+            const int base = t.state & 0xFF;
+            if (base == 3 || base == 4) {
+                const qreal mw = s * 0.46;
+                const qreal mh = down ? s * 0.30 : s * 0.46; // fit the squashed face
+                const QRectF mr(ctr.x() - mw / 2, ctr.y() - mh / 2, mw, mh);
+                QPen under(QColor(24, 24, 30, 210), qMax(3.0, s * 0.15));
+                under.setCapStyle(Qt::RoundCap);
+                QPen over(QColor(255, 255, 255, 235), qMax(1.5, s * 0.08));
+                over.setCapStyle(Qt::RoundCap);
+                const auto diag = [&](const QPointF &a, const QPointF &b) {
+                    p.setPen(under);
+                    p.drawLine(a, b);
+                    p.setPen(over);
+                    p.drawLine(a, b);
+                };
+                if (base == 3)
+                    diag(mr.bottomLeft(), mr.topRight()); // "/"  (prone)
+                else {
+                    diag(mr.topLeft(), mr.bottomRight()); // "\"
+                    diag(mr.bottomLeft(), mr.topRight()); // "/"  -> "X" (stunned)
+                }
+            }
 
             // Number badge (bottom-right corner)
             const qreal br = qMin(cellW, cellH) * 0.24;
@@ -820,11 +844,11 @@ void FieldView::paintEvent(QPaintEvent *)
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
 
-    // --- Selection: BLUE GLOWING RADIAL circle (round 9, user decision —
-    //     replaces the old gold rounded rect): a soft radial halo fading
-    //     outwards + a crisp blue ring. Pulsing: the halo's alpha/radius
-    //     breathe sinusoidally (~1.2 Hz, m_pulseTimer advances the phase
-    //     and repaints only this token's rect). Drawn last in field space
+    // --- Selection: BLUE RIM GLOW (round 9: blue radial + ring; round 10:
+    //     the glow now hugs the token's RIM only — transparent over the
+    //     face, a soft blue band just outside the team circle, fading out —
+    //     with a crisp blue ring. Pulsing: the band's alpha breathes
+    //     sinusoidally (~1.2 Hz, m_pulseTimer). Drawn last in field space
     //     so it is always visible and follows zoom/pan.
     if (!m_selectedPlayer.isEmpty()) {
         const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
@@ -839,20 +863,22 @@ void FieldView::paintEvent(QPaintEvent *)
             const QPointF ctr = c.center();
             // Breathing factor 0..1 (sinusoid over the pulse phase).
             const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
-            const qreal haloR = qMin(cellW, cellH) * (0.95 + 0.15 * breath);
-            // Soft radial halo: bright blue core fading to transparent.
-            QRadialGradient halo(ctr, haloR);
-            const int aCore = int(110 + 90 * breath);   // 110..200
-            const int aMid = int(60 + 40 * breath);     // 60..100
-            halo.setColorAt(0.0, QColor(88, 168, 255, aCore));
-            halo.setColorAt(0.55, QColor(88, 168, 255, aMid));
+            const qreal minDim = qMin(cellW, cellH);
+            const qreal ringR = minDim * (0.56 + 0.02 * breath);
+            const qreal glowR = minDim * (0.85 + 0.06 * breath);
+            // Rim-only radial: clear over the face (up to the team circle's
+            // edge), peak band at the ring, fade to transparent.
+            QRadialGradient halo(ctr, glowR);
+            const int rimA = int(70 + 70 * breath); // 70..140, calmer than round 9
+            halo.setColorAt(0.0, QColor(88, 168, 255, 0));
+            halo.setColorAt((minDim * 0.5) / glowR, QColor(88, 168, 255, 0));
+            halo.setColorAt(ringR / glowR, QColor(88, 168, 255, rimA));
             halo.setColorAt(1.0, QColor(88, 168, 255, 0));
             p.setPen(Qt::NoPen);
             p.setBrush(halo);
-            p.drawEllipse(ctr, haloR, haloR);
+            p.drawEllipse(ctr, glowR, glowR);
             // Crisp blue ring around the token.
-            const qreal ringR = qMin(cellW, cellH) * (0.46 + 0.02 * breath);
-            QPen ringPen(QColor(120, 190, 255, 235), qMax(2.0, cellW * 0.07));
+            QPen ringPen(QColor(120, 190, 255, 230), qMax(2.0, minDim * 0.055));
             p.setPen(ringPen);
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(ctr, ringR, ringR);

@@ -202,8 +202,9 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_portrait->setAlignment(Qt::AlignCenter);
     v->addWidget(m_portrait, 0, Qt::AlignHCenter);
     // Round 9: the name collided with the face — extra breathing room
-    // between the portrait and the name label.
-    v->addSpacing(8);
+    // between the portrait and the name label. Round 10: still too tight in
+    // practice (the bold 13pt glyph has its own top leading) — widen it.
+    v->addSpacing(14);
 
     m_nameLabel = new QLabel(m_content);
     m_nameLabel->setAlignment(Qt::AlignHCenter);

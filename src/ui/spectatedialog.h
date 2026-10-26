@@ -13,6 +13,7 @@
 #include "core/matchlist.h"
 
 #include <QDialog>
+#include <QPair>
 
 class FumbblAuth;
 class MatchListClient;
@@ -41,6 +42,9 @@ public:
     int selectedGameId() const;
     int currentTableRow() const;
     int tableRowCount() const;
+    // Round 10: team logos of the currently selected row ({home, away}).
+    // Fallback source for the game state's often-null logoUrl. May be empty.
+    QPair<QString, QString> selectedTeamLogos() const;
     // Test seams: inject a match list without a network round-trip and reach
     // the manual game-id field.
     void loadMatchesForTest(const QVector<FFBLiveMatch> &matches);

@@ -25,6 +25,7 @@
 #include <QSet>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QToolButton>
 
 #include "core/assets.h"
 #include "core/gamemodel.h"
@@ -98,6 +99,13 @@ private slots:
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
     void skillChipsWrapWithoutClipping();
+    // ---- Round 10 (header spacing, logos, chat default, upward log, glow) ----
+    void chatStartsCollapsedByDefault();
+    void actionLogExpandsUpward();
+    void hoverDoesNotMoveSelectionGlow();
+    void playerInfoCardIsChromeless();
+    void matchListLogoFallbackUsedWhenGameStateNull();
+    void proneAndStunnedMarksRendered();
 };
 
 namespace {
@@ -1036,6 +1044,267 @@ void UiWiringTest::skillChipsWrapWithoutClipping()
                             .arg(wrapped)
                             .arg(chips->width())));
     QCOMPARE(chips->height(), wrapped); // no clipping
+}
+
+// ---------------------------------------------------------------------------
+// Round 10 tests
+// ---------------------------------------------------------------------------
+
+// Round 10 point 3: the chat starts COLLAPSED (the mockup F pill in the
+// bottom-right corner) — it opens on click.
+void UiWiringTest::chatStartsCollapsedByDefault()
+{
+    MainWindow w;
+    w.show();
+    ChatWidget *chat = w.findChild<ChatWidget *>();
+    QVERIFY(chat);
+    QVERIFY2(chat->isCollapsed(), "the chat must start collapsed (mockup F pill)");
+    QCOMPARE(chat->size(), ChatWidget::pillSize());
+}
+
+// Round 10 point 4: the action log EXPANDS UPWARD — pinned to the bottom of
+// the stage. Expanding grows the height and lifts the top edge; the bottom
+// edge stays put (round 9 grew it downwards, off the visible bottom).
+void UiWiringTest::actionLogExpandsUpward()
+{
+    MainWindow w;
+    // The constructor shows maximized; the offscreen platform's maximized
+    // size is flaky, so pin a deterministic normal size for geometry checks.
+    w.showNormal();
+    w.resize(1200, 750);
+    QApplication::processEvents();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    QVERIFY(log);
+
+    const int compactH = ActionLogWidget::compactHeight();
+    const int expandedH = ActionLogWidget::expandedHeight();
+    QVERIFY(expandedH > compactH);
+    QCOMPARE(log->height(), compactH);
+    // Round 10 regression: expanding must grow the log UPWARD (top edge
+    // lifts) while the bottom edge stays pinned — the round-9 bug let it
+    // grow downwards, off the visible bottom. We assert that relationship
+    // directly (±1px: the offscreen window can settle by a pixel).
+    const int yCompact = log->geometry().y();
+    const int bottomBefore = log->geometry().bottom();
+
+    // Click the chevron -> expand.
+    QLabel *chevron = nullptr;
+    for (QLabel *l : log->findChildren<QLabel *>())
+        if (l->text() == QString::fromUtf8("\u25b4"))
+            chevron = l;
+    QVERIFY(chevron);
+    {
+        const QPoint at = chevron->mapTo(log, QPoint(chevron->width() / 2, chevron->height() / 2));
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(log, &press);
+    }
+    QCOMPARE(log->height(), expandedH);
+    QVERIFY2(log->geometry().y() < yCompact, "the log must expand UPWARD (top edge lifts)");
+    QVERIFY2(qAbs(log->geometry().bottom() - bottomBefore) <= 1,
+             qPrintable(QStringLiteral("bottom edge must stay pinned (got %1, was %2)")
+                            .arg(log->geometry().bottom())
+                            .arg(bottomBefore)));
+
+    // Collapse again -> back to the compact slot.
+    for (QLabel *l : log->findChildren<QLabel *>())
+        if (l->text() == QString::fromUtf8("\u25be"))
+            chevron = l;
+    QVERIFY(chevron);
+    {
+        const QPoint at = chevron->mapTo(log, QPoint(chevron->width() / 2, chevron->height() / 2));
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(log, &press);
+    }
+    QCOMPARE(log->height(), compactH);
+    QVERIFY2(qAbs(log->geometry().y() - yCompact) <= 1, "back to the compact slot");
+}
+
+// Round 10 point 5: the selection GLOW follows the player the user CLICKED
+// to act on — the spectator mouse hover only drives the info card and must
+// not move the glow. The glow moves on the next click (or clears on an
+// empty-field click).
+void UiWiringTest::hoverDoesNotMoveSelectionGlow()
+{
+    MainWindow w;
+    w.show();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(field);
+    w.onGameState(fixtureGame());
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+
+    // Two different on-field home players.
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    const FFBPlayer *a = nullptr;
+    const FFBPlayer *b = nullptr;
+    for (const FFBPlayer &cand : home) {
+        if (!cand.hasCoords || !GameModel::isOnField(cand.fieldX, cand.fieldY))
+            continue;
+        if (!a)
+            a = &cand;
+        else if (cand.playerId != a->playerId)
+            b = &cand;
+    }
+    QVERIFY(a && b);
+
+    // Click-select A: glow + card on A.
+    w.selectPlayer(a->playerId);
+    QCOMPARE(field->selectedPlayer(), a->playerId);
+
+    // Hover B (real field mouse path): the card follows the hover, the GLOW
+    // stays on A.
+    {
+        const QPoint at = cellCenter(field, b->fieldX, b->fieldY);
+        QMouseEvent move(QMouseEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &move);
+        QApplication::processEvents();
+    }
+    QCOMPARE(info->shownPlayerId(), b->playerId); // card follows hover
+    QCOMPARE(field->selectedPlayer(), a->playerId); // glow unchanged
+    QCOMPARE(w.selectedPlayerId(), a->playerId);
+
+    // Mouse moves to an empty cell: the card hides, the glow STILL on A.
+    const auto occupied = [&](int x, int y) {
+        for (const FieldToken &t : w.model()->fieldTokens())
+            if (t.x == x && t.y == y)
+                return true;
+        return false;
+    };
+    int ex = -1, ey = -1;
+    for (int y = 0; y < 15 && ex < 0; ++y)
+        for (int x = 0; x < 26; ++x)
+            if (!occupied(x, y)) {
+                ex = x;
+                ey = y;
+                break;
+            }
+    QVERIFY(ex >= 0);
+    {
+        const QPoint at = cellCenter(field, ex, ey);
+        QMouseEvent move(QMouseEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &move);
+        QApplication::processEvents();
+    }
+    QCOMPARE(info->shownPlayerId(), QString()); // card hidden
+    QCOMPARE(field->selectedPlayer(), a->playerId); // glow still on A
+    QCOMPARE(w.selectedPlayerId(), a->playerId);
+
+    // Click B: the glow moves to B.
+    w.selectPlayer(b->playerId);
+    QCOMPARE(field->selectedPlayer(), b->playerId);
+
+    // Empty-field click (real mouse path): selection clears.
+    {
+        const QPoint at = cellCenter(field, ex, ey);
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(field, &press);
+        QMouseEvent release(QMouseEvent::MouseButtonRelease, at, Qt::NoButton, Qt::NoButton,
+                            Qt::NoModifier);
+        QApplication::sendEvent(field, &release);
+        QApplication::processEvents();
+    }
+    QCOMPARE(field->selectedPlayer(), QString());
+    QCOMPARE(w.selectedPlayerId(), QString());
+}
+
+// Round 10 (player_info.png): the hover card is CHROMELESS — no "Player
+// Info" title text, no close button; the content fills the whole panel.
+// The protocol panel keeps its full chrome.
+void UiWiringTest::playerInfoCardIsChromeless()
+{
+    MainWindow w;
+    w.show();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+    FloatingPanel *panel = panelFor(&w, info);
+    QVERIFY2(panel, "the player info card is a FloatingPanel");
+    QVERIFY2(panel->isChromeless(), "the hover card must be chromeless (no title text)");
+    QToolButton *close = panel->findChild<QToolButton *>();
+    QVERIFY2(close && close->isHidden(), "chromeless card: the x button is hidden");
+
+    QPlainTextEdit *proto = w.findChild<QPlainTextEdit *>();
+    QVERIFY(proto);
+    FloatingPanel *protoPanel = panelFor(&w, proto);
+    QVERIFY(protoPanel);
+    QVERIFY(!protoPanel->isChromeless());
+    QToolButton *protoClose = protoPanel->findChild<QToolButton *>();
+    QVERIFY(protoClose && !protoClose->isHidden());
+}
+
+// Round 10 point 2: the game state often carries logoUrl = null, but the
+// match list (fetched by the Spectate dialog) always has the team logos —
+// MainWindow must fall back to them, resolved against the CDN base.
+void UiWiringTest::matchListLogoFallbackUsedWhenGameStateNull()
+{
+    MainWindow w;
+    w.show();
+    QPlainTextEdit *proto = w.findChild<QPlainTextEdit *>();
+    QVERIFY(proto);
+
+    // The fixture game state has NO logoUrl — the match-list logos (as the
+    // Spectate dialog would supply them) become the source.
+    w.setFallbackTeamLogos(QStringLiteral("/i/785766"), QStringLiteral("/i/769338"));
+    w.onGameState(fixtureGame());
+    const QString text = proto->toPlainText();
+    QVERIFY2(text.contains(QStringLiteral("logo request (home): https://cdn.fumbbl.com/i/785766")),
+             qPrintable(text));
+    QVERIFY2(text.contains(QStringLiteral("logo request (away): https://cdn.fumbbl.com/i/769338")),
+             qPrintable(text));
+    QVERIFY(!text.contains(QStringLiteral("no logo source")));
+}
+
+// Round 10 point 7: player state marks on the field — prone = "/", stunned
+// = "X", drawn over the face (white strokes). Pixel-level check: the marked
+// tokens carry significantly more near-white pixels in the token center
+// than a standing token.
+void UiWiringTest::proneAndStunnedMarksRendered()
+{
+    const auto renderState = [](int state) -> QImage {
+        FieldView field;
+        field.resize(1040, 600); // 26x15 cells of 40px
+        FieldView::PlayerToken t;
+        t.x = 13;
+        t.y = 7;
+        t.state = state;
+        t.number = 7;
+        t.playerId = QStringLiteral("mark");
+        field.setPlayers({ t }, {});
+        field.show();
+        QApplication::processEvents();
+        return field.grab().toImage();
+    };
+    const auto nearWhite = [](const QImage &img, const QRect &r) {
+        int n = 0;
+        for (int y = r.top(); y < r.bottom(); ++y)
+            for (int x = r.left(); x < r.right(); ++x) {
+                const QRgb c = img.pixel(x, y);
+                if (qRed(c) > 230 && qGreen(c) > 230 && qBlue(c) > 230)
+                    ++n;
+            }
+        return n;
+    };
+
+    // Cell (13,7) center = ((13.5)*40, (7.5)*40) = (540, 300).
+    const QRect patch(540 - 12, 300 - 12, 24, 24);
+    const QImage clean = renderState(1);  // standing
+    const QImage prone = renderState(3);  // prone  -> "/"
+    const QImage stunned = renderState(4); // stunned -> "X"
+
+    const int wClean = nearWhite(clean, patch);
+    const int wProne = nearWhite(prone, patch);
+    const int wStunned = nearWhite(stunned, patch);
+    QVERIFY2(wProne > wClean + 15,
+             qPrintable(QStringLiteral("prone '/' mark not visible (clean=%1 prone=%2)")
+                            .arg(wClean)
+                            .arg(wProne)));
+    QVERIFY2(wStunned > wClean + 15,
+             qPrintable(QStringLiteral("stunned 'X' mark not visible (clean=%1 stunned=%2)")
+                            .arg(wClean)
+                            .arg(wStunned)));
+    QVERIFY2(wStunned >= wProne, "an 'X' should carry at least a '/' worth of ink");
 }
 
 QTEST_MAIN(UiWiringTest)

@@ -84,6 +84,10 @@ public:
     // Select a model player (field highlight + Player Info panel). Public so
     // tests can drive the same path the field/roster clicks take.
     void selectPlayer(const QString &playerId);
+    // Round 10: match-list team logos (e.g. "/i/486335") used as the logo
+    // source when the game state's logoUrl is null. Public so tests can
+    // drive the same path the Spectate dialog takes.
+    void setFallbackTeamLogos(const QString &home, const QString &away);
 
     // Controller entry points for incoming match data. In production these are
     // driven by the SpectatorSession signals; they are public so the core->UI
@@ -161,6 +165,10 @@ private:
     QNetworkAccessManager *m_logoNam = nullptr; // team logo downloads
     QString m_homeLogoUrl; // currently loaded/loaded-in-flight logo URLs
     QString m_awayLogoUrl;
+    // Round 10: match-list logo paths (set from the Spectate dialog); used
+    // when the game state's logoUrl is null — the common case.
+    QString m_fallbackHomeLogo;
+    QString m_fallbackAwayLogo;
     QPixmap m_homeLogoPm;
     QPixmap m_awayLogoPm;
 

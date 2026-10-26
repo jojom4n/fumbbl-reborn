@@ -222,19 +222,31 @@ void MainWindow::createPanels()
 
     // Player info: a FloatingPanel, but round 8 drives it from HOVER and
     // pins it to the side of the field OPPOSITE the hovered player.
+    // Round 10: the hover card is CHROMELESS — no "Player Info" title text,
+    // no close button; the card content fills the whole panel.
     m_playerInfo = new PlayerInfoWidget(m_stage);
-    makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
+    FloatingPanel *playerInfoPanel =
+        makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
+    playerInfoPanel->setChromeless(true);
 
     // Action log (bottom-left) and chat (bottom-right): Mockup F pinned
     // overlays with their own translucent chrome — NOT draggable panels.
     m_actionLog = new ActionLogWidget(m_stage);
     m_actionLog->setFixedWidth(560);
+    // Round 10: the action log EXPANDS UPWARD — it stays pinned to the
+    // bottom, so when the chevron grows it taller, re-pin it: the top edge
+    // lifts (instead of the round-9 bug where it grew downwards off the
+    // visible bottom of the screen).
+    connect(m_actionLog, &ActionLogWidget::expandedChanged, this,
+            [this](bool) { pinOverlays(); });
 
     m_chat = new ChatWidget(m_stage);
     m_chat->setFixedSize(560, 250);
     // Round 9: the chat collapses to the mockup pill (128x52) — re-pin the
     // corner overlay whenever the size changes.
     connect(m_chat, &ChatWidget::collapsedChanged, this, [this](bool) { pinOverlays(); });
+    // Round 10: the chat starts COLLAPSED (mockup F shows the pill).
+    m_chat->setCollapsed(true);
 
     m_protocolLog = new QPlainTextEdit(m_stage);
     m_protocolLog->setObjectName(QStringLiteral("protocol"));
@@ -520,12 +532,18 @@ void MainWindow::applyModelToUi()
     };
     m_field->setBoxes(boxEntries(true), boxEntries(false));
 
-    // Keep the selection valid: if the selected player still exists refresh
-    // the panel (state/skills may have changed); if it was removed, deselect.
+    // Keep the selection valid: if the selected player still exists, re-assert
+    // the field glow (round 10: the GLOW is the click-selection highlight —
+    // hovering must not move it). The Player Info CARD is hover-driven: a
+    // sync refreshes it only while it is showing the SELECTED player (right
+    // after a click, before the mouse moved on) — otherwise the hover rules
+    // the card and the glow stays put.
     if (!m_selectedPlayerId.isEmpty()) {
-        if (m_model->findPlayerById(m_selectedPlayerId))
-            selectPlayer(m_selectedPlayerId);
-        else
+        if (m_model->findPlayerById(m_selectedPlayerId)) {
+            m_field->setSelectedPlayer(m_selectedPlayerId);
+            if (m_playerInfo && m_playerInfo->shownPlayerId() == m_selectedPlayerId)
+                selectPlayer(m_selectedPlayerId); // refresh card + reposition
+        } else
             onFieldPlayerClicked(QString()); // deselect
     }
 
@@ -585,12 +603,43 @@ QString MainWindow::resolveId(const QString &id) const
     return numeric ? QString() : id; // never print an unresolved numeric id
 }
 
+// Round 10: the match list carries logo paths like "/i/486335" — resolve
+// them against the FUMBBL CDN base into an absolute URL.
+static QString resolveLogoUrl(const QString &rel)
+{
+    if (rel.isEmpty())
+        return QString();
+    if (rel.startsWith(QLatin1String("http")))
+        return rel;
+    QString r = rel;
+    while (r.startsWith(QLatin1Char('/')))
+        r = r.mid(1);
+    return QStringLiteral("https://cdn.fumbbl.com/") + r;
+}
+
+void MainWindow::setFallbackTeamLogos(const QString &home, const QString &away)
+{
+    m_fallbackHomeLogo = home;
+    m_fallbackAwayLogo = away;
+}
+
 void MainWindow::loadTeamLogos()
 {
     if (!m_model || !m_logoNam)
         return;
-    const QString homeUrl = m_model->teamHomeLogoUrl();
-    const QString awayUrl = m_model->teamAwayLogoUrl();
+    // Round 10: the GAME STATE often carries logoUrl = null, but the match
+    // list (fetched by the Spectate dialog) always has the team logos —
+    // fall back to it when the state has none.
+    QString homeUrl = m_model->teamHomeLogoUrl();
+    QString awayUrl = m_model->teamAwayLogoUrl();
+    if (homeUrl.isEmpty())
+        homeUrl = resolveLogoUrl(m_fallbackHomeLogo);
+    if (awayUrl.isEmpty())
+        awayUrl = resolveLogoUrl(m_fallbackAwayLogo);
+    if (homeUrl.isEmpty() && awayUrl.isEmpty())
+        appendProtocol(QStringLiteral("< "),
+                       QStringLiteral("no logo source (game state logoUrl null "
+                                      "and no match-list logo)"));
 
     const auto fetch = [this](const QString &url, int side) {
         // Round 9: logo fetching was invisible (user: "LOGHI TEAM NON
@@ -609,10 +658,6 @@ void MainWindow::loadTeamLogos()
             onLogoReplyFinished(reply);
         });
     };
-    if (homeUrl.isEmpty() || awayUrl.isEmpty())
-        appendProtocol(QStringLiteral("< "),
-                       QStringLiteral("no logoUrl in game state (home='%1' away='%2')")
-                           .arg(homeUrl, awayUrl));
     if (!homeUrl.isEmpty() && homeUrl != m_homeLogoUrl) {
         m_homeLogoUrl = homeUrl;
         fetch(homeUrl, 0);
@@ -730,9 +775,15 @@ void MainWindow::openSpectateDialog()
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this](const QString &clientId, const QString &clientSecret,
-                   const QString &username, int gameId)
+            [this, &dialog](const QString &clientId, const QString &clientSecret,
+                            const QString &username, int gameId)
             {
+                // Round 10: remember the match list's team logos NOW (the
+                // dialog is destroyed when exec() returns) — they are the
+                // fallback when the game state's logoUrl is null.
+                const QPair<QString, QString> logos = dialog.selectedTeamLogos();
+                m_fallbackHomeLogo = logos.first;
+                m_fallbackAwayLogo = logos.second;
                 // Starting (or SWITCHING) a match: clear the previous state
                 // first, so the UI doesn't stay on the old match while the
                 // new session is being established.
@@ -829,9 +880,9 @@ void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
         hidePlayerCard();
         return;
     }
-    // Hovering doesn't steal the click selection; it just shows the card.
-    m_selectedPlayerId = p->playerId;
-    m_field->setSelectedPlayer(p->playerId);
+    // Round 10: hovering ONLY shows the card — it must not move the click
+    // selection's rim glow. The glow follows the player the user CLICKED to
+    // act on, until they click someone else.
     const int fieldX = p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19);
     showPlayerCard(p, fieldX);
 }
@@ -904,11 +955,11 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
 
 void MainWindow::hidePlayerCard()
 {
-    if (m_playerInfo) {
-        m_selectedPlayerId.clear();
+    // Round 10: hiding the HOVER card must not clear the click selection —
+    // the rim glow stays on the clicked player until the user clicks
+    // elsewhere (or the player leaves the game).
+    if (m_playerInfo)
         m_playerInfo->showPlaceholder();
-        m_field->setSelectedPlayer(QString());
-    }
     if (FloatingPanel *panel = panelFor(m_playerInfo))
         panel->hide();
 }

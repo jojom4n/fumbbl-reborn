@@ -37,6 +37,20 @@ void FloatingPanel::setAccent(const QColor &color)
     update();
 }
 
+void FloatingPanel::setChromeless(bool c)
+{
+    if (m_chromeless == c)
+        return;
+    m_chromeless = c;
+    if (m_close)
+        m_close->setVisible(!c);
+    // Re-layout the content: a chromeless card fills the whole panel.
+    const int top = c ? 6 : kTitleHeight;
+    if (m_content)
+        m_content->setGeometry(6, top, width() - 12, height() - top - 6);
+    update();
+}
+
 int FloatingPanel::snapCoord(int v)
 {
     return (v + kGridStep / 2) / kGridStep * kGridStep;
@@ -140,12 +154,15 @@ void FloatingPanel::paintEvent(QPaintEvent *event)
     p.drawLine(QPointF(r.left() + 10, r.top() + 1.2), QPointF(r.right() - 10, r.top() + 1.2));
 
     // Title text (the "title bar" is part of the translucent chrome).
-    p.setPen(QColor(34, 40, 50, 240)); // INK
-    QFont f = font();
-    f.setBold(true);
-    p.setFont(f);
-    p.drawText(QRectF(10, 0, width() - 36, kTitleHeight),
-               Qt::AlignVCenter | Qt::AlignLeft, m_title);
+    // Round 10: chromeless cards (the hover Player Info) have no title text.
+    if (!m_chromeless) {
+        p.setPen(QColor(34, 40, 50, 240)); // INK
+        QFont f = font();
+        f.setBold(true);
+        p.setFont(f);
+        p.drawText(QRectF(10, 0, width() - 36, kTitleHeight),
+                   Qt::AlignVCenter | Qt::AlignLeft, m_title);
+    }
 }
 
 void FloatingPanel::mousePressEvent(QMouseEvent *event)
@@ -155,7 +172,7 @@ void FloatingPanel::mousePressEvent(QMouseEvent *event)
         return;
     }
     const QPoint pos = event->pos();
-    if (pos.y() < kTitleHeight) {
+    if (!m_chromeless && pos.y() < kTitleHeight) {
         if (m_close->geometry().contains(pos))
             return; // let the label handle it
         beginMove(event->globalPosition().toPoint());
@@ -228,8 +245,9 @@ void FloatingPanel::mouseReleaseEvent(QMouseEvent *event)
 void FloatingPanel::resizeEvent(QResizeEvent *event)
 {
     Q_UNUSED(event);
+    const int top = m_chromeless ? 6 : kTitleHeight; // round 10
     if (m_content)
-        m_content->setGeometry(6, kTitleHeight, width() - 12, height() - kTitleHeight - 6);
-    if (m_close)
+        m_content->setGeometry(6, top, width() - 12, height() - top - 6);
+    if (m_close && !m_chromeless)
         m_close->move(width() - 26, (kTitleHeight - m_close->height()) / 2);
 }
