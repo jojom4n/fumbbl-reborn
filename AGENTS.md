@@ -41,9 +41,16 @@ in `memory-bank/` (soprattutto `activeContext.md`).
 
 ## 4. IDENTITÀ DEI COMMIT
 - **OGNI commit come `jojom4n <jojom4n@gmx.com>`**, mai come `saruman` o altre
-  identità. Prima di commitare: verificare `git config user.name` /
-  `user.email` e che non ci siano `GIT_AUTHOR_*`/`GIT_COMMITTER_*` nell'ambiente
-  (usare `git -c user.name=jojom4n -c user.email=jojom4n@gmx.com commit ...`).
+  identità. `jojom4n@gmx.com` è l'UNICA email valida: **mai inventare email
+  "plausibili"** (incidente 26/ott: un commit è uscito con
+  `jojom4n@fumbbl-reborn` — email fabbricata — e un altro storico era rimasto
+  `saruman <saruman@local>`; entrambi riscritti via rebase, erano nel range
+  non pushato).
+- Prima di commitare: verificare `git config user.name` / `user.email` e che
+  non ci siano `GIT_AUTHOR_*`/`GIT_COMMITTER_*` nell'ambiente (usare
+  `git -c user.name=jojom4n -c user.email=jojom4n@gmx.com commit ...`).
+- **Dopo un batch di commit: verificare l'INTERO log**
+  (`git log --format="%an <%ae> %cn <%ce>" | sort -u`), non solo l'ultimo.
 - Stile message: `feat(ui): mockup-F round N — ...` (o scope appropriato).
 
 ## 5. PRODOTTO / UI
