@@ -48,6 +48,7 @@ add_executable(ui_wiring_test
     ${CMAKE_SOURCE_DIR}/src/ui/chatwidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/playerinfowidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/panel.cpp
+    ${DICE_RCC}
 )
 target_include_directories(ui_wiring_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_definitions(ui_wiring_test PRIVATE

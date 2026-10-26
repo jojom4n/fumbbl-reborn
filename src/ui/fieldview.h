@@ -71,9 +71,27 @@ public:
     // ...). When it contains "rain" a top-down droplet overlay is drawn.
     void setWeather(const QString &weather);
 
-    // Selected player (highlighted with a ring). Empty id = nothing selected.
+    // Selected player. Rendered (round 9, user decision) as a BLUE GLOWING
+    // RADIAL circle: a soft radial halo (QRadialGradient, alpha fading out)
+    // plus a crisp blue ring, drawn in field space so it follows zoom/pan.
+    // The halo PULSES (a sinusoidal ~1.2 Hz breathing on alpha/radius, via a
+    // QTimer that repaints only the token's rect — never the whole field).
+    // Selection does NOT open the action wheel (that was round 9 bug: the
+    // wheel must not follow the click selection).
     void setSelectedPlayer(const QString &playerId);
     QString selectedPlayer() const { return m_selectedPlayer; }
+
+    // Action wheel (Mockup F play mode — kept for the future game client,
+    // round 9): the wheel + target brackets are drawn ONLY for an explicit
+    // target (setActionWheelTarget), never for the selection or for the
+    // FFB acting-player state. In spectator mode the target stays empty and
+    // nothing is drawn; in play mode a right-click ON A PLAYER sets the
+    // target (right-drag on empty space still pans, right-click empty
+    // still resets the view).
+    void setActionWheelTarget(const QString &playerId);
+    QString actionWheelTarget() const { return m_wheelTarget; }
+    void setPlayMode(bool play); // spectator (default) vs game mode
+    bool playMode() const { return m_playMode; }
 
     // Telemetry (used by tests / debug): rendered token count and ball spot.
     int playerCount() const { return m_homePlayers.size() + m_awayPlayers.size(); }
@@ -99,6 +117,9 @@ signals:
     // Hover over a player (field token or bench face). An EMPTY token
     // (playerId empty) means the mouse is over nothing.
     void playerHovered(const PlayerToken &token);
+    // Play mode only: right-click landed on a player — the action wheel
+    // target was set and the game logic should show the wheel menu.
+    void actionWheelRequested(const QString &playerId);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -150,4 +171,11 @@ private:
     QPoint m_panStart;       // cursor at press
     QPointF m_panStartOffset; // pan at press
     QString m_hoverId; // hover key: token playerId, "box:<name>", or ""
+
+    // Round 9: selection glow pulse + explicit action-wheel target.
+    QTimer *m_pulseTimer = nullptr; // breathes the selection halo
+    qreal m_pulsePhase = 0.0;       // 0..2π, ~1.2 Hz
+    QString m_wheelTarget;          // explicit action-wheel target (play mode)
+    bool m_playMode = false;        // spectator client: false (default)
+    QString m_rightPressPlayerId;   // player under the right button at press
 };

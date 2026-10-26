@@ -174,6 +174,33 @@ target_link_libraries(spectator_smoke PRIVATE
     Qt6::WebSockets
 )
 
+# Renders a captured .jsonl (reports_capturer output) through the REAL
+# parser + model: a quick way to verify reportparser field alignment.
+add_executable(reports_render
+    tools/reports_render.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+)
+target_include_directories(reports_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(reports_render PRIVATE Qt6::Core Qt6::Gui)
+
+# Headless LIVE raw-report capture (Mockup F round 9): spectates a match and
+# dumps every raw serverModelSync report (one JSON line) + the full
+# serverGameState. Ground truth for reportparser field alignment.
+add_executable(reports_capturer
+    tools/reports_capturer.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+)
+target_include_directories(reports_capturer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(reports_capturer PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::WebSockets
+)
+
 # Headless reproduction of the REAL UI spectate path (MainWindow +
 # clearMatchUi + session->connectAsSpectator) — diagnostic for join problems.
 add_executable(ui_connect_probe
@@ -199,6 +226,40 @@ target_include_directories(ui_connect_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_compile_definitions(ui_connect_probe PRIVATE
     FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 target_link_libraries(ui_connect_probe PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
+# Offscreen ROUND-9 visual verification (window + header + action log +
+# chat pill + skill-chips card, from a live game-state fixture).
+add_executable(round9_preview
+    tools/round9_preview.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+    src/core/assets.cpp
+    src/core/matchlist.cpp
+    src/ui/mainwindow.cpp
+    src/ui/spectatedialog.cpp
+    src/ui/fieldview.cpp
+    src/ui/actionlog.cpp
+    src/ui/chatwidget.cpp
+    src/ui/headerview.cpp
+    src/ui/playerinfowidget.cpp
+    src/ui/panel.cpp
+
+    ${DICE_RCC}
+)
+target_include_directories(round9_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(round9_preview PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(round9_preview PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets

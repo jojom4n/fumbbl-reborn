@@ -120,8 +120,16 @@ bool GameModel::initialize(const QJsonObject &game)
 
     m_teamHomeName = home.value(QStringLiteral("teamName")).toString();
     m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
-    m_teamHomeId = home.value(QStringLiteral("id")).toString();
-    m_teamAwayId = away.value(QStringLiteral("id")).toString();
+    // Round 9 (verified on the live game state): the team id lives in
+    // `teamId`, not `id` — with the wrong key every team reference in the
+    // reports (prayers, bribes, throw-ins, block rolls...) stayed an
+    // unresolved numeric id.
+    m_teamHomeId = !home.value(QStringLiteral("teamId")).toString().isEmpty()
+                       ? home.value(QStringLiteral("teamId")).toString()
+                       : home.value(QStringLiteral("id")).toString();
+    m_teamAwayId = !away.value(QStringLiteral("teamId")).toString().isEmpty()
+                       ? away.value(QStringLiteral("teamId")).toString()
+                       : away.value(QStringLiteral("id")).toString();
     m_teamHomeRace = home.value(QStringLiteral("race")).toString();
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
     m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();

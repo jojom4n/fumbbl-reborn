@@ -30,7 +30,12 @@ const int CHIP_GAP = 5;  // gap between chips
 // =============================================================================
 SkillChipsWidget::SkillChipsWidget(QWidget *parent) : QWidget(parent)
 {
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    // Round 9 (bug: the second row of chips was clipped): with a FIXED
+    // vertical policy the box layout uses sizeHint() (one row) and NEVER
+    // calls heightForWidth() — the wrapped height was ignored. A non-Fixed
+    // vertical policy makes the layout honor heightForWidth on every
+    // resize; updateGeometry() (setChips/resizeEvent) triggers it.
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 }
 
 // Chip widths for the current text.
@@ -196,6 +201,9 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_portrait->setFixedSize(72, 72);
     m_portrait->setAlignment(Qt::AlignCenter);
     v->addWidget(m_portrait, 0, Qt::AlignHCenter);
+    // Round 9: the name collided with the face — extra breathing room
+    // between the portrait and the name label.
+    v->addSpacing(8);
 
     m_nameLabel = new QLabel(m_content);
     m_nameLabel->setAlignment(Qt::AlignHCenter);

@@ -20,8 +20,10 @@
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QSet>
+#include <QSignalSpy>
 #include <QSpinBox>
 
 #include "core/assets.h"
@@ -87,6 +89,15 @@ private slots:
     void diceLogShowsPlayerName();
     void newGameStateReplacesOldMatch();
     void manualGameIdDoesNotOverrideSelection();
+    // ---- Round 9 (live-report alignment + UI fixes) ----
+    void playerActionReportShowsSubject();
+    void blockReportsShowDiceAndNames();
+    void unresolvedNumericIdNeverShown();
+    void capturedLiveReportsParse();
+    void chatCollapsesToPillWithUnreadBadge();
+    void actionLogChevronPointsToNextState();
+    void selectionDoesNotOpenActionWheel();
+    void skillChipsWrapWithoutClipping();
 };
 
 namespace {
@@ -698,6 +709,333 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
     // The stale manual id must be cleared and the selected match must win.
     QCOMPARE(dialog.manualGameIdForTest()->value(), 0);
     QCOMPARE(dialog.selectedGameId(), 222222);
+}
+
+// =============================================================================
+// Round 9 — live report alignment + UI fixes
+// =============================================================================
+
+// Round 9 point 3: the "move"/"stand up" lines had no subject —
+// ReportPlayerAction carries the subject in `actingPlayerId` (NOT `playerId`,
+// which the old parser read and found empty).
+void UiWiringTest::playerActionReportShowsSubject()
+{
+    MainWindow w;
+    w.show();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    QVERIFY(log);
+    w.onGameState(fixtureGame());
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    QVERIFY(!home.isEmpty());
+    const QString pid = home.first().playerId;
+    const QString name = home.first().name;
+    QVERIFY(!pid.isEmpty() && !name.isEmpty());
+
+    auto actionReport = [&pid](const QString &action) {
+        QJsonObject r;
+        r.insert(QStringLiteral("reportId"), QStringLiteral("playerAction"));
+        r.insert(QStringLiteral("actingPlayerId"), pid);
+        QJsonObject act;
+        act.insert(QStringLiteral("name"), action);
+        r.insert(QStringLiteral("playerAction"), act);
+        return r;
+    };
+    QJsonArray reports;
+    reports.append(actionReport(QStringLiteral("move")));
+    reports.append(actionReport(QStringLiteral("standUp")));
+    w.onModelSync(QJsonArray(), reports);
+
+    const QString text = log->toPlainText();
+    QVERIFY2(text.contains(name), qPrintable(text));
+    QVERIFY2(!text.contains(pid), qPrintable(text)); // no raw id
+    QVERIFY(text.contains(QStringLiteral("Move")));
+    QVERIFY(text.contains(QStringLiteral("Stand Up")));
+}
+
+// Round 9 point 6: the six block dice live in the `blockRoll` report
+// (choosingTeamId + blockRoll[6] + defenderId); the `block` report carries
+// ONLY defenderId (the player being blocked) and no dice. The old parser
+// looked for the dice inside `block` and never found them.
+void UiWiringTest::blockReportsShowDiceAndNames()
+{
+    MainWindow w;
+    w.show();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    QVERIFY(log);
+    w.onGameState(fixtureGame());
+    const QVector<FFBPlayer> away = w.model()->rosterAway();
+    QVERIFY(!away.isEmpty());
+    const QString defenderId = away.first().playerId;
+    const QString defenderName = away.first().name;
+    const QString homeTeamId = w.model()->teamHomeId();
+    const QString homeTeamName = w.model()->teamHomeName();
+
+    QJsonObject blk;
+    blk.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+    blk.insert(QStringLiteral("defenderId"), defenderId);
+    QJsonObject blkRoll;
+    blkRoll.insert(QStringLiteral("reportId"), QStringLiteral("blockRoll"));
+    blkRoll.insert(QStringLiteral("choosingTeamId"), homeTeamId);
+    QJsonArray faces;
+    faces << 6 << 2 << 3 << 4 << 5 << 6;
+    blkRoll.insert(QStringLiteral("blockRoll"), faces);
+    blkRoll.insert(QStringLiteral("defenderId"), defenderId);
+    QJsonArray reports;
+    reports.append(blk);
+    reports.append(blkRoll);
+    w.onModelSync(QJsonArray(), reports);
+
+    // Names (never raw ids)...
+    const QString text = log->toPlainText();
+    QVERIFY2(text.contains(defenderName), qPrintable(text));
+    QVERIFY2(!text.contains(defenderId), qPrintable(text));
+    QVERIFY2(text.contains(homeTeamName), qPrintable(text));
+    // ...and the block dice are rendered as die-face images (HTML <img>).
+    const auto labels = log->findChildren<QLabel *>();
+    bool sawDice = false;
+    for (QLabel *l : labels)
+        if (l->text().contains(QStringLiteral(":/dice/block6.png"))
+            && l->text().contains(QStringLiteral(":/dice/block2.png")))
+            sawDice = true;
+    QVERIFY2(sawDice, "block dice not rendered as die face images");
+}
+
+// Round 9 point 5 (user rule "MAI id numerici a schermo"): a report whose
+// actor id the model cannot resolve must not leak the raw numeric id into
+// the log — the line keeps its text, the id is dropped.
+void UiWiringTest::unresolvedNumericIdNeverShown()
+{
+    MainWindow w;
+    w.show();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    QVERIFY(log);
+    w.onGameState(fixtureGame());
+
+    QJsonObject weird;
+    weird.insert(QStringLiteral("reportId"), QStringLiteral("someBrandNewReport"));
+    weird.insert(QStringLiteral("playerId"), QStringLiteral("987654321"));
+    QJsonArray reports;
+    reports.append(weird);
+    w.onModelSync(QJsonArray(), reports);
+
+    const QString text = log->toPlainText();
+    QVERIFY2(!text.contains(QStringLiteral("987654321")), qPrintable(text));
+    // The report is still visible (nothing is silently lost) as a named line.
+    QVERIFY(text.contains(QStringLiteral("Some Brand New Report")));
+}
+
+// Round 9 point 4: chat = mockup F — the chevron collapses the chat DELTA to
+// the mockup pill; messages arriving while collapsed count as unread (badge);
+// opening the chat clears the badge and keeps the stored messages.
+void UiWiringTest::chatCollapsesToPillWithUnreadBadge()
+{
+    MainWindow w;
+    w.show();
+    ChatWidget *chat = w.findChild<ChatWidget *>();
+    QVERIFY(chat);
+
+    chat->setCollapsed(true);
+    QCOMPARE(chat->isCollapsed(), true);
+    QCOMPARE(chat->size(), ChatWidget::pillSize());
+
+    chat->addMessage(QStringLiteral("coach"), QStringLiteral("hello"));
+    QCOMPARE(chat->unreadCount(), 1);
+    chat->addMessage(QStringLiteral("coach"), QStringLiteral("again"));
+    QCOMPARE(chat->unreadCount(), 2);
+
+    chat->setCollapsed(false);
+    QCOMPARE(chat->isCollapsed(), false);
+    QCOMPARE(chat->unreadCount(), 0);
+    QCOMPARE(chat->size(), QSize(560, 250));
+    // Messages received while collapsed were still stored.
+    const QString text = chat->toPlainText();
+    QVERIFY(text.contains(QStringLiteral("hello")));
+    QVERIFY(text.contains(QStringLiteral("again")));
+}
+
+// Round 9: run the REAL parser against a LIVE capture (reports_capturer
+// .jsonl of a real match — game 1956995). Ground truth for field alignment:
+// every report yields >=1 line, no raw JSON leaks into the text, the block
+// dice come out structured (blockFaces), and the known report ids hit their
+// dedicated branches (a generic dump would signal a field-name drift).
+void UiWiringTest::capturedLiveReportsParse()
+{
+    QFile f(QStringLiteral("live_reports_capture.jsonl"));
+    QVERIFY2(f.open(QIODevice::ReadOnly), "live_reports_capture.jsonl missing");
+
+    int reports = 0;
+    int lines = 0;
+    int blockDiceLines = 0;
+    int d6Lines = 0;
+    bool sawPlayerActionSubject = false;
+    const QByteArray all = f.readAll();
+    for (const QByteArray raw : all.split('\n')) {
+        if (raw.trimmed().isEmpty())
+            continue;
+        const QJsonObject report = QJsonDocument::fromJson(raw).object();
+        if (report.isEmpty())
+            continue;
+        const QString id = report.value(QStringLiteral("reportId")).toString();
+        const QVector<DiceLogLine> parsed = parseReport(report);
+        QVERIFY2(!parsed.isEmpty(), qPrintable(QStringLiteral("report %1 yielded no lines").arg(id)));
+        ++reports;
+        for (const DiceLogLine &l : parsed) {
+            ++lines;
+            // No raw JSON / payload may leak into the visible text.
+            QVERIFY(!l.text.contains(QLatin1String("reportId")));
+            QVERIFY(!l.text.contains(QLatin1Char('{')));
+            if (id == QLatin1String("blockRoll"))
+                ++blockDiceLines;
+            if (l.d6Roll > 0 || !l.d6Rolls.isEmpty())
+                ++d6Lines;
+            if (id == QLatin1String("playerAction") && !l.actorId.isEmpty())
+                sawPlayerActionSubject = true;
+        }
+        // The block dice must be structured faces (1..6), never in the text.
+        if (id == QLatin1String("blockRoll")) {
+            const DiceLogLine &l = parsed.last();
+            QVERIFY(!l.blockFaces.isEmpty());
+            for (const QString &face : l.blockFaces)
+                QVERIFY(face.toInt() >= 1 && face.toInt() <= 6);
+        }
+    }
+    QVERIFY(reports >= 20); // the capture has dozens of reports
+    QVERIFY(lines >= reports); // nothing silently lost
+    QVERIFY2(blockDiceLines > 0, "no block-roll line carried dice");
+    QVERIFY2(d6Lines > 0, "no d6 line at all");
+    QVERIFY2(sawPlayerActionSubject, "playerAction lost its subject (actingPlayerId?)");
+}
+
+// Round 9 point 2: the action log chevron points where the click takes the
+// log — compact shows ▴ ("click to expand"), expanded shows ▾ ("click to
+// collapse"). The round-8 mapping was inverted.
+void UiWiringTest::actionLogChevronPointsToNextState()
+{
+    MainWindow w;
+    w.show();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    QVERIFY(log);
+    const auto chevron = [log]() -> QLabel * {
+        for (QLabel *l : log->findChildren<QLabel *>())
+            if (l->text() == QString::fromUtf8("\u25b4")
+                || l->text() == QString::fromUtf8("\u25be"))
+                return l;
+        return nullptr;
+    };
+    const auto clickChevron = [log, chevron]() {
+        QLabel *c = chevron();
+        QVERIFY(c);
+        const QPoint at = c->mapTo(log, QPoint(c->width() / 2, c->height() / 2));
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::LeftButton,
+                          Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(log, &press);
+    };
+
+    // Compact: ▴.
+    QLabel *c = chevron();
+    QVERIFY(c);
+    QCOMPARE(c->text(), QString::fromUtf8("\u25b4"));
+    QCOMPARE(log->height(), ActionLogWidget::compactHeight());
+
+    // Click -> expanded, chevron becomes ▾.
+    clickChevron();
+    QCOMPARE(log->height(), ActionLogWidget::expandedHeight());
+    c = chevron();
+    QCOMPARE(c->text(), QString::fromUtf8("\u25be"));
+
+    // Click -> compact again, chevron back to ▴.
+    clickChevron();
+    QCOMPARE(log->height(), ActionLogWidget::compactHeight());
+    c = chevron();
+    QCOMPARE(c->text(), QString::fromUtf8("\u25b4"));
+}
+
+// Round 9 point 7: selection != action wheel. The click selection must NOT
+// open the wheel; only an explicit target does (play mode: right-click on a
+// player sets it + emits; spectator mode: right-click stays a view reset).
+void UiWiringTest::selectionDoesNotOpenActionWheel()
+{
+    MainWindow w;
+    w.show();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(field);
+    w.onGameState(fixtureGame());
+
+    // A player with on-field coordinates.
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    const FFBPlayer *p = nullptr;
+    for (const FFBPlayer &cand : home)
+        if (cand.hasCoords && GameModel::isOnField(cand.fieldX, cand.fieldY)) {
+            p = &cand;
+            break;
+        }
+    QVERIFY(p);
+    const QString pid = p->playerId;
+
+    // Selection: glow only, no wheel.
+    field->setSelectedPlayer(pid);
+    QCOMPARE(field->selectedPlayer(), pid);
+    QCOMPARE(field->actionWheelTarget(), QString());
+
+    // Spectator (default): right-click on the player = view reset, no wheel.
+    field->setPlayMode(false);
+    const QPoint at = cellCenter(field, p->fieldX, p->fieldY);
+    {
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::RightButton,
+                          Qt::RightButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &press);
+        QMouseEvent release(QMouseEvent::MouseButtonRelease, at, Qt::RightButton,
+                            Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &release);
+    }
+    QCOMPARE(field->actionWheelTarget(), QString());
+
+    // Play mode: right-click on the player = explicit wheel target + signal.
+    QSignalSpy spy(field, &FieldView::actionWheelRequested);
+    field->setPlayMode(true);
+    {
+        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::RightButton,
+                          Qt::RightButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &press);
+        QMouseEvent release(QMouseEvent::MouseButtonRelease, at, Qt::RightButton,
+                            Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &release);
+    }
+    QCOMPARE(spy.count(), 1);
+    if (spy.count() == 1)
+        QCOMPARE(spy.first().at(0).toString(), pid);
+    QCOMPARE(field->actionWheelTarget(), pid);
+}
+
+// Round 9 point 10: with a narrow card the skill chips wrap to several rows
+// and the widget must be as tall as the wrapped content (the old Fixed
+// vertical policy made the box layout use the one-row sizeHint and clipped
+// every extra row in half).
+void UiWiringTest::skillChipsWrapWithoutClipping()
+{
+    PlayerInfoWidget card;
+    PlayerInfoData d;
+    d.playerId = QStringLiteral("1");
+    d.name = QStringLiteral("Test");
+    d.number = 1;
+    for (int i = 0; i < 8; ++i) {
+        PlayerInfoData::Skill s;
+        s.name = QStringLiteral("Skill Number %1").arg(i);
+        d.skills.append(s);
+    }
+    card.showPlayer(d);
+    card.resize(180, 600); // narrow card: the chips must wrap
+    card.show();
+    QApplication::processEvents();
+
+    SkillChipsWidget *chips = card.findChild<SkillChipsWidget *>();
+    QVERIFY(chips);
+    const int wrapped = chips->heightForWidth(chips->width());
+    QVERIFY2(wrapped >= 2 * 22, // 8 long chips at 180px = several rows
+             qPrintable(QStringLiteral("expected a multi-row wrap (hfw=%1 w=%2)")
+                            .arg(wrapped)
+                            .arg(chips->width())));
+    QCOMPARE(chips->height(), wrapped); // no clipping
 }
 
 QTEST_MAIN(UiWiringTest)

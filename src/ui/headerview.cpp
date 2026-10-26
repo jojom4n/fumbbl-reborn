@@ -230,15 +230,17 @@ void HeaderView::paintEvent(QPaintEvent *)
         coin(p, xa + i * 19, 17, 7, i < m_rerollsAway);
 
     // --- center: score ---------------------------------------------------------
+    // Round 9: the score/center-row gap was too small — score moved up
+    // (font 20, top 3) and the center row down (y 38) in the 62px strip.
     QFont scoreF = font();
-    scoreF.setPointSizeF(22);
+    scoreF.setPointSizeF(20);
     scoreF.setWeight(QFont::Black);
     const QString score =
         QString::number(m_scoreHome) + QStringLiteral(" : ") + QString::number(m_scoreAway);
     const QFontMetricsF fmScore(scoreF);
     p.setPen(INK);
     p.setFont(scoreF);
-    p.drawText(W / 2 - fmScore.horizontalAdvance(score) / 2, 5 + int(fmScore.ascent()), score);
+    p.drawText(W / 2 - fmScore.horizontalAdvance(score) / 2, 3 + int(fmScore.ascent()), score);
 
     // --- center row: [TURN n][HALF]  time  weather ------------------------------
     // The turn timer counts UP (FUMBBL semantics) — no decreasing bar.
@@ -262,7 +264,7 @@ void HeaderView::paintEvent(QPaintEvent *)
     const qreal w3 = fmTime.horizontalAdvance(timeT);
     const qreal w4 = 26 + fmLab.horizontalAdvance(m_weather);
     const qreal total = w1 + 8 + w2 + 16 + w3 + 16 + w4;
-    const qreal y = 34;
+    const qreal y = 38; // round 9: below the score with a real gap (was 34)
     qreal x = W / 2 - total / 2;
 
     p.setPen(QPen(m_homeAccent, 1));

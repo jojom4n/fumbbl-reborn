@@ -51,7 +51,10 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     QFont tf = m_title->font();
     tf.setPointSizeF(9);
     m_title->setFont(tf);
-    m_chevron = new QLabel(QString::fromUtf8("\u25be"), header); // ▾
+    // Round 9 (user): the chevron points where the click TAKES the log —
+    // compact shows ▴ ("click to expand"), expanded shows ▾ ("click to
+    // collapse"). The old mapping was inverted.
+    m_chevron = new QLabel(QString::fromUtf8("\u25b4"), header); // ▴
     m_chevron->setCursor(Qt::PointingHandCursor);
     m_chevron->setStyleSheet(QStringLiteral("color: #222832; font-size: 13px; font-weight: bold;"));
     m_chevron->setFixedWidth(16);
@@ -109,18 +112,10 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
     const QString actor = actorName.isEmpty() ? QString()
                                               : QStringLiteral("<b><span style=\"color:#8a6d1f\">%1</span></b> ")
                                                     .arg(actorName.toHtmlEscaped());
-    QString body;
-    if (line.text.isEmpty())
-        body = line.actorId.isEmpty() ? QString()
-                                      : QStringLiteral("%1 ").arg(line.text.toHtmlEscaped());
-    else
-        body = line.text.toHtmlEscaped();
-    // A participant the UI could not resolve: show the raw id rather than
-    // dropping the subject entirely.
-    if (!actorName.isEmpty() && line.actorId.isEmpty() && !body.isEmpty())
-        body = QStringLiteral("%1 %2").arg(line.actorId.toHtmlEscaped(), body);
-
-    QString html = actor + body;
+    // NOTE (round 9, user rule): a participant the UI could not resolve is
+    // DROPPED, never shown as a raw id — "MAI id numerici a schermo".
+    const QString html0 = actor + line.text.toHtmlEscaped();
+    QString html = html0;
 
     // Block dice: the six official-style faces.
     if (!line.blockFaces.isEmpty()) {
@@ -134,15 +129,31 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
         }
     }
 
-    // d6 roll: the red die face + target + result.
-    if (line.d6Roll > 0) {
+    // d6 rolls: red die faces + target + result. d6Rolls covers multi-die
+    // reports (throw-in, scatter, injury rolls, ...); d6Roll alone the
+    // single-die skill rolls (round 9: every roll shows the DIE, never a
+    // number).
+    if (!line.d6Rolls.isEmpty()) {
+        for (const QString &face : line.d6Rolls) {
+            const int v = face.toInt();
+            if (v < 1 || v > 6)
+                continue;
+            html += QStringLiteral(" <img src=\":/dice/d6_%1.png\" width=\"22\" height=\"22\">")
+                        .arg(v);
+        }
+    } else if (line.d6Roll > 0) {
         html += QStringLiteral(" <img src=\":/dice/d6_%1.png\" width=\"22\" height=\"22\">")
                     .arg(line.d6Roll);
+    }
+    if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {
         if (line.d6Target > 0)
             html += QStringLiteral(" <span>vs %1</span>").arg(line.d6Target);
-        html += line.d6Ok
-                    ? QStringLiteral(" <b><span style=\"color:#2e7d32\">\u2713</span></b>")
-                    : QStringLiteral(" <b><span style=\"color:#c62828\">\u2717</span></b>");
+        // The check/cross only when the report carries a real result
+        // (`successful` field) — throw-ins & co. roll dice without one.
+        if (line.d6ShowResult)
+            html += line.d6Ok
+                        ? QStringLiteral(" <b><span style=\"color:#2e7d32\">\u2713</span></b>")
+                        : QStringLiteral(" <b><span style=\"color:#c62828\">\u2717</span></b>");
         if (line.d6ReRolled)
             html += QStringLiteral(" <span style=\"color:#5f6368\">[RR]</span>");
     }
@@ -182,7 +193,11 @@ void ActionLogWidget::addEntry(const QString &html, const QString &plain)
 void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
                                  const QString &defenderName)
 {
-    const QString plain = QStringLiteral("%1 %2").arg(actorName, line.text).trimmed();
+    // Plain dump: actor + text + "→ defender" (the defender is part of the
+    // visible line, so it belongs in the plain form too).
+    QString plain = QStringLiteral("%1 %2").arg(actorName, line.text).trimmed();
+    if (!defenderName.isEmpty())
+        plain += QStringLiteral(" \u2192 %1").arg(defenderName);
     addEntry(renderLine(line, actorName, defenderName), plain);
 }
 
@@ -193,7 +208,7 @@ void ActionLogWidget::mousePressEvent(QMouseEvent *event)
     if (m_chevron && m_chevron->rect().contains(inChevron)) {
         m_expanded = !m_expanded;
         setFixedHeight(m_expanded ? expandedHeight() : compactHeight());
-        m_chevron->setText(m_expanded ? QString::fromUtf8("\u25b4") : QString::fromUtf8("\u25be"));
+        m_chevron->setText(m_expanded ? QString::fromUtf8("\u25be") : QString::fromUtf8("\u25b4"));
         emit expandedChanged(m_expanded);
     }
     QWidget::mousePressEvent(event);

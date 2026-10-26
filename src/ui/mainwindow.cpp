@@ -232,6 +232,9 @@ void MainWindow::createPanels()
 
     m_chat = new ChatWidget(m_stage);
     m_chat->setFixedSize(560, 250);
+    // Round 9: the chat collapses to the mockup pill (128x52) — re-pin the
+    // corner overlay whenever the size changes.
+    connect(m_chat, &ChatWidget::collapsedChanged, this, [this](bool) { pinOverlays(); });
 
     m_protocolLog = new QPlainTextEdit(m_stage);
     m_protocolLog->setObjectName(QStringLiteral("protocol"));
@@ -559,7 +562,11 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
 // Resolves a raw server id to a display name (round 8: "ci metti i nomi
 // giusti" — no numeric ids in the action log). Player ids become
 // "Name (number)"; TEAM ids (prayers, bribes, throw-ins, team captain)
-// become the team name. Unresolved ids stay visible rather than vanishing.
+// become the team name.
+// Round 9 (user rule: "MAI id numerici a schermo"): a PURELY NUMERIC id the
+// model cannot resolve is DROPPED (empty string) instead of being printed
+// raw. Plain name strings (e.g. the coach in timeoutEnforced, or the
+// teamName of the bb2025 prayerRoll) pass through untouched.
 QString MainWindow::resolveId(const QString &id) const
 {
     if (id.isEmpty() || !m_model)
@@ -572,7 +579,10 @@ QString MainWindow::resolveId(const QString &id) const
         return m_model->teamHomeName();
     if (id == m_model->teamAwayId())
         return m_model->teamAwayName();
-    return id;
+    bool numeric = !id.isEmpty();
+    for (const QChar &c : id)
+        numeric = numeric && c.isDigit();
+    return numeric ? QString() : id; // never print an unresolved numeric id
 }
 
 void MainWindow::loadTeamLogos()
@@ -583,6 +593,13 @@ void MainWindow::loadTeamLogos()
     const QString awayUrl = m_model->teamAwayLogoUrl();
 
     const auto fetch = [this](const QString &url, int side) {
+        // Round 9: logo fetching was invisible (user: "LOGHI TEAM NON
+        // VISIBILI") — log every step so a live run shows exactly where it
+        // breaks (URL composition / fetch error / image decode).
+        appendProtocol(QStringLiteral("< "),
+                       QStringLiteral("logo request (%1): %2")
+                           .arg(side == 0 ? QStringLiteral("home") : QStringLiteral("away"))
+                           .arg(url));
         QNetworkRequest req;
         req.setUrl(QUrl(url));
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("fumbbl-reborn-qt"));
@@ -592,6 +609,10 @@ void MainWindow::loadTeamLogos()
             onLogoReplyFinished(reply);
         });
     };
+    if (homeUrl.isEmpty() || awayUrl.isEmpty())
+        appendProtocol(QStringLiteral("< "),
+                       QStringLiteral("no logoUrl in game state (home='%1' away='%2')")
+                           .arg(homeUrl, awayUrl));
     if (!homeUrl.isEmpty() && homeUrl != m_homeLogoUrl) {
         m_homeLogoUrl = homeUrl;
         fetch(homeUrl, 0);
@@ -607,16 +628,30 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
     const int side = reply->property("side").toInt(0);
     if (reply->error() != QNetworkReply::NoError) {
         appendProtocol(QStringLiteral("< "),
-                       QStringLiteral("logo fetch failed: %1")
-                           .arg(reply->errorString()));
+                       QStringLiteral("logo fetch failed: %1 (HTTP %2)")
+                           .arg(reply->errorString())
+                           .arg(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt()));
         reply->deleteLater();
         return;
     }
+    // Round 9: capture the content-type BEFORE deleting the reply (the old
+    // code deleted it first and the failure path was completely silent — a
+    // 404 page or an unexpected format would be invisible).
+    const QString contentType =
+        reply->header(QNetworkRequest::ContentTypeHeader).toString();
     const QByteArray data = reply->readAll();
     reply->deleteLater();
     QImage img;
-    if (!img.loadFromData(data)) // QPixmap(QByteArray) is unreliable here
+    if (!img.loadFromData(data)) { // QPixmap(QByteArray) is unreliable here
+        appendProtocol(QStringLiteral("< "),
+                       QStringLiteral("logo decode failed (%1 bytes, content-type '%2')")
+                           .arg(data.size())
+                           .arg(contentType));
         return;
+    }
+    appendProtocol(QStringLiteral("< "),
+                   QStringLiteral("logo ok: %1x%2 (%3 bytes)")
+                       .arg(img.width()).arg(img.height()).arg(data.size()));
     const QPixmap pm = QPixmap::fromImage(img);
     if (side == 0) {
         m_homeLogoPm = pm;

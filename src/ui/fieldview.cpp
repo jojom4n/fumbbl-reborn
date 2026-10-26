@@ -12,8 +12,12 @@
 #include <QPair>
 #include <QPaintEvent>
 #include <QPixmap>
+#include <QRadialGradient>
 #include <QRandomGenerator>
+#include <QTimer>
 #include <QWheelEvent>
+
+#include <cmath>
 
 FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
@@ -21,6 +25,36 @@ FieldView::FieldView(QWidget *parent)
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
     setMouseTracking(true); // hover cards (Mockup F round 8)
     setCursor(Qt::OpenHandCursor);
+
+    // Round 9: selection-halo pulse (~1.2 Hz breathing). The timer only
+    // repaints the selected token's rect — never the whole field.
+    m_pulseTimer = new QTimer(this);
+    m_pulseTimer->setInterval(33); // ~30 fps
+    connect(m_pulseTimer, &QTimer::timeout, this, [this]() {
+        m_pulsePhase += 2.0 * M_PI * 1.2 * 0.033;
+        if (m_pulsePhase > 2.0 * M_PI)
+            m_pulsePhase -= 2.0 * M_PI;
+        if (m_selectedPlayer.isEmpty())
+            return;
+        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
+            for (const PlayerToken &t : team)
+                if (t.playerId == m_selectedPlayer)
+                    return &t;
+            return nullptr;
+        };
+        const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
+        if (!sel)
+            return;
+        // The halo extends ~1.9 cells around the token center: repaint that
+        // rect (mapped through the zoom/pan transform), nothing else.
+        const QRectF c = cellRect(sel->x, sel->y);
+        const qreal cellW = c.width(), cellH = c.height();
+        QRectF r(c.center().x() - cellW * 1.1, c.center().y() - cellH * 1.1,
+                 cellW * 2.2, cellH * 2.2);
+        r = QRectF(r.x() * m_zoom + m_pan.x(), r.y() * m_zoom + m_pan.y(),
+                   r.width() * m_zoom, r.height() * m_zoom);
+        update(r.toAlignedRect().adjusted(-2, -2, 2, 2));
+    });
 }
 
 QSize FieldView::sizeHint() const
@@ -111,7 +145,26 @@ void FieldView::setSelectedPlayer(const QString &playerId)
     if (m_selectedPlayer == playerId)
         return;
     m_selectedPlayer = playerId;
+    // The pulse timer runs only while a selection is visible (round 9:
+    // no idle repaints on the field).
+    if (playerId.isEmpty())
+        m_pulseTimer->stop();
+    else
+        m_pulseTimer->start();
     update();
+}
+
+void FieldView::setActionWheelTarget(const QString &playerId)
+{
+    if (m_wheelTarget == playerId)
+        return;
+    m_wheelTarget = playerId;
+    update();
+}
+
+void FieldView::setPlayMode(bool play)
+{
+    m_playMode = play;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,10 +202,15 @@ void FieldView::mousePressEvent(QMouseEvent *event)
         emit playerClicked(t ? t->playerId : QString());
     } else if (event->button() == Qt::RightButton) {
         // Right button: potential pan (round 8). A click without movement
-        // resets the view; a drag pans (the move handler clamps).
+        // resets the view; a drag pans (the move handler clamps). Round 9:
+        // in PLAY mode a right-click that lands ON A PLAYER opens the
+        // action wheel instead (remember who was under the button; the
+        // release handler decides click vs drag).
         m_panning = true;
         m_panStart = event->pos();
         m_panStartOffset = m_pan;
+        const PlayerToken *t = tokenAt(event->pos());
+        m_rightPressPlayerId = t ? t->playerId : QString();
     }
     QWidget::mousePressEvent(event);
 }
@@ -199,8 +257,18 @@ void FieldView::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::RightButton && m_panning) {
         m_panning = false;
-        if (QLineF(m_panStart, event->pos()).length() < 4.0)
-            resetView(); // plain right click = reset zoom/pan
+        const bool wasClick = QLineF(m_panStart, event->pos()).length() < 4.0;
+        if (wasClick) {
+            if (m_playMode && !m_rightPressPlayerId.isEmpty()) {
+                // Play mode: right-click ON A PLAYER = action wheel target
+                // (the game logic shows the wheel menu from the signal).
+                setActionWheelTarget(m_rightPressPlayerId);
+                emit actionWheelRequested(m_rightPressPlayerId);
+            } else {
+                resetView(); // plain right click = reset zoom/pan
+            }
+        }
+        m_rightPressPlayerId.clear();
     }
     QWidget::mouseReleaseEvent(event);
 }
@@ -611,15 +679,25 @@ void FieldView::paintEvent(QPaintEvent *)
         p.drawEllipse(ballRect);
     }
 
-    // --- Target brackets + action wheel on the acting player (drawn UNDER
-    //     the tokens, like the mockup) --------------------------------------
-    const PlayerToken *acting = nullptr;
-    for (const QVector<PlayerToken> *team : { &m_homePlayers, &m_awayPlayers })
-        for (const PlayerToken &t : *team)
-            if (t.isActing)
-                acting = &t;
-    if (acting && acting->x >= 0 && acting->x < kFieldWidth
-        && acting->y >= 0 && acting->y < kFieldHeight) {
+    // --- Target brackets + action wheel (drawn UNDER the tokens, like the
+    //     mockup). Round 9: NO LONGER follows the FFB acting-player state
+    //     (t.isActing) nor the click selection — only an EXPLICIT target
+    //     (setActionWheelTarget, set by a right-click on a player in play
+    //     mode). In spectator mode the target stays empty: no wheel. The
+    //     wheel + bracket code is kept "meso da parte" for the play mode.
+    const PlayerToken *wheelOn = nullptr;
+    if (!m_wheelTarget.isEmpty()) {
+        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
+            for (const PlayerToken &t : team)
+                if (t.playerId == m_wheelTarget)
+                    return &t;
+            return nullptr;
+        };
+        wheelOn = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
+    }
+    if (wheelOn && wheelOn->x >= 0 && wheelOn->x < kFieldWidth
+        && wheelOn->y >= 0 && wheelOn->y < kFieldHeight) {
+        const PlayerToken *acting = wheelOn;
         // Target brackets: two empty cells adjacent to the acting player
         // (prefer towards the ball, then the cells ahead).
         const auto occupied = [this](int x, int y) {
@@ -742,7 +820,12 @@ void FieldView::paintEvent(QPaintEvent *)
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
 
-    // --- Selection ring (last in field space, so it is always visible) -------
+    // --- Selection: BLUE GLOWING RADIAL circle (round 9, user decision —
+    //     replaces the old gold rounded rect): a soft radial halo fading
+    //     outwards + a crisp blue ring. Pulsing: the halo's alpha/radius
+    //     breathe sinusoidally (~1.2 Hz, m_pulseTimer advances the phase
+    //     and repaints only this token's rect). Drawn last in field space
+    //     so it is always visible and follows zoom/pan.
     if (!m_selectedPlayer.isEmpty()) {
         const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
             for (const PlayerToken &t : team)
@@ -753,12 +836,26 @@ void FieldView::paintEvent(QPaintEvent *)
         const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
         if (sel) {
             const QRectF c = cellRect(sel->x, sel->y);
-            const QRectF ring(c.center().x() - cellW * 0.44, c.center().y() - cellH * 0.44,
-                              cellW * 0.88, cellH * 0.88);
-            QPen selPen(QColor(0xff, 0xd2, 0x4a), qMax(2.0, cellW * 0.09));
-            p.setPen(selPen);
+            const QPointF ctr = c.center();
+            // Breathing factor 0..1 (sinusoid over the pulse phase).
+            const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+            const qreal haloR = qMin(cellW, cellH) * (0.95 + 0.15 * breath);
+            // Soft radial halo: bright blue core fading to transparent.
+            QRadialGradient halo(ctr, haloR);
+            const int aCore = int(110 + 90 * breath);   // 110..200
+            const int aMid = int(60 + 40 * breath);     // 60..100
+            halo.setColorAt(0.0, QColor(88, 168, 255, aCore));
+            halo.setColorAt(0.55, QColor(88, 168, 255, aMid));
+            halo.setColorAt(1.0, QColor(88, 168, 255, 0));
+            p.setPen(Qt::NoPen);
+            p.setBrush(halo);
+            p.drawEllipse(ctr, haloR, haloR);
+            // Crisp blue ring around the token.
+            const qreal ringR = qMin(cellW, cellH) * (0.46 + 0.02 * breath);
+            QPen ringPen(QColor(120, 190, 255, 235), qMax(2.0, cellW * 0.07));
+            p.setPen(ringPen);
             p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(ring, cellW * 0.12, cellW * 0.12);
+            p.drawEllipse(ctr, ringR, ringR);
         }
     }
 
