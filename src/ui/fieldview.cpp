@@ -624,21 +624,28 @@ void FieldView::paintEvent(QPaintEvent *)
         p.fillRect(cellRect(25, 0).united(cellRect(25, 14)), QColor(0x80, 0x20, 0x1e));
     }
 
-    // --- Exact 26x15 grid over the WHOLE field: the TD columns show their
-    //     15 cells (horizontal lines run full width), the side-zone rows
-    //     (row 0 / row 14) get emphasized boundary lines. ------------------
+    // --- Exact 26x15 grid over the WHOLE field ----------------------------
     QPen linePen(QColor(255, 255, 255, 110));
     linePen.setWidthF(qMax(1.0, cellW * 0.04));
     p.setPen(linePen);
     for (int x = 0; x <= kFieldWidth; ++x)
         p.drawLine(QPointF(f.x() + x * cellW, f.y()), QPointF(f.x() + x * cellW, f.bottom()));
+    // Round 11: the WIDE ZONE boundary lines (what the mockup called the
+    // missing "side zone" lines). Ground truth (ffb-common
+    // FieldCoordinateBounds): UPPER wide zone = y 0..3, LOWER = y 11..14,
+    // centre field = y 4..10 — so the emphasized lines run at y=4 and y=11,
+    // full pitch length (end zone to end zone), plus a slightly stronger
+    // sideline at y=0 / y=14 (the pitch edges).
+    QPen wzPen(QColor(255, 255, 255, 210), qMax(2.0, cellW * 0.08));
+    QPen sidePen(QColor(255, 255, 255, 160), qMax(1.5, cellW * 0.055));
     for (int y = 0; y <= kFieldHeight; ++y) {
-        if (y == 1 || y == kFieldHeight - 1) {  // side-zone boundaries
-            QPen sz(QColor(255, 255, 255, 150), qMax(1.5, cellW * 0.06));
-            p.setPen(sz);
-        }
+        if (y == 4 || y == 11)
+            p.setPen(wzPen);
+        else if (y == 0 || y == kFieldHeight)
+            p.setPen(sidePen);
+        else
+            p.setPen(linePen);
         p.drawLine(QPointF(f.x(), f.y() + y * cellH), QPointF(f.right(), f.y() + y * cellH));
-        p.setPen(linePen);
     }
 
     // --- Center line: SINGLE, emphasized (between columns 12 and 13) ------
@@ -655,6 +662,9 @@ void FieldView::paintEvent(QPaintEvent *)
         const qreal s = f.height() * 0.52;
         p.save();
         p.setOpacity(0.25);
+        // Round 11: smooth scaling — the 96/240px crests were scaled to
+        // ~430px with fast scaling and came out grainy (user report).
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         p.drawPixmap(QRectF(f.x() + col * cellW - s / 2, f.center().y() - s / 2, s, s), pm,
                      QRectF(0, 0, pm.width(), pm.height()));
         p.restore();
@@ -760,14 +770,13 @@ void FieldView::paintEvent(QPaintEvent *)
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
                 continue; // box coordinate / off field
             const QRectF c = cellRect(t.x, t.y);
-            const bool down = (t.state == 3 || t.state == 4 || t.state == 5 || t.state == 11);
             const QPointF ctr = c.center();
 
-            // Team-colored circle behind the face.
-            QRectF circ(ctr.x() - s * 0.5, ctr.y() - s * 0.5, s, s);
-            if (down) {
-                circ = QRectF(ctr.x() - s * 0.55, ctr.y() - s * 0.28, s * 1.1, s * 0.56);
-            }
+            // Team-colored circle behind the face. Round 11: DOWN players
+            // keep the FULL round token — round 8 stretched the face into a
+            // flat ellipse and the face came out "schiacciata" (user
+            // report). Prone/stunned is shown by the state mark instead.
+            const QRectF circ(ctr.x() - s * 0.5, ctr.y() - s * 0.5, s, s);
             p.setPen(QPen(teamDark, 1.6));
             p.setBrush(team);
             p.drawEllipse(circ);
@@ -780,9 +789,7 @@ void FieldView::paintEvent(QPaintEvent *)
             const QPixmap pm = assets::playerFace(t.positionName, race);
             if (!pm.isNull()) {
                 const qreal fs = s * 0.78;
-                QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
-                if (down)
-                    face = QRectF(ctr.x() - fs * 0.52, ctr.y() - fs * 0.24, fs * 1.04, fs * 0.48);
+                const QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
                 p.save();
                 QPainterPath clip;
                 clip.addEllipse(circ.adjusted(fs * 0.06, fs * 0.06, -fs * 0.06, -fs * 0.06));
@@ -796,8 +803,7 @@ void FieldView::paintEvent(QPaintEvent *)
             const int base = t.state & 0xFF;
             if (base == 3 || base == 4) {
                 const qreal mw = s * 0.46;
-                const qreal mh = down ? s * 0.30 : s * 0.46; // fit the squashed face
-                const QRectF mr(ctr.x() - mw / 2, ctr.y() - mh / 2, mw, mh);
+                const QRectF mr(ctr.x() - mw / 2, ctr.y() - mw / 2, mw, mw);
                 QPen under(QColor(24, 24, 30, 210), qMax(3.0, s * 0.15));
                 under.setCapStyle(Qt::RoundCap);
                 QPen over(QColor(255, 255, 255, 235), qMax(1.5, s * 0.08));
@@ -864,12 +870,15 @@ void FieldView::paintEvent(QPaintEvent *)
             // Breathing factor 0..1 (sinusoid over the pulse phase).
             const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
             const qreal minDim = qMin(cellW, cellH);
-            const qreal ringR = minDim * (0.56 + 0.02 * breath);
-            const qreal glowR = minDim * (0.85 + 0.06 * breath);
+            const qreal ringR = minDim * (0.58 + 0.025 * breath);
+            const qreal glowR = minDim * (0.95 + 0.08 * breath);
             // Rim-only radial: clear over the face (up to the team circle's
             // edge), peak band at the ring, fade to transparent.
             QRadialGradient halo(ctr, glowR);
-            const int rimA = int(70 + 70 * breath); // 70..140, calmer than round 9
+            // Round 11: round 10's subtle ring was INVISIBLE on the bright
+            // green field (user report) — a clearly visible rim glow, still
+            // limited to the border (the face stays uncovered).
+            const int rimA = int(150 + 90 * breath); // 150..240
             halo.setColorAt(0.0, QColor(88, 168, 255, 0));
             halo.setColorAt((minDim * 0.5) / glowR, QColor(88, 168, 255, 0));
             halo.setColorAt(ringR / glowR, QColor(88, 168, 255, rimA));
@@ -877,8 +886,8 @@ void FieldView::paintEvent(QPaintEvent *)
             p.setPen(Qt::NoPen);
             p.setBrush(halo);
             p.drawEllipse(ctr, glowR, glowR);
-            // Crisp blue ring around the token.
-            QPen ringPen(QColor(120, 190, 255, 230), qMax(2.0, minDim * 0.055));
+            // Crisp bright ring around the token (full alpha, thicker).
+            QPen ringPen(QColor(140, 200, 255, 255), qMax(2.5, minDim * 0.075));
             p.setPen(ringPen);
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(ctr, ringR, ringR);

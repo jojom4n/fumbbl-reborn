@@ -17,12 +17,14 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QSet>
+#include <QResource>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QToolButton>
@@ -106,6 +108,11 @@ private slots:
     void playerInfoCardIsChromeless();
     void matchListLogoFallbackUsedWhenGameStateNull();
     void proneAndStunnedMarksRendered();
+    // ---- Round 11 (side-zone lines, dice, downed faces, card growth) ----
+    void wideZoneLinesDrawn();
+    void downedFaceNotSquashed();
+    void diceAssetsPreScaled();
+    void playerCardGrowsWithSkillCount();
 };
 
 namespace {
@@ -802,8 +809,8 @@ void UiWiringTest::blockReportsShowDiceAndNames()
     const auto labels = log->findChildren<QLabel *>();
     bool sawDice = false;
     for (QLabel *l : labels)
-        if (l->text().contains(QStringLiteral(":/dice/block6.png"))
-            && l->text().contains(QStringLiteral(":/dice/block2.png")))
+        if (l->text().contains(QStringLiteral(":/dice/block6_s.png"))
+            && l->text().contains(QStringLiteral(":/dice/block2_s.png")))
             sawDice = true;
     QVERIFY2(sawDice, "block dice not rendered as die face images");
 }
@@ -1305,6 +1312,164 @@ void UiWiringTest::proneAndStunnedMarksRendered()
                             .arg(wClean)
                             .arg(wStunned)));
     QVERIFY2(wStunned >= wProne, "an 'X' should carry at least a '/' worth of ink");
+}
+
+// ---------------------------------------------------------------------------
+// Round 11 tests
+// ---------------------------------------------------------------------------
+
+// Round 11: the field is missing the WIDE ZONE boundary lines. Ground truth
+// (ffb-common FieldCoordinateBounds): upper wide zone = y 0..3, lower =
+// y 11..14, centre field = y 4..10 — so emphasized lines run at y=4 and
+// y=11, full pitch length. Pixel check: those rows carry a significantly
+// brighter line than a plain grid row (the texture stripe noise cancels
+// because we compare the line against its own row).
+void UiWiringTest::wideZoneLinesDrawn()
+{
+    FieldView field;
+    field.resize(1040, 600); // 40px cells
+    field.show();
+    QApplication::processEvents();
+    const QImage img = field.grab().toImage();
+    const auto lum = [&](int x, int y) {
+        const QRgb c = img.pixel(x, y);
+        return qRed(c) + qGreen(c) + qBlue(c);
+    };
+    // Brightness the line adds over the 8px-below pixel (same grass stripe).
+    const auto lineBoost = [&](int row) {
+        int sum = 0, n = 0;
+        for (int x = 60; x < 980; x += 10) {
+            sum += qMax(0, lum(x, row * 40) - lum(x, row * 40 + 8));
+            ++n;
+        }
+        return sum / n;
+    };
+    const int grid = lineBoost(2);     // plain grid row
+    const int wzTop = lineBoost(4);    // wide-zone boundary (upper)
+    const int wzBottom = lineBoost(11); // wide-zone boundary (lower)
+    QVERIFY2(wzTop > grid + 25,
+             qPrintable(QStringLiteral("y=4 wide-zone line not emphasized (grid=%1 wz=%2)")
+                            .arg(grid)
+                            .arg(wzTop)));
+    QVERIFY2(wzBottom > grid + 25,
+             qPrintable(QStringLiteral("y=11 wide-zone line not emphasized (grid=%1 wz=%2)")
+                            .arg(grid)
+                            .arg(wzBottom)));
+}
+
+// Round 11: the round-8 down-player rendering stretched the face into a flat
+// ellipse ("faccia schiacciata" — user report, faces-work player_face.png).
+// Down players now keep the FULL round token; pixel check at 12 o'clock in
+// the gold ring between the face clip (r~16.2) and the circle edge (r~18.4):
+// a full circle puts team color there, a squashed ellipse puts grass.
+void UiWiringTest::downedFaceNotSquashed()
+{
+    const auto render = [](int state) -> QImage {
+        FieldView field;
+        field.resize(1040, 600);
+        FieldView::PlayerToken t;
+        t.x = 13;
+        t.y = 7;
+        t.state = state;
+        t.playerId = QStringLiteral("t");
+        field.setPlayers({ t }, {});
+        field.show();
+        QApplication::processEvents();
+        return field.grab().toImage();
+    };
+    const auto goldish = [](const QImage &im, int x, int y) {
+        const QRgb c = im.pixel(x, y);
+        return qRed(c) > 120 && qRed(c) >= qGreen(c) && qGreen(c) > qBlue(c);
+    };
+
+    const QImage standing = render(1);
+    const QImage prone = render(3);
+    // Token center (540, 300); the 12-o'clock ring pixel is (540, 283).
+    QVERIFY2(goldish(standing, 540, 283), "geometry sanity: standing token ring is gold");
+    QVERIFY2(goldish(prone, 540, 283),
+             "downed token must keep the FULL round circle (face not squashed)");
+}
+
+// Round 11: the dice in the log use pre-scaled 28px assets rendered 1:1 (the
+// 256px originals were fast-scaled by the rich text layout — grainy d6, square
+// pips, unreadable skulls). Verify the assets exist in the resource at 28px.
+void UiWiringTest::diceAssetsPreScaled()
+{
+    for (int n = 1; n <= 6; ++n) {
+        const QString d6 = QStringLiteral(":/dice/d6_%1_s.png").arg(n);
+        const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
+        QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
+        QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
+        QCOMPARE(QImage(d6).size(), QSize(28, 28));
+        QCOMPARE(QImage(bl).size(), QSize(28, 28));
+    }
+}
+
+// Round 11: cards with many skills must not clip — the panel is sized to the
+// content (measured at the final width so the chip wrap height counts).
+void UiWiringTest::playerCardGrowsWithSkillCount()
+{
+    auto makeData = [](int nSkills) {
+        PlayerInfoData d;
+        d.playerId = QStringLiteral("1");
+        d.name = QStringLiteral("Test");
+        d.number = 1;
+        d.position = QStringLiteral("Ogre");
+        d.teamName = QStringLiteral("Team");
+        d.ma = 4;
+        d.st = 5;
+        for (int i = 0; i < nSkills; ++i) {
+            PlayerInfoData::Skill s;
+            s.name = QStringLiteral("Skill Number %1").arg(i);
+            d.skills.append(s);
+        }
+        return d;
+    };
+    PlayerInfoWidget card;
+    card.show(); // the layout only activates on a shown widget
+    card.showPlayer(makeData(2));
+    card.resize(408, 100);
+    QApplication::processEvents();
+    const int h2 = card.sizeHint().height();
+    card.showPlayer(makeData(12));
+    card.resize(408, 100);
+    QApplication::processEvents();
+    const int h12 = card.sizeHint().height();
+    QVERIFY2(h12 > h2 + 30,
+             qPrintable(QStringLiteral("card must grow with the skills (2=%1 12=%2)")
+                            .arg(h2)
+                            .arg(h12)));
+
+    // MainWindow level: the panel must be at least as tall as the card's
+    // content (the round-11 fix sizes it that way; the old fixed height
+    // clipped the bottom). The offscreen maximized window is flaky (it can
+    // settle smaller after the first pinning, and clampPanelsToStage would
+    // then squeeze the card) — pin a deterministic size first.
+    MainWindow w;
+    w.showNormal();
+    w.resize(1200, 750);
+    w.resize(1200, 749);
+    QApplication::processEvents();
+    w.resize(1200, 750);
+    QApplication::processEvents();
+    w.onGameState(fixtureGame());
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    const FFBPlayer *p = nullptr;
+    for (const FFBPlayer &cand : home)
+        if (cand.hasCoords && GameModel::isOnField(cand.fieldX, cand.fieldY)) {
+            p = &cand;
+            break;
+        }
+    QVERIFY(p);
+    w.selectPlayer(p->playerId);
+    QApplication::processEvents();
+    FloatingPanel *panel = panelFor(&w, info);
+    QVERIFY2(panel, "the card is a FloatingPanel");
+    QVERIFY2(panel->height() - 12 >= info->sizeHint().height() - 2,
+             qPrintable(QStringLiteral("panel (%1px) must fit the card content (%2px)")
+                            .arg(panel->height())
+                            .arg(info->sizeHint().height())));
 }
 
 QTEST_MAIN(UiWiringTest)

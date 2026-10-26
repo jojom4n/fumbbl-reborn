@@ -12,5 +12,20 @@
         <file alias="d6_4.png">dice/d6_4.png</file>
         <file alias="d6_5.png">dice/d6_5.png</file>
         <file alias="d6_6.png">dice/d6_6.png</file>
+        <!-- Round 11: pre-scaled 28px (LANCZOS) faces — the rich-text <img>
+             path re-scales 256px bitmaps with fast scaling (grainy dice,
+             square pips); at 28px they render 1:1, crisp. -->
+        <file alias="block1_s.png">dice/block1_s.png</file>
+        <file alias="block2_s.png">dice/block2_s.png</file>
+        <file alias="block3_s.png">dice/block3_s.png</file>
+        <file alias="block4_s.png">dice/block4_s.png</file>
+        <file alias="block5_s.png">dice/block5_s.png</file>
+        <file alias="block6_s.png">dice/block6_s.png</file>
+        <file alias="d6_1_s.png">dice/d6_1_s.png</file>
+        <file alias="d6_2_s.png">dice/d6_2_s.png</file>
+        <file alias="d6_3_s.png">dice/d6_3_s.png</file>
+        <file alias="d6_4_s.png">dice/d6_4_s.png</file>
+        <file alias="d6_5_s.png">dice/d6_5_s.png</file>
+        <file alias="d6_6_s.png">dice/d6_6_s.png</file>
     </qresource>
 </RCC>

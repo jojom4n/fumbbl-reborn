@@ -173,6 +173,9 @@ void HeaderView::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
+    // Round 11: smooth pixmap scaling — the 240px crests were drawn at 40px
+    // with fast scaling and came out grainy (user report).
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     const int W = width();
     const int H = height();
 

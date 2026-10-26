@@ -338,7 +338,7 @@ void GameModelTest::staticHelpers()
     // Human-readable base states (PlayerState.getButtonText port)
     QCOMPARE(GameModel::stateText(1), QStringLiteral("Standing"));
     QCOMPARE(GameModel::stateText(3), QStringLiteral("Prone"));
-    QCOMPARE(GameModel::stateText(4 | 0x100), QStringLiteral("has been stunned"));
+    QCOMPARE(GameModel::stateText(4 | 0x100), QStringLiteral("Stunned"));
     QCOMPARE(GameModel::stateText(5), QStringLiteral("Knocked Out"));
     QCOMPARE(GameModel::stateText(257), QStringLiteral("Standing")); // flags masked
 

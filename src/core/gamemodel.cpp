@@ -618,7 +618,7 @@ QString GameModel::stateText(int state)
     case 1: return QStringLiteral("Standing");      // STANDING
     case 2: return QStringLiteral("Moving");        // MOVING
     case 3: return QStringLiteral("Prone");         // PRONE
-    case 4: return QStringLiteral("has been stunned"); // STUNNED
+    case 4: return QStringLiteral("Stunned");        // STUNNED (round 11: user — no "has been")
     case 5: return QStringLiteral("Knocked Out");   // KNOCKED_OUT
     case 6: return QStringLiteral("Badly Hurt");    // BADLY_HURT
     case 7: return QStringLiteral("Serious Injury"); // SERIOUS_INJURY

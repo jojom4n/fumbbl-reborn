@@ -13,7 +13,7 @@
 
 namespace {
 
-const int kRowH = 24;      // one entry row
+const int kRowH = 32;      // one entry row (round 11: 24 -> 32 so the 28px dice fit)
 const int kHeaderH = 26;   // title + chevron strip
 const int kPad = 8;
 const int kMaxEntries = 300;
@@ -117,6 +117,10 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
     const QString html0 = actor + line.text.toHtmlEscaped();
     QString html = html0;
 
+    // Round 11: the dice use the PRE-SCALED 28px assets (*_s.png) rendered
+    // 1:1 — the 256px originals were re-scaled by the rich-text layout with
+    // fast scaling (grainy d6, square pips, unreadable skulls). Bigger and
+    // crisp (user reports #2 and #3).
     // Block dice: the six official-style faces.
     if (!line.blockFaces.isEmpty()) {
         html += QStringLiteral(" ");
@@ -124,7 +128,7 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral("<img src=\":/dice/block%1.png\" width=\"22\" height=\"22\">")
+            html += QStringLiteral("<img src=\":/dice/block%1_s.png\" width=\"28\" height=\"28\">")
                         .arg(v);
         }
     }
@@ -138,11 +142,11 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral(" <img src=\":/dice/d6_%1.png\" width=\"22\" height=\"22\">")
+            html += QStringLiteral(" <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\">")
                         .arg(v);
         }
     } else if (line.d6Roll > 0) {
-        html += QStringLiteral(" <img src=\":/dice/d6_%1.png\" width=\"22\" height=\"22\">")
+        html += QStringLiteral(" <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\">")
                     .arg(line.d6Roll);
     }
     if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {

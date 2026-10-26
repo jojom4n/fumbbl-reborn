@@ -940,17 +940,25 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
     if (!panel)
         return;
     const int pw = qMax(panel->width(), 420);
-    const int ph = qMax(panel->height(), 300);
     const int sw = m_stage->width();
     const int sh = m_stage->height();
     const bool playerLeft = fieldX < 13;
     // 80px edge margin: the bench box strips live on the field edges
     // (~62px wide) and must stay visible.
     const int x = playerLeft ? sw - pw - 80 : 80;
-    const int y = qBound(20, (sh - ph) / 2, sh - ph - 20);
-    panel->setGeometry(x, y, pw, ph);
+
+    // Round 11: size the card to its CONTENT. The old fixed height (the
+    // panel's current size, min 300) clipped the bottom of cards with many
+    // skills — the state/injury text ran off the card edge (user
+    // screenshot). Measure at the FINAL WIDTH so the skill-chip wrap height
+    // is accounted for, then clamp to the stage.
+    panel->setGeometry(x, 20, pw, 100);
     panel->show();
     panel->raise();
+    const int need = m_playerInfo->sizeHint().height() + 16;
+    const int ph = qBound(300, need, sh - 40);
+    const int y = qBound(20, (sh - ph) / 2, sh - ph - 20);
+    panel->setGeometry(x, y, pw, ph);
 }
 
 void MainWindow::hidePlayerCard()
