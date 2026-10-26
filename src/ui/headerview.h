@@ -2,27 +2,30 @@
 // HeaderView — Mockup F match header (custom-painted strip, 62px tall)
 //
 //   [crest]  HOME NAME (gold, embossed when on turn)  o o o
-//            coach · race        [END TURN]
+//            coach · race
 //                    H : A
 //            [TURN n] [HALF]   m:ss   (sun|rain) Weather
-//   END TURN  coach · race    o o o   AWAY NAME  [crest]
+//   o o o   coach · race   AWAY NAME  [crest]
+//
+// Layout (round 8): strict ZONES — left = team 1, center = score/turn/half/
+// timer/weather, right = team 2. The widget EXPANDS to the full toolbar
+// width so the center zone is centered on the window (round 8 fix: it used
+// to be anchored left at its 800px sizeHint).
 //
 // Design rules (Mockup F, 23/ott):
 //   * the team ON TURN has its name in gold, raised (embossed) — no dots
 //     and no borders; the other name stays plain ink
 //   * rerolls are dots: 3 slots, filled = remaining
 //   * the turn timer COUNTS UP (FUMBBL semantics) — no decreasing bar
-//   * END TURN sits next to the ACTIVE human coach (either side), clearly
-//     below the reroll dots
 //   * red is reserved for injury/failure: accents come from the team colors
+//   * round 8: NO END TURN button — this is a spectator client; ending the
+//     turn is not part of spectating.
 // =============================================================================
 #pragma once
 
 #include <QPixmap>
 #include <QWidget>
 
-class QPushButton;
-class QResizeEvent;
 
 class HeaderView : public QWidget
 {
@@ -58,16 +61,10 @@ public:
     QSize sizeHint() const override { return QSize(800, 62); }
     int fixedHeight() const { return 62; }
 
-signals:
-    // The spectator asked to end the turn (wired to the session later).
-    void endTurnRequested();
-
 protected:
     void paintEvent(QPaintEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override;
 
 private:
-    void layoutEndTurn();
     // "m:ss" for a count-up elapsed time.
     static QString formatElapsed(int totalSeconds);
 
@@ -90,6 +87,4 @@ private:
     QPixmap m_homeLogo;
     QPixmap m_awayLogo;
     QString m_weather;
-
-    QPushButton *m_endTurn = nullptr;
 };

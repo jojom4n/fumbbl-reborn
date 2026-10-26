@@ -44,8 +44,7 @@ add_executable(ui_wiring_test
     ${CMAKE_SOURCE_DIR}/src/ui/spectatedialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/fieldview.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/headerview.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/rosterwidget.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/dicelogwidget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/actionlog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/chatwidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/playerinfowidget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/panel.cpp

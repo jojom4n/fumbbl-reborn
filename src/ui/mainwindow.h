@@ -1,14 +1,20 @@
 // =============================================================================
 // MainWindow — FUMBBL Reborn main window
 //
-// HUD layout (phase 10):
+// HUD layout (Mockup F round 8):
 //   - The field fills the whole window (fullscreen, no side stripes).
-//   - Panels (rosters, player info, dice log, chat, protocol) are translucent
-//     FloatingPanels that overlay the field; they stay draggable (title strip)
-//     and resizable (edges) and can be hidden with × / re-shown from the View
-//     menu. Layout (positions AND sizes) is persisted and "Reset Layout"
-//     restores the default arrangement with default sizes.
-//   - Native menu bar (File / View / Help) + thin header toolbar on top.
+//   - The header is the zoned Mockup F strip (left team / center info /
+//     right team), full width, NO end-turn button (spectator client).
+//   - Player info is a HOVER card: it appears when the mouse is over a
+//     player (field or bench) and sits on the OPPOSITE side of the field
+//     from the player, far away from him.
+//   - Action log (bottom-left) and chat (bottom-right) are very translucent
+//     pinned overlays, like the mockup; the protocol log stays a draggable
+//     FloatingPanel (dev tool). Layout persistence still applies to the
+//     remaining panels.
+//   - No roster panels: box/bench/KO/reserve are visible in the field's box
+//     strips (round 8).
+//   - Field navigation: mouse wheel = zoom, right-mouse drag = pan.
 // =============================================================================
 #pragma once
 
@@ -19,9 +25,11 @@
 #include <QMainWindow>
 #include <QRect>
 
+#include "core/reportparser.h"
+#include "ui/fieldview.h"
+
+class ActionLogWidget;
 class ChatWidget;
-class DiceLogWidget;
-class FieldView;
 class FloatingPanel;
 class GameModel;
 class HeaderView;
@@ -31,10 +39,10 @@ class QNetworkReply;
 class QPlainTextEdit;
 class QToolBar;
 class PlayerInfoWidget;
-class RosterWidget;
 class SpectatorSession;
 class QLabel;
 class QAction;
+struct FFBPlayer;
 
 class MainWindow : public QMainWindow
 {
@@ -50,10 +58,10 @@ public:
     void setSpectators(int count);
     void setConnectionStatus(const QString &status, bool connected);
 
-    void appendDiceLog(const QString &text, const QColor &color = QColor());
-    // Dice-log display text: resolves the leading raw player id to the
-    // player's name against the current model (public so tests can drive it).
-    QString diceLineText(const QString &text, const QString &playerId) const;
+    // Resolve a raw server id (player OR team) to a display name against
+    // the current model. Public so tests can drive the action-log naming.
+    QString resolveId(const QString &id) const;
+    void appendDiceLog(const DiceLogLine &line);
     void appendChat(const QString &sender, const QString &text);
     void appendProtocol(const QString &direction, const QString &text);
 
@@ -128,9 +136,17 @@ private:
     void onWsClosed(int code, const QString &reason);
     void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
-    void showPlayerInfo(int number, bool homeSide);
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
+    // Hover card (round 8): show/hide the player info on the opposite side
+    // of the field from the hovered player. Empty token = hide.
+    void onPlayerHovered(const FieldView::PlayerToken &token);
+    void showPlayerCard(const FFBPlayer *p, int fieldX);
+    void hidePlayerCard();
+    // Pin the corner overlays (action log / chat) to the stage.
+    void pinOverlays();
+    // The FloatingPanel wrapping a content widget (nullptr if none).
+    FloatingPanel *panelFor(QWidget *content);
     // Per-match team logos (field watermarks + header crests): fetched from
     // the game state's logoUrl once per match.
     void loadTeamLogos();
@@ -153,11 +169,9 @@ private:
     QToolBar *m_headerToolbar = nullptr;
     HeaderView *m_headerView = nullptr; // Mockup F header (custom-painted)
     FieldView *m_field = nullptr;
-    RosterWidget *m_homeRoster = nullptr;
-    RosterWidget *m_awayRoster = nullptr;
     PlayerInfoWidget *m_playerInfo = nullptr;
-    DiceLogWidget *m_diceLog = nullptr;
-    ChatWidget *m_chat = nullptr;
+    ActionLogWidget *m_actionLog = nullptr; // bottom-left overlay
+    ChatWidget *m_chat = nullptr;           // bottom-right overlay
 
     // Overlay panels (child of m_stage, floating over the field)
     QHash<QString, FloatingPanel *> m_panels; // name -> panel

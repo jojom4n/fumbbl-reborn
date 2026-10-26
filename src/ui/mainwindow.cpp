@@ -14,12 +14,11 @@
 #include "core/spectatorsession.h"
 #include "ui/chatwidget.h"
 #include "ui/spectatedialog.h"
-#include "ui/dicelogwidget.h"
+#include "ui/actionlog.h"
 #include "ui/fieldview.h"
 #include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
-#include "ui/rosterwidget.h"
 
 #include <QAction>
 #include <QApplication>
@@ -91,13 +90,11 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &id, const QJsonObject &)
             { this->appendProtocol(QStringLiteral("<< recv "), id); });
 
-    connect(m_homeRoster, &RosterWidget::playerSelected, this,
-            [this](int number) { this->showPlayerInfo(number, true); });
-    connect(m_awayRoster, &RosterWidget::playerSelected, this,
-            [this](int number) { this->showPlayerInfo(number, false); });
-
     // Field click-to-select (empty id = clicked an empty square = deselect).
     connect(m_field, &FieldView::playerClicked, this, &MainWindow::onFieldPlayerClicked);
+    // Hover card (round 8): the player info follows the mouse over the
+    // field / bench and sits on the opposite side of the field.
+    connect(m_field, &FieldView::playerHovered, this, &MainWindow::onPlayerHovered);
 
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
@@ -139,11 +136,9 @@ void MainWindow::createMenus()
     fileMenu->addAction(m_quitAction);
 
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
-    const QStringList panelOrder = { QStringLiteral("home_roster"),
-                                     QStringLiteral("away_roster"),
-                                     QStringLiteral("player_info"),
-                                     QStringLiteral("dice_log"),
-                                     QStringLiteral("chat"),
+    // Round 8: rosters gone (field box strips cover box/KO/reserve), action
+    // log and chat are pinned overlays (always visible, not toggleable).
+    const QStringList panelOrder = { QStringLiteral("player_info"),
                                      QStringLiteral("protocol") };
     for (const QString &name : panelOrder)
         viewMenu->addAction(m_panelViewActions.value(name));
@@ -181,11 +176,8 @@ void MainWindow::createToolbar()
     addToolBar(Qt::TopToolBarArea, m_headerToolbar);
     m_headerView = new HeaderView(m_headerToolbar);
     m_headerToolbar->addWidget(m_headerView);
-    connect(m_headerView, &HeaderView::endTurnRequested, this, [this]() {
-        // Spectator convenience: request the turn to end (wired to the
-        // session's endTurn command once the server flow supports it).
-        appendProtocol(QStringLiteral("-> "), QStringLiteral("endTurn (requested)"));
-    });
+    // Round 8: no END TURN — this is a spectator client; ending the turn is
+    // not part of spectating (the button is gone from HeaderView itself).
 }
 
 void MainWindow::createCentralWidget()
@@ -225,27 +217,24 @@ void MainWindow::createPanels()
     const QColor homeAccent(0x7c, 0xa8, 0x6f);
     const QColor awayAccent(0xd8, 0xc0, 0x7a);
     const QColor neutral(0x8f, 0xa6, 0xc0);
+    Q_UNUSED(homeAccent)
+    Q_UNUSED(awayAccent)
 
-    m_homeRoster = new RosterWidget(m_stage);
-    m_homeRoster->setObjectName(QStringLiteral("roster_home"));
-    m_homeRoster->setTeamColor(homeAccent);
-    makePanel(QStringLiteral("home_roster"), tr("Home Roster"), m_homeRoster, homeAccent);
-
-    m_awayRoster = new RosterWidget(m_stage);
-    m_awayRoster->setObjectName(QStringLiteral("roster_away"));
-    m_awayRoster->setTeamColor(awayAccent);
-    makePanel(QStringLiteral("away_roster"), tr("Away Roster"), m_awayRoster, awayAccent);
-
+    // Player info: a FloatingPanel, but round 8 drives it from HOVER and
+    // pins it to the side of the field OPPOSITE the hovered player.
     m_playerInfo = new PlayerInfoWidget(m_stage);
     makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
 
-    m_diceLog = new DiceLogWidget(m_stage);
-    makePanel(QStringLiteral("dice_log"), tr("Dice Log"), m_diceLog, neutral);
+    // Action log (bottom-left) and chat (bottom-right): Mockup F pinned
+    // overlays with their own translucent chrome — NOT draggable panels.
+    m_actionLog = new ActionLogWidget(m_stage);
+    m_actionLog->setFixedWidth(560);
 
     m_chat = new ChatWidget(m_stage);
-    makePanel(QStringLiteral("chat"), tr("Chat"), m_chat, neutral);
+    m_chat->setFixedSize(560, 250);
 
     m_protocolLog = new QPlainTextEdit(m_stage);
+    m_protocolLog->setObjectName(QStringLiteral("protocol"));
     m_protocolLog->setReadOnly(true);
     m_protocolLog->setMaximumBlockCount(4000);
     m_protocolLog->setStyleSheet(QStringLiteral("background: rgba(10, 13, 18, 200); "
@@ -255,6 +244,8 @@ void MainWindow::createPanels()
     mono.setPointSize(8);
     m_protocolLog->setFont(mono);
     makePanel(QStringLiteral("protocol"), tr("Protocol Log"), m_protocolLog, neutral);
+
+    pinOverlays();
 }
 
 QRect MainWindow::defaultGeometryFor(const QString &name) const
@@ -265,18 +256,14 @@ QRect MainWindow::defaultGeometryFor(const QString &name) const
     // Grid-aligned (FloatingPanel::kGridStep = 20) — the panels snap to this
     // invisible grid while dragged, so the defaults live on it too.
     const int G = 20;
-    if (name == QLatin1String("home_roster"))
-        return QRect(G, G, 280, 540);
-    if (name == QLatin1String("away_roster"))
-        return QRect((w / G) * G - 300, G, 280, 540);
     if (name == QLatin1String("player_info"))
+        // Hover-driven: the default left slot; onPlayerHovered re-pins it
+        // to the side opposite the player.
         return QRect(G, ((h - 340) / G) * G, 440, 320);
-    if (name == QLatin1String("dice_log"))
-        return QRect(480, ((h - 220) / G) * G, 380, 200);
-    if (name == QLatin1String("chat"))
-        return QRect((w / G) * G - 460, ((h - 220) / G) * G, 460, 200);
     if (name == QLatin1String("protocol"))
-        return QRect((w / G) * G - 300, 560, 280, qMax(160, ((h - 580) / G) * G));
+        // Right edge stays 70px clear of the window edge: the away box strip
+        // lives there.
+        return QRect((w / G) * G - 290, G, 220, qMax(160, ((h - 580) / G) * G));
     return QRect(40, 40, 320, 240);
 }
 
@@ -380,6 +367,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         m_field->setGeometry(m_stage->rect());
         onStageFirstSized();
         clampPanelsToStage();
+        pinOverlays();
     }
     return QMainWindow::eventFilter(obj, event);
 }
@@ -417,8 +405,6 @@ void MainWindow::setTeams(const QString &homeName, const QString &awayName)
         m_field->setHomeRace(m_model->teamHomeRace());
         m_field->setAwayRace(m_model->teamAwayRace());
     }
-    m_homeRoster->setTeamName(tr("%1 (Home)").arg(homeName));
-    m_awayRoster->setTeamName(tr("%1 (Away)").arg(awayName));
 }
 
 void MainWindow::setScore(int home, int away)
@@ -445,9 +431,9 @@ void MainWindow::setConnectionStatus(const QString &status, bool connected)
                                                : QStringLiteral("color: #888;"));
 }
 
-void MainWindow::appendDiceLog(const QString &text, const QColor &color)
+void MainWindow::appendDiceLog(const DiceLogLine &line)
 {
-    m_diceLog->appendEntry(text, color);
+    m_actionLog->appendLine(line, resolveId(line.actorId), resolveId(line.defenderId));
 }
 
 void MainWindow::appendChat(const QString &sender, const QString &text)
@@ -549,18 +535,8 @@ void MainWindow::applyModelToUi()
     // Weather: drives the field's rain overlay ("Nice Weather" = none).
     m_field->setWeather(m_model->weather());
 
-    // Rosters: ALL roster players (the widget keeps its own order), with a
-    // short status label for off-field states (KO/BH/SI/RIP/RES/BAN/...).
-    m_homeRoster->clearRoster();
-    for (const FFBPlayer &p : m_model->rosterHome()) {
-        m_homeRoster->addPlayer(p.number, p.name, p.position, p.st, p.ag, p.ma, p.av,
-                                p.skills.join(QStringLiteral(" ")), GameModel::stateLabel(p.state));
-    }
-    m_awayRoster->clearRoster();
-    for (const FFBPlayer &p : m_model->rosterAway()) {
-        m_awayRoster->addPlayer(p.number, p.name, p.position, p.st, p.ag, p.ma, p.av,
-                                p.skills.join(QStringLiteral(" ")), GameModel::stateLabel(p.state));
-    }
+    // Round 8: no roster panels — box/bench/KO/reserve are visible in the
+    // field's box strips (setBoxes above).
 }
 
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
@@ -573,29 +549,30 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         const QJsonObject report = rv.toObject();
         if (report.isEmpty())
             continue;
+        // Structured dice: the action log renders the die faces (round 8:
+        // "non ci mettere i numeri: metti i dadi") and resolved names.
         for (const DiceLogLine &line : parseReport(report))
-            m_diceLog->appendEntry(diceLineText(line.text, line.playerId), line.color);
+            appendDiceLog(line);
     }
 }
 
-// Replaces the raw numeric player id (first token of the parser's text) with
-// the player's display name from the current model, e.g.
-// "18234934 Dodge ✓ …" -> "Adrian Custennin (1) Dodge ✓ …". Unknown players
-// (or team-level reports) leave the text untouched.
-QString MainWindow::diceLineText(const QString &text, const QString &playerId) const
+// Resolves a raw server id to a display name (round 8: "ci metti i nomi
+// giusti" — no numeric ids in the action log). Player ids become
+// "Name (number)"; TEAM ids (prayers, bribes, throw-ins, team captain)
+// become the team name. Unresolved ids stay visible rather than vanishing.
+QString MainWindow::resolveId(const QString &id) const
 {
-    if (playerId.isEmpty())
-        return text;
-    const FFBPlayer *p = m_model ? m_model->findPlayerById(playerId) : nullptr;
-    if (!p)
-        return text;
-    const QString label = p->number > 0
-        ? QStringLiteral("%1 (%2)").arg(p->name).arg(p->number)
-        : p->name;
-    const int at = text.indexOf(playerId);
-    if (at < 0)
-        return text;
-    return text.left(at) + label + text.mid(at + playerId.size());
+    if (id.isEmpty() || !m_model)
+        return id;
+    if (const FFBPlayer *p = m_model->findPlayerById(id))
+        return p->number > 0
+                   ? QStringLiteral("%1 (%2)").arg(p->name).arg(p->number)
+                   : p->name;
+    if (id == m_model->teamHomeId())
+        return m_model->teamHomeName();
+    if (id == m_model->teamAwayId())
+        return m_model->teamAwayName();
+    return id;
 }
 
 void MainWindow::loadTeamLogos()
@@ -742,10 +719,9 @@ void MainWindow::clearMatchUi()
     m_field->setBall(-1, -1, false);
     m_field->setHomeTeamName(QString());
     m_field->setAwayTeamName(QString());
-    m_homeRoster->clearRoster();
-    m_awayRoster->clearRoster();
-    m_diceLog->clearLog();
+    m_actionLog->clearLog();
     m_chat->clearChat();
+    hidePlayerCard();
     setTeams(QString(), QString());
     setScore(0, 0);
     setTurn(1);
@@ -759,18 +735,6 @@ void MainWindow::clearMatchUi()
     m_homeLogoPm = QPixmap();
     m_awayLogoPm = QPixmap();
     setSpectators(0);
-}
-
-void MainWindow::showPlayerInfo(int number, bool homeSide)
-{
-    const FFBPlayer *p = m_model->findPlayerByNumber(number, homeSide);
-    if (!p) {
-        m_selectedPlayerId.clear();
-        m_playerInfo->showPlaceholder();
-        m_field->setSelectedPlayer(QString());
-        return;
-    }
-    selectPlayer(p->playerId);
 }
 
 void MainWindow::onFieldPlayerClicked(const QString &playerId)
@@ -798,7 +762,51 @@ void MainWindow::selectPlayer(const QString &playerId)
     m_selectedPlayerId = playerId;
     m_field->setSelectedPlayer(playerId);
 
-    // Assemble the panel data (widget stays decoupled from the model).
+    // Round 8: fill + positioning live in showPlayerCard (shared with the
+    // hover path).
+    showPlayerCard(p, p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19));
+}
+
+// ---------------------------------------------------------------------------
+// Hover player card (round 8): appears over the mouse, far from the player,
+// on the opposite side of the field.
+// ---------------------------------------------------------------------------
+void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
+{
+    if (token.playerId.isEmpty() && token.name.isEmpty()) {
+        hidePlayerCard();
+        return;
+    }
+    const FFBPlayer *p = nullptr;
+    if (!token.playerId.isEmpty()) {
+        p = m_model ? m_model->findPlayerById(token.playerId) : nullptr;
+    } else if (m_model && !token.name.isEmpty()) {
+        // Bench face: resolve by name on the right side.
+        const auto roster = token.sideHome ? m_model->rosterHome()
+                                           : m_model->rosterAway();
+        for (const FFBPlayer &c : roster)
+            if (c.name == token.name) {
+                p = &c;
+                break;
+            }
+    }
+    if (!p) {
+        hidePlayerCard();
+        return;
+    }
+    // Hovering doesn't steal the click selection; it just shows the card.
+    m_selectedPlayerId = p->playerId;
+    m_field->setSelectedPlayer(p->playerId);
+    const int fieldX = p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19);
+    showPlayerCard(p, fieldX);
+}
+
+void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
+{
+    if (!p || !m_playerInfo || !m_stage)
+        return;
+
+    // Fill (shared with the click path: assemble PlayerInfoData).
     PlayerInfoData d;
     d.playerId = p->playerId;
     d.name = p->name;
@@ -826,11 +834,11 @@ void MainWindow::selectPlayer(const QString &playerId)
     d.stateFlags = GameModel::stateFlags(p->state);
 
     const QHash<QString, QString> &values = p->skillValues;
-    for (const QString &s : p->skills) {
+    for (const QString &s2 : p->skills) {
         PlayerInfoData::Skill sk;
-        sk.name = s;
-        sk.value = values.value(s);
-        sk.used = p->usedSkills.contains(s);
+        sk.name = s2;
+        sk.value = values.value(s2);
+        sk.used = p->usedSkills.contains(s2);
         d.skills.append(sk);
     }
     d.injuries = p->lastingInjuries;
@@ -839,6 +847,60 @@ void MainWindow::selectPlayer(const QString &playerId)
     d.cards = p->cards;
 
     m_playerInfo->showPlayer(d);
+
+    // POSITION: opposite side of the field, vertically centered, far from
+    // the player (mockup: the card is pinned to a corner-ish spot).
+    FloatingPanel *panel = panelFor(m_playerInfo);
+    if (!panel)
+        return;
+    const int pw = qMax(panel->width(), 420);
+    const int ph = qMax(panel->height(), 300);
+    const int sw = m_stage->width();
+    const int sh = m_stage->height();
+    const bool playerLeft = fieldX < 13;
+    // 80px edge margin: the bench box strips live on the field edges
+    // (~62px wide) and must stay visible.
+    const int x = playerLeft ? sw - pw - 80 : 80;
+    const int y = qBound(20, (sh - ph) / 2, sh - ph - 20);
+    panel->setGeometry(x, y, pw, ph);
+    panel->show();
+    panel->raise();
+}
+
+void MainWindow::hidePlayerCard()
+{
+    if (m_playerInfo) {
+        m_selectedPlayerId.clear();
+        m_playerInfo->showPlaceholder();
+        m_field->setSelectedPlayer(QString());
+    }
+    if (FloatingPanel *panel = panelFor(m_playerInfo))
+        panel->hide();
+}
+
+// The FloatingPanel that wraps a content widget (player info card).
+FloatingPanel *MainWindow::panelFor(QWidget *content)
+{
+    for (auto it = m_panels.cbegin(); it != m_panels.cend(); ++it)
+        if (it.value()->contentWidget() == content)
+            return it.value();
+    return nullptr;
+}
+
+// Pin the Mockup F corner overlays to the stage (bottom-left action log,
+// bottom-right chat).
+void MainWindow::pinOverlays()
+{
+    if (!m_stage)
+        return;
+    const int sw = m_stage->width();
+    const int sh = m_stage->height();
+    if (sw < 400 || sh < 300)
+        return;
+    if (m_actionLog)
+        m_actionLog->move(20, sh - m_actionLog->height() - 20);
+    if (m_chat)
+        m_chat->move(sw - m_chat->width() - 20, sh - m_chat->height() - 20);
 }
 
 QByteArray MainWindow::savedLayout() const

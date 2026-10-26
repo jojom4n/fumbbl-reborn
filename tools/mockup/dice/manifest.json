@@ -1,0 +1,39 @@
+{
+  "set": "v1",
+  "note": "Dice sets for the FUMBBL Reborn action log. A new color set = same style/seeds, different die_color/symbol_color.",
+  "style_template": "A single square game die face, perfectly flat top-down view, the die face filling the ENTIRE frame edge to edge as a perfect square with slightly rounded corners. The die background is a solid {die_color}. Flat clean vector game-art style, crisp uniform edges, no gradients, no bevel, no 3D perspective, no texture noise, no shadow. In the exact center of the die face: a white circular badge about 70% of the face size, whose rim has many small irregular jagged spikes around the whole circle (a round white frame with a torn, spiky edge, like the official Games Workshop Blood Bowl block dice badge). Inside the white badge, perfectly centered, one bold {symbol_color} symbol, well inside the badge edge: {symbol}. Nothing else: no text, no numbers, no letters, no watermark, no border frame around the square.",
+  "style_template_d6": "A single square game die face, perfectly flat top-down view, the die face filling the ENTIRE frame edge to edge as a perfect square with slightly rounded corners. The die background is a solid {die_color}. Flat clean vector game-art style, crisp uniform edges, no gradients, no bevel, no 3D perspective, no texture noise, no shadow, no badge. On the die face, large round {d6_dot_color} dots in this arrangement: {symbol}. The dots are smooth perfect circles, evenly sized, evenly spaced, clearly inside the edges, high contrast against the die. Nothing else: no text, no numbers, no letters, no symbols, no watermark, no border frame around the square.",
+  "d6_dot_color": "pure white",
+  "params": {
+    "die_color": "crimson red (like #B02020)",
+    "symbol_color": "the same solid crimson red as the die background",
+    "d6_dot_color": "pure white"
+  },
+  "size": 512,
+  "sampler": {
+    "steps": 8,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1.0
+  },
+  "models": {
+    "unet": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+    "clip": "qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "qwen_image_2.1_vae_bf16.safetensors"
+  },
+  "jobs": {
+    "block_2": {
+      "seed": 102,
+      "prompt": "A single square game die face, perfectly flat top-down view, the die face filling the ENTIRE frame edge to edge as a perfect square with slightly rounded corners. The die background is a solid crimson red (like #B02020). Flat clean vector game-art style, crisp uniform edges, no gradients, no bevel, no 3D perspective, no texture noise, no shadow. In the exact center of the die face: a white circular badge about 70% of the face size, whose rim has many small irregular jagged spikes around the whole circle (a round white frame with a torn, spiky edge, like the official Games Workshop Blood Bowl block dice badge). Inside the white badge, perfectly centered, one bold the same solid crimson red as the die background symbol, well inside the badge edge: a bold skull icon (rounded cranium, two large round eye sockets, nasal triangle, jaw with square teeth) on the lower-left of the badge, and a BIG sharp spiky explosion burst on the upper-right, about the same size as the skull, clearly separated from it, as if the skull just exploded \u2014 the two shapes are distinct and both easy to read, solid flat fill. Nothing else: no text, no numbers, no letters, no watermark, no border frame around the square."
+    },
+    "block_3": {
+      "seed": 103,
+      "prompt": "A single square game die face, perfectly flat top-down view, the die face filling the ENTIRE frame edge to edge as a perfect square with slightly rounded corners. The die background is a solid crimson red (like #B02020). Flat clean vector game-art style, crisp uniform edges, no gradients, no bevel, no 3D perspective, no texture noise, no shadow. In the exact center of the die face: a white circular badge about 70% of the face size, whose rim has many small irregular jagged spikes around the whole circle (a round white frame with a torn, spiky edge, like the official Games Workshop Blood Bowl block dice badge). Inside the white badge, perfectly centered, one bold the same solid crimson red as the die background symbol, well inside the badge edge: one single simple bold push arrow pointing diagonally up-right at 45 degrees: a hollow double-line outlined triangular arrowhead and a straight rectangular shaft with a clean diagonal cut at the tail, no lightning, no zigzag, just a plain chunky arrow. Nothing else: no text, no numbers, no letters, no watermark, no border frame around the square."
+    },
+    "block_4": {
+      "seed": 104,
+      "prompt": "A single square game die face, perfectly flat top-down view, the die face filling the ENTIRE frame edge to edge as a perfect square with slightly rounded corners. The die background is a solid crimson red (like #B02020). Flat clean vector game-art style, crisp uniform edges, no gradients, no bevel, no 3D perspective, no texture noise, no shadow. In the exact center of the die face: a white circular badge about 70% of the face size, whose rim has many small irregular jagged spikes around the whole circle (a round white frame with a torn, spiky edge, like the official Games Workshop Blood Bowl block dice badge). Inside the white badge, perfectly centered, one bold the same solid crimson red as the die background symbol, well inside the badge edge: one single simple bold push arrow pointing diagonally up-right at 45 degrees: a hollow double-line outlined triangular arrowhead and a straight rectangular shaft with a clean diagonal cut at the tail, no lightning, no zigzag, just a plain chunky arrow. Nothing else: no text, no numbers, no letters, no watermark, no border frame around the square."
+    }
+  }
+}

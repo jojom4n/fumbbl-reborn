@@ -27,6 +27,43 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
 # -----------------------------------------------------------------------------
 # Application
 # -----------------------------------------------------------------------------
+# Mockup F dice (official-style block dice + red d6 — generated via
+# tools/mockup/dice_queue.py + dice_process.py). This Qt build does not
+# auto-process .qrc target sources, so rcc runs explicitly.
+set(DICE_RCC ${CMAKE_CURRENT_BINARY_DIR}/qrc_dice.cpp)
+# This Qt build does not export Qt6_rcc_EXECUTABLE — locate rcc explicitly.
+if(NOT Qt6_rcc_EXECUTABLE)
+    find_program(DICE_RCC_EXECUTABLE
+        NAMES rcc
+        PATHS /usr/lib/qt6 /usr/lib/qt6/bin /usr/bin
+        NO_DEFAULT_PATH
+    )
+    if(NOT DICE_RCC_EXECUTABLE)
+        message(FATAL_ERROR "rcc not found (needed for assets/dice.qrc)")
+    endif()
+else()
+    set(DICE_RCC_EXECUTABLE ${Qt6_rcc_EXECUTABLE})
+endif()
+add_custom_command(
+    OUTPUT ${DICE_RCC}
+    COMMAND ${DICE_RCC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
+            -o ${DICE_RCC}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6.png
+    VERBATIM
+)
+
 add_executable(fumbbl-qt
     src/main.cpp
 
@@ -55,10 +92,8 @@ add_executable(fumbbl-qt
     src/ui/spectatedialog.cpp
     src/ui/fieldview.h
     src/ui/fieldview.cpp
-    src/ui/rosterwidget.h
-    src/ui/rosterwidget.cpp
-    src/ui/dicelogwidget.h
-    src/ui/dicelogwidget.cpp
+    src/ui/actionlog.h
+    src/ui/actionlog.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
     src/ui/headerview.h
@@ -67,9 +102,48 @@ add_executable(fumbbl-qt
     src/ui/playerinfowidget.cpp
     src/ui/panel.h
     src/ui/panel.cpp
+
+    ${DICE_RCC}
 )
 
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Mockup F dice (official-style block dice + red d6 — generated via
+# tools/mockup/dice_queue.py + dice_process.py). This Qt build does not
+# auto-process .qrc target sources, so rcc runs explicitly.
+set(DICE_RCC ${CMAKE_CURRENT_BINARY_DIR}/qrc_dice.cpp)
+# This Qt build does not export Qt6_rcc_EXECUTABLE — locate rcc explicitly.
+if(NOT Qt6_rcc_EXECUTABLE)
+    find_program(DICE_RCC_EXECUTABLE
+        NAMES rcc
+        PATHS /usr/lib/qt6 /usr/lib/qt6/bin /usr/bin
+        NO_DEFAULT_PATH
+    )
+    if(NOT DICE_RCC_EXECUTABLE)
+        message(FATAL_ERROR "rcc not found (needed for assets/dice.qrc)")
+    endif()
+else()
+    set(DICE_RCC_EXECUTABLE ${Qt6_rcc_EXECUTABLE})
+endif()
+add_custom_command(
+    OUTPUT ${DICE_RCC}
+    COMMAND ${DICE_RCC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
+            -o ${DICE_RCC}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6.png
+    VERBATIM
+)
 # Game assets: cartoon faces (assets/faces, per roster piece) + procedural
 # skill/card icons (see gen_assets). Committed under <source>/assets.
 target_compile_definitions(fumbbl-qt PRIVATE
@@ -115,8 +189,7 @@ add_executable(ui_connect_probe
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
-    src/ui/rosterwidget.cpp
-    src/ui/dicelogwidget.cpp
+    src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp

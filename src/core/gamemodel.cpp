@@ -68,6 +68,8 @@ void GameModel::clearState()
     m_initialized = false;
     m_teamHomeName.clear();
     m_teamAwayName.clear();
+    m_teamHomeId.clear();
+    m_teamAwayId.clear();
     m_teamHomeRace.clear();
     m_teamAwayRace.clear();
     m_teamHomeCoach.clear();
@@ -118,6 +120,8 @@ bool GameModel::initialize(const QJsonObject &game)
 
     m_teamHomeName = home.value(QStringLiteral("teamName")).toString();
     m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
+    m_teamHomeId = home.value(QStringLiteral("id")).toString();
+    m_teamAwayId = away.value(QStringLiteral("id")).toString();
     m_teamHomeRace = home.value(QStringLiteral("race")).toString();
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
     m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();

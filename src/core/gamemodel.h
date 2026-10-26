@@ -102,6 +102,10 @@ public:
     // --- Teams / score / turn ----------------------------------------------
     QString teamHomeName() const { return m_teamHomeName; }
     QString teamAwayName() const { return m_teamAwayName; }
+    // Team ids (FBF): reports reference them as choosingTeamId & co — the UI
+    // resolves them to team names instead of printing raw numbers.
+    QString teamHomeId() const { return m_teamHomeId; }
+    QString teamAwayId() const { return m_teamAwayId; }
     // Team race (live players usually carry no per-player race).
     QString teamHomeRace() const { return m_teamHomeRace; }
     QString teamAwayRace() const { return m_teamAwayRace; }
@@ -185,6 +189,8 @@ private:
     // Teams / score / turn
     QString m_teamHomeName;
     QString m_teamAwayName;
+    QString m_teamHomeId;
+    QString m_teamAwayId;
     QString m_teamHomeRace;
     QString m_teamAwayRace;
     QString m_teamHomeCoach;

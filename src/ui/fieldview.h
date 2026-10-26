@@ -18,6 +18,7 @@
 // =============================================================================
 #pragma once
 
+#include <QEvent>
 #include <QVector>
 #include <QWidget>
 
@@ -36,6 +37,7 @@ public:
         QString playerId;   // server id (for selection)
         QString positionName; // "Ogre", "Zombie Lineman", ... (face lookup)
         bool isActing = false;
+        bool sideHome = true; // which team this token belongs to (hover cards)
     };
 
     explicit FieldView(QWidget *parent = nullptr);
@@ -77,7 +79,16 @@ public:
     int playerCount() const { return m_homePlayers.size() + m_awayPlayers.size(); }
     QPoint ballPosition() const { return m_ballInPlay ? QPoint(m_ballX, m_ballY) : QPoint(-1, -1); }
     // The topmost token at a widget point (nullptr if none / outside field).
+    // Honors the current zoom/pan (Mockup F round 8 field navigation).
     const PlayerToken *tokenAt(const QPoint &pos) const;
+    // The box-strip entry at a widget point (nullptr if none): hovering a
+    // bench face shows the player card too.
+    const BoxEntry *boxEntryAt(const QPoint &pos, bool &sideHome) const;
+
+    // Field navigation (round 8): mouse wheel = zoom (1.0..3.0, anchored on
+    // the cursor), right-mouse drag while zoomed = pan, right click = reset.
+    qreal zoom() const { return m_zoom; }
+    void resetView();
 
     QSize sizeHint() const override;
 
@@ -85,10 +96,17 @@ signals:
     // Left click on the field. Carries the clicked player's id, or an empty
     // string when the click landed on an empty square (deselect).
     void playerClicked(const QString &playerId);
+    // Hover over a player (field token or bench face). An EMPTY token
+    // (playerId empty) means the mouse is over nothing.
+    void playerHovered(const PlayerToken &token);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
 
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
@@ -99,6 +117,12 @@ private:
     // Paint one box strip (the Mockup F left/right bench strip).
     void paintBoxStrip(QPainter &p, const QRectF &f, const QColor &accent,
                        const QVector<BoxEntry> &entries, bool leftSide) const;
+    // The filled-slot rectangles of one strip (shared by painter + hover).
+    QVector<QPair<QRectF, const BoxEntry*>> boxSlots(
+        const QRectF &f, const QVector<BoxEntry> &entries, bool leftSide) const;
+    // Map a widget point through the zoom/pan transform into field space.
+    QPointF toFieldSpace(const QPointF &pos) const;
+    void clampPan();
 
     QString m_homeName = QStringLiteral("Team 1");
     QString m_awayName = QStringLiteral("Team 2");
@@ -118,4 +142,12 @@ private:
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => droplet overlay
+
+    // Field navigation state (round 8).
+    qreal m_zoom = 1.0;      // 1.0 = fit, up to 3.0
+    QPointF m_pan;           // translation in widget px (0,0 at zoom 1)
+    bool m_panning = false;  // right button down
+    QPoint m_panStart;       // cursor at press
+    QPointF m_panStartOffset; // pan at press
+    QString m_hoverId; // hover key: token playerId, "box:<name>", or ""
 };

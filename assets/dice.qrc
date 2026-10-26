@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/dice">
+        <file alias="block1.png">dice/block1.png</file>
+        <file alias="block2.png">dice/block2.png</file>
+        <file alias="block3.png">dice/block3.png</file>
+        <file alias="block4.png">dice/block4.png</file>
+        <file alias="block5.png">dice/block5.png</file>
+        <file alias="block6.png">dice/block6.png</file>
+        <file alias="d6_1.png">dice/d6_1.png</file>
+        <file alias="d6_2.png">dice/d6_2.png</file>
+        <file alias="d6_3.png">dice/d6_3.png</file>
+        <file alias="d6_4.png">dice/d6_4.png</file>
+        <file alias="d6_5.png">dice/d6_5.png</file>
+        <file alias="d6_6.png">dice/d6_6.png</file>
+    </qresource>
+</RCC>

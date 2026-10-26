@@ -9,7 +9,6 @@
 
 #include <cmath>
 #include <QPushButton>
-#include <QResizeEvent>
 
 namespace {
 
@@ -77,20 +76,16 @@ HeaderView::HeaderView(QWidget *parent)
 {
     setFixedHeight(62);
     setAutoFillBackground(true);
-
-    m_endTurn = new QPushButton(QStringLiteral("END TURN"), this);
-    m_endTurn->setFixedSize(82, 22);
-    m_endTurn->setCursor(Qt::PointingHandCursor);
-    m_endTurn->setFocusPolicy(Qt::NoFocus);
-    connect(m_endTurn, &QPushButton::clicked, this, &HeaderView::endTurnRequested);
-    layoutEndTurn();
+    // Round 8: expand to the full toolbar width so the ZONES land where the
+    // mockup puts them (left team / center info / right team) instead of
+    // clustering at the left edge.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 
 void HeaderView::setTeams(const QString &home, const QString &away)
 {
     m_home = home;
     m_away = away;
-    layoutEndTurn();
     update();
 }
 
@@ -98,7 +93,6 @@ void HeaderView::setRaces(const QString &home, const QString &away)
 {
     m_homeRace = home;
     m_awayRace = away;
-    layoutEndTurn();
     update();
 }
 
@@ -106,7 +100,6 @@ void HeaderView::setCoaches(const QString &home, const QString &away)
 {
     m_homeCoach = home;
     m_awayCoach = away;
-    layoutEndTurn();
     update();
 }
 
@@ -114,7 +107,6 @@ void HeaderView::setAccents(const QColor &home, const QColor &away)
 {
     m_homeAccent = home;
     m_awayAccent = away;
-    layoutEndTurn();
     update();
 }
 
@@ -145,7 +137,6 @@ void HeaderView::setHomePlaying(bool homePlaying)
     if (m_homePlaying == homePlaying)
         return;
     m_homePlaying = homePlaying;
-    layoutEndTurn();
     update();
 }
 
@@ -176,33 +167,6 @@ QString HeaderView::formatElapsed(int totalSeconds)
     return QStringLiteral("%1:%2")
         .arg(totalSeconds / 60)
         .arg(totalSeconds % 60, 2, 10, QLatin1Char('0'));
-}
-
-void HeaderView::resizeEvent(QResizeEvent *)
-{
-    layoutEndTurn();
-}
-
-void HeaderView::layoutEndTurn()
-{
-    // END TURN next to the active coach's subline, clearly below the dots.
-    // The subline is painted with a 10pt font — measure with the same font
-    // or the pill overlaps the text.
-    QFont subF = font();
-    subF.setPointSizeF(10);
-    const QFontMetricsF fm(subF);
-    const QString subH = m_homeCoach + QStringLiteral("  ·  ") + m_homeRace;
-    const QString subA = m_awayCoach + QStringLiteral("  ·  ") + m_awayRace;
-    if (m_homePlaying)
-        m_endTurn->move(64 + int(fm.horizontalAdvance(subH)) + 14, 32); // round 7: lower
-    else
-        m_endTurn->move(width() - 64 - 82 - int(fm.horizontalAdvance(subA)) - 14, 32);
-    const QColor accent = m_homePlaying ? m_homeAccent : m_awayAccent;
-    const QColor dark = accent.darker(160);
-    m_endTurn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: %1; color: white; font-weight: bold;"
-        " border: 1px solid %2; border-radius: 11px; }")
-        .arg(accent.name(), dark.name()));
 }
 
 void HeaderView::paintEvent(QPaintEvent *)

@@ -56,19 +56,6 @@ QString modifierLabel(const QJsonObject &r)
     return QStringLiteral(" (%1)").arg(names.join(QStringLiteral(", ")));
 }
 
-// "✓ [3] vs 5 [RR]"
-QString formatRoll(int roll, int minRoll, bool ok, bool reRolled)
-{
-    QString s;
-    s += ok ? QStringLiteral("✓ [") : QStringLiteral("✗ [");
-    s += QString::number(roll);
-    s += QStringLiteral("] vs ");
-    s += QString::number(minRoll);
-    if (reRolled)
-        s += QStringLiteral(" [RR]");
-    return s;
-}
-
 // Appends "  ST: 4 (modifier)" style stat/modifier suffix.
 QString suffix(const QJsonObject &r)
 {
@@ -97,23 +84,30 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     if (id.isEmpty())
         return out;
 
+    // Fills the common fields of a new line. `text` may still contain raw id
+    // tokens: the UI resolves actorId/defenderId against the model and
+    // substitutes the display names before rendering.
     auto push = [&](const QString &text, const QColor &color) {
         DiceLogLine l;
         l.text = text;
         l.color = color;
-        l.playerId = pid(report); // may be empty for team-level reports
+        l.actorId = pid(report); // may be empty for team-level reports
         out.append(l);
     };
 
-    // Generic single-die skill roll: "<pid> <Name> ✓ [3] vs 5 [stat][mods]".
+    // Generic single-die skill roll: actor rolls a d6 against a target.
     auto sr = [&](const QString &name, const QColor &okColor, const QColor &failColor) {
-        const QString s = suffix(report);
-        const QString text = QStringLiteral("%1 %2 %3%4")
-                                 .arg(pid(report))
-                                 .arg(name)
-                                 .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report)))
-                                 .arg(s.isEmpty() ? QString() : QStringLiteral(" %1").arg(s));
-        push(text, ok(report) ? okColor : failColor);
+        DiceLogLine l;
+        const QString suf = suffix(report);
+        l.text = suf.isEmpty() ? name
+                               : QStringLiteral("%1  %2").arg(name, suf);
+        l.color = ok(report) ? okColor : failColor;
+        l.actorId = pid(report);
+        l.d6Roll = roll(report);
+        l.d6Target = minRoll(report);
+        l.d6Ok = ok(report);
+        l.d6ReRolled = reRolled(report);
+        out.append(l);
     };
 
     // The long list of plain skill rolls (TS reference).
@@ -162,33 +156,43 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     switch (first) {
     case 'b':
         if (id == QLatin1String("blitzRoll")) {
-            const QString s = suffix(report);
-            push(QStringLiteral("%1 Blitz %2%3")
-                     .arg(pid(report))
-                     .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report)))
-                     .arg(s.isEmpty() ? QString() : QStringLiteral(" %1").arg(s)),
-                 kBlue);
+            sr(QStringLiteral("Blitz"), kBlue, kBlue);
         } else if (id == QLatin1String("blockRoll")) {
-            const QJsonArray d = report.value(QStringLiteral("blockRoll")).toArray();
-            const QString t = QStringLiteral("%1 chooses defender%2")
-                                  .arg(tid(report))
-                                  .arg(did(report).isEmpty() ? QString()
-                                                            : QStringLiteral(" → %1").arg(did(report)));
-            push(t, kYellow);
+            DiceLogLine l;
+            l.text = QStringLiteral("chooses defender");
+            l.color = kYellow;
+            l.actorId = tid(report);
+            l.defenderId = did(report);
+            out.append(l);
         } else if (id == QLatin1String("block")) {
-            const QString a = report.value(QStringLiteral("attackerId")).toString();
-            push(QStringLiteral("Block: %1 vs %2").arg(a).arg(did(report)), kYellow);
+            // The six block dice: the star of the action log (Mockup F).
+            DiceLogLine l;
+            l.text = QStringLiteral("Block");
+            l.color = kYellow;
+            l.actorId = report.value(QStringLiteral("attackerId")).toString();
+            l.defenderId = did(report);
+            const QJsonArray d = report.value(QStringLiteral("blockRoll")).toArray();
+            for (const QJsonValue &v : d)
+                l.blockFaces << QString::number(v.toInt());
+            out.append(l);
         } else if (id == QLatin1String("bribesRoll")) {
+            DiceLogLine l;
             const QJsonArray d = report.value(QStringLiteral("rolls")).toArray();
-            const int r0 = d.isEmpty() ? 0 : d.at(0).toInt();
-            push(QStringLiteral("Bribes %1").arg(formatRoll(r0, minRoll(report), ok(report), reRolled(report))),
-                 kYellow);
+            l.text = QStringLiteral("Bribes");
+            l.color = kYellow;
+            l.actorId = pid(report);
+            l.d6Roll = d.isEmpty() ? 0 : d.at(0).toInt();
+            l.d6Target = minRoll(report);
+            l.d6Ok = ok(report);
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
         }
         break;
 
     case 'p':
         if (id == QLatin1String("passRoll")) {
-            const QString s = suffix(report);
+            DiceLogLine l;
+            const QString suf = suffix(report);
             const QString pr = enumName(report.value(QStringLiteral("passResult")));
             QString extra;
             if (report.value(QStringLiteral("bomb")).toBool())
@@ -197,30 +201,42 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
                 extra += QStringLiteral(" [Hail Mary]");
             if (!pr.isEmpty())
                 extra += QStringLiteral(" (%1)").arg(pr);
-            push(QStringLiteral("%1 Pass %2%3%4")
-                     .arg(pid(report))
-                     .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report)))
-                     .arg(s.isEmpty() ? QString() : QStringLiteral(" %1").arg(s))
-                     .arg(extra),
-                 ok(report) ? kGreen : kRed);
+            l.text = QStringLiteral("Pass%1%2")
+                         .arg(extra)
+                         .arg(suf.isEmpty() ? QString() : QStringLiteral("  %1").arg(suf));
+            l.color = ok(report) ? kGreen : kRed;
+            l.actorId = pid(report);
+            l.d6Roll = roll(report);
+            l.d6Target = minRoll(report);
+            l.d6Ok = ok(report);
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
         } else if (id == QLatin1String("prayerRoll")) {
+            DiceLogLine l;
             const QString pn = enumName(report.value(QStringLiteral("prayer")));
-            push(QStringLiteral("%1 Prayer: %2 %3")
-                     .arg(tid(report))
-                     .arg(pn.isEmpty() ? QStringLiteral("?") : pn)
-                     .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report))),
-                 ok(report) ? kGreen : kRed);
+            l.text = QStringLiteral("Prayer: %1")
+                         .arg(pn.isEmpty() ? QStringLiteral("?") : pn);
+            l.color = ok(report) ? kGreen : kRed;
+            l.actorId = tid(report); // team id
+            l.d6Roll = roll(report);
+            l.d6Target = minRoll(report);
+            l.d6Ok = ok(report);
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
         } else if (id == QLatin1String("pilingOn")) {
+            DiceLogLine l;
             const QJsonArray d = report.value(QStringLiteral("rolls")).toArray();
-            const int r0 = d.isEmpty() ? 0 : d.at(0).toInt();
-            push(QStringLiteral("%1 Piling On %2")
-                     .arg(pid(report))
-                     .arg(formatRoll(r0, minRoll(report), report.contains("successful") ? ok(report) : true,
-                                     reRolled(report))),
-                 kYellow);
+            l.text = QStringLiteral("Piling On");
+            l.color = kYellow;
+            l.actorId = pid(report);
+            l.d6Roll = d.isEmpty() ? 0 : d.at(0).toInt();
+            l.d6Target = 0; // piling-on success has no printed threshold
+            l.d6Ok = report.contains(QStringLiteral("successful")) ? ok(report) : true;
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
         } else if (id == QLatin1String("playerAction")) {
             const QString an = enumName(report.value(QStringLiteral("playerAction")));
-            push(QStringLiteral("%1 %2").arg(pid(report)).arg(an.isEmpty() ? QStringLiteral("acted") : an),
+            push(QStringLiteral("%1").arg(an.isEmpty() ? QStringLiteral("acted") : an),
                  kLightGray);
         }
         break;
@@ -234,27 +250,41 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
             const bool armorBroken = report.value(QStringLiteral("armorBroken")).toBool();
             const QString ist = enumName(report.value(QStringLiteral("injury")));
             const QString si = enumName(report.value(QStringLiteral("seriousInjury")));
-            if (!ar.isEmpty())
-                push(QStringLiteral("%1 Armor %2").arg(did(report)).arg(armorBroken ? QStringLiteral("BROKEN!") : QStringLiteral("holds")),
-                     armorBroken ? kOrange : kGray);
-            if (!ir.isEmpty()) {
-                QString t = QStringLiteral("%1 Injury").arg(did(report));
-                if (!iType.isEmpty())
-                    t += QStringLiteral(" (%1)").arg(iType);
-                push(t, kYellow);
+            auto victim = [&](DiceLogLine &l) { l.actorId = did(report); };
+            if (!ar.isEmpty()) {
+                DiceLogLine l;
+                l.text = armorBroken ? QStringLiteral("Armor BROKEN!")
+                                     : QStringLiteral("Armor holds");
+                l.color = armorBroken ? kOrange : kGray;
+                victim(l);
+                out.append(l);
             }
-            if (!cr.isEmpty())
-                push(QStringLiteral("%1 is %2!%3")
-                         .arg(did(report))
-                         .arg(ist.isEmpty() ? QStringLiteral("out") : ist)
-                         .arg(si.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(si)),
-                     kRed);
-            if (ar.isEmpty() && ir.isEmpty() && cr.isEmpty())
-                push(QStringLiteral("%1 is %2!%3")
-                         .arg(did(report))
-                         .arg(ist.isEmpty() ? QStringLiteral("out") : ist)
-                         .arg(si.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(si)),
-                     kRed);
+            if (!ir.isEmpty()) {
+                DiceLogLine l;
+                l.text = iType.isEmpty() ? QStringLiteral("Injury")
+                                         : QStringLiteral("Injury (%1)").arg(iType);
+                l.color = kYellow;
+                victim(l);
+                out.append(l);
+            }
+            if (!cr.isEmpty()) {
+                DiceLogLine l;
+                l.text = QStringLiteral("is %1!%2")
+                             .arg(ist.isEmpty() ? QStringLiteral("out") : ist)
+                             .arg(si.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(si));
+                l.color = kRed;
+                victim(l);
+                out.append(l);
+            }
+            if (ar.isEmpty() && ir.isEmpty() && cr.isEmpty()) {
+                DiceLogLine l;
+                l.text = QStringLiteral("is %1!%2")
+                             .arg(ist.isEmpty() ? QStringLiteral("out") : ist)
+                             .arg(si.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(si));
+                l.color = kRed;
+                victim(l);
+                out.append(l);
+            }
         }
         break;
 
@@ -265,21 +295,27 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
             push(QStringLiteral("--- Half %1 starts ---").arg(report.value(QStringLiteral("half")).toInt()),
                  kGray);
         else if (id == QLatin1String("throwIn"))
-            push(QStringLiteral("%1 Throw-In").arg(tid(report)), kGray);
-        else if (id == QLatin1String("teamCaptainRoll"))
-            push(QStringLiteral("%1 Team Captain %2")
-                     .arg(tid(report))
-                     .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report))),
-                 kCyan);
-        else if (id == QLatin1String("timeoutEnforced"))
+            push(QStringLiteral("Throw-In"), kGray);
+        else if (id == QLatin1String("teamCaptainRoll")) {
+            DiceLogLine l;
+            l.text = QStringLiteral("Team Captain");
+            l.color = kCyan;
+            l.actorId = tid(report); // team id
+            l.d6Roll = roll(report);
+            l.d6Target = minRoll(report);
+            l.d6Ok = ok(report);
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
+        } else if (id == QLatin1String("timeoutEnforced"))
             push(QStringLiteral("Timeout enforced for %1!").arg(tid(report)), kRed);
         break;
 
     case 'f':
         if (id == QLatin1String("foul"))
-            push(QStringLiteral("%1 commits a Foul!%2")
-                     .arg(pid(report))
-                     .arg(report.value(QStringLiteral("foulUsed")).toBool() ? QStringLiteral(" (Foul used)") : QString()),
+            push(QStringLiteral("commits a Foul!%1")
+                     .arg(report.value(QStringLiteral("foulUsed")).toBool()
+                              ? QStringLiteral(" (Foul used)")
+                              : QString()),
                  kOrange);
         break;
 
@@ -287,8 +323,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         if (id == QLatin1String("skillUse")) {
             const QString sn = enumName(report.value(QStringLiteral("skill")));
             const QString su = enumName(report.value(QStringLiteral("skillUse")));
-            push(QStringLiteral("%1 uses %2%3")
-                     .arg(pid(report))
+            push(QStringLiteral("uses %1%2")
                      .arg(sn.isEmpty() ? QStringLiteral("skill") : sn)
                      .arg(su.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(su)),
                  kCyan);
@@ -304,11 +339,17 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
 
     case 'c':
         if (id == QLatin1String("confusionRoll")) {
-            const QString s = suffix(report);
-            push(QStringLiteral("Confusion %1%2")
-                     .arg(formatRoll(roll(report), minRoll(report), ok(report), reRolled(report)))
-                     .arg(s.isEmpty() ? QString() : QStringLiteral(" %1").arg(s)),
-                 ok(report) ? kGreen : kRed);
+            DiceLogLine l;
+            const QString suf = suffix(report);
+            l.text = suf.isEmpty() ? QStringLiteral("Confusion")
+                                   : QStringLiteral("Confusion  %1").arg(suf);
+            l.color = ok(report) ? kGreen : kRed;
+            l.actorId = pid(report);
+            l.d6Roll = roll(report);
+            l.d6Target = minRoll(report);
+            l.d6Ok = ok(report);
+            l.d6ReRolled = reRolled(report);
+            out.append(l);
         } else if (id == QLatin1String("coinThrow"))
             push(QStringLiteral("Coin Toss: %1")
                      .arg(report.value(QStringLiteral("coinThrowHeads")).toBool() ? QStringLiteral("Heads") : QStringLiteral("Tails")),
@@ -325,12 +366,12 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
 
     case 'r':
         if (id == QLatin1String("reRoll"))
-            push(QStringLiteral("%1 uses a Re-Roll").arg(pid(report)), kBlue);
+            push(QStringLiteral("uses a Re-Roll"), kBlue);
         break;
 
     case 'l':
         if (id == QLatin1String("leader"))
-            push(QStringLiteral("%1 uses Leader").arg(pid(report)), kCyan);
+            push(QStringLiteral("uses Leader"), kCyan);
         break;
 
     case 'g':

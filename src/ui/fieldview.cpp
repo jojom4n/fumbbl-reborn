@@ -5,17 +5,22 @@
 
 #include "core/assets.h"
 
+#include <QEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPair>
 #include <QPaintEvent>
 #include <QPixmap>
 #include <QRandomGenerator>
+#include <QWheelEvent>
 
 FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
 {
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
+    setMouseTracking(true); // hover cards (Mockup F round 8)
+    setCursor(Qt::OpenHandCursor);
 }
 
 QSize FieldView::sizeHint() const
@@ -115,12 +120,15 @@ void FieldView::setSelectedPlayer(const QString &playerId)
 const FieldView::PlayerToken *FieldView::tokenAt(const QPoint &pos) const
 {
     const QRectF f = fieldRect();
-    if (f.isEmpty() || !f.contains(pos))
+    if (f.isEmpty())
+        return nullptr;
+    const QPointF w = toFieldSpace(pos);
+    if (!f.contains(w))
         return nullptr;
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
-    const int x = int((pos.x() - f.x()) / cellW);
-    const int y = int((pos.y() - f.y()) / cellH);
+    const int x = int((w.x() - f.x()) / cellW);
+    const int y = int((w.y() - f.y()) / cellH);
     if (x < 0 || x >= kFieldWidth || y < 0 || y >= kFieldHeight)
         return nullptr;
 
@@ -139,8 +147,115 @@ void FieldView::mousePressEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton) {
         const PlayerToken *t = tokenAt(event->pos());
         emit playerClicked(t ? t->playerId : QString());
+    } else if (event->button() == Qt::RightButton) {
+        // Right button: potential pan (round 8). A click without movement
+        // resets the view; a drag pans (the move handler clamps).
+        m_panning = true;
+        m_panStart = event->pos();
+        m_panStartOffset = m_pan;
     }
     QWidget::mousePressEvent(event);
+}
+
+void FieldView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (m_panning) {
+        if (m_zoom > 1.0001) {
+            m_pan = m_panStartOffset + QPointF(event->pos() - m_panStart);
+            clampPan();
+            update();
+        }
+        return;
+    }
+    // Hover: field tokens first, then bench faces. The hover "key" (token
+    // id, or the box-entry name) changes only when the target changes.
+    const PlayerToken *t = tokenAt(event->pos());
+    PlayerToken tok;
+    QString key;
+    if (t) {
+        tok = *t;
+        for (const PlayerToken &h : m_homePlayers)
+            if (h.playerId == t->playerId) { tok.sideHome = true; break; }
+        key = t->playerId;
+    } else {
+        bool side = true;
+        const BoxEntry *be = boxEntryAt(event->pos(), side);
+        if (be) {
+            tok.name = be->name;
+            tok.positionName = be->positionName;
+            tok.state = be->state;
+            tok.sideHome = side;
+            tok.playerId = QString(); // resolved by name in the model
+            key = QStringLiteral("box:") + be->name;
+        }
+    }
+    if (key != m_hoverId) {
+        m_hoverId = key;
+        emit playerHovered(tok);
+    }
+}
+
+void FieldView::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::RightButton && m_panning) {
+        m_panning = false;
+        if (QLineF(m_panStart, event->pos()).length() < 4.0)
+            resetView(); // plain right click = reset zoom/pan
+    }
+    QWidget::mouseReleaseEvent(event);
+}
+
+void FieldView::leaveEvent(QEvent *)
+{
+    if (!m_hoverId.isEmpty()) {
+        m_hoverId.clear();
+        emit playerHovered(PlayerToken());
+    }
+}
+
+void FieldView::wheelEvent(QWheelEvent *event)
+{
+    // Zoom anchored on the cursor (round 8).
+    const int dy = event->angleDelta().y();
+    if (dy == 0) {
+        event->accept();
+        return;
+    }
+    const qreal factor = dy > 0 ? 1.15 : (1.0 / 1.15);
+    const qreal newZoom = qBound(1.0, m_zoom * factor, 3.0);
+    if (qFuzzyCompare(newZoom, m_zoom)) {
+        event->accept();
+        return;
+    }
+    const QPointF cursor = event->position();
+    const QPointF world = toFieldSpace(cursor);
+    m_zoom = newZoom;
+    m_pan = cursor - world * m_zoom;
+    if (m_zoom <= 1.0001)
+        m_pan = QPointF();
+    clampPan();
+    update();
+    event->accept();
+}
+
+void FieldView::resetView()
+{
+    m_zoom = 1.0;
+    m_pan = QPointF();
+    update();
+}
+
+QPointF FieldView::toFieldSpace(const QPointF &pos) const
+{
+    return (pos - m_pan) / m_zoom;
+}
+
+void FieldView::clampPan()
+{
+    // Keep the (zoomed) field covering the widget.
+    const qreal W = width(), H = height();
+    m_pan.setX(qBound(W - W * m_zoom, m_pan.x(), 0.0));
+    m_pan.setY(qBound(H - H * m_zoom, m_pan.y(), 0.0));
 }
 
 QRectF FieldView::fieldRect() const
@@ -160,6 +275,73 @@ QRectF FieldView::cellRect(int x, int y) const
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
     return QRectF(f.x() + x * cellW, f.y() + y * cellH, cellW, cellH);
+}
+
+// Layout of the filled slots of one strip: shared by the painter and the
+// hover hit-test, so the two never drift apart. Scaled against the field
+// height (the mockup was authored at a 739px field).
+QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
+    const QRectF &f, const QVector<BoxEntry> &entries, bool leftSide) const
+{
+    Q_UNUSED(leftSide)
+    QVector<QPair<QRectF, const BoxEntry*>> filled;
+    if (f.isEmpty())
+        return filled;
+    const qreal s = f.height() / 739.0;
+    const qreal stripW = 46 * s;
+    const qreal x = leftSide ? f.x() + 8 * s : f.right() - 8 * s - stripW;
+    const qreal y0 = f.y() + 120 * s;
+
+    const auto inSection = [](int st, const QVector<int> &codes) {
+        st &= 0xFF;
+        return codes.contains(st);
+    };
+    const struct { const char *label; QVector<int> codes; } sections[] = {
+        { "RESERVE", { 9 } },
+        { "KO", { 5 } },
+        { "INJURED", { 6, 7, 8, 10 } },
+    };
+
+    qreal y = y0 + 20 * s;
+    for (const auto &sec : sections) {
+        y += 13 * s; // section label row
+        const QVector<int> &codes = sec.codes;
+        QVector<const BoxEntry *> mine;
+        for (const BoxEntry &e : entries)
+            if (inSection(e.state, codes))
+                mine.append(&e);
+        const int n = qMax(2, mine.size());
+        const qreal ringR = 12 * s;
+        const qreal cx = x + 23 * s;
+        for (int i = 0; i < n; ++i) {
+            if (i < mine.size()) {
+                const qreal sy = y + i * 24 * s + 12 * s;
+                filled.append({ QRectF(cx - ringR, sy - ringR, ringR * 2, ringR * 2),
+                               mine[i] });
+            }
+        }
+        y += n * 24 * s + 6 * s;
+    }
+    return filled;
+}
+
+// The box-strip entry under a WIDGET point (screen space: the strips are HUD
+// and stay put while the field zooms/pans).
+const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHome) const
+{
+    const QRectF f(0, 0, width(), height());
+    sideHome = true;
+    const auto hit = [this, f, pos](const QVector<BoxEntry> &entries, bool left) -> const BoxEntry * {
+        for (const auto &sl : boxSlots(f, entries, left))
+            if (sl.first.contains(QPointF(pos)))
+                return sl.second;
+        return nullptr;
+    };
+    const BoxEntry *e = hit(m_homeBox, true);
+    if (e)
+        return e;
+    sideHome = false;
+    return hit(m_awayBox, false);
 }
 
 // Bench box strip (Mockup F): a thin translucent vertical card on the field
@@ -348,6 +530,13 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
+    // Field navigation (round 8): the WHOLE field (texture, grid, tokens,
+    // rain) lives in a zoomed/panned space; the bench strips are HUD and are
+    // drawn afterwards in screen space.
+    p.save();
+    p.translate(m_pan);
+    p.scale(m_zoom, m_zoom);
+
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
 
@@ -390,14 +579,14 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cx = f.x() + 13 * cellW;
     p.drawLine(QPointF(cx, f.y()), QPointF(cx, f.bottom()));
 
-    // --- Team logos: per-match watermarks centered on each half (~19%;
-    // round 7: less transparent than the mockup's original 13%) ----------
+    // --- Team logos: per-match watermarks centered on each half.
+    // Round 8: 25% — the user found 19% still too transparent.
     const auto drawLogo = [&](const QPixmap &pm, qreal col) {
         if (pm.isNull())
             return;
         const qreal s = f.height() * 0.52;
         p.save();
-        p.setOpacity(0.19);
+        p.setOpacity(0.25);
         p.drawPixmap(QRectF(f.x() + col * cellW - s / 2, f.center().y() - s / 2, s, s), pm,
                      QRectF(0, 0, pm.width(), pm.height()));
         p.restore();
@@ -553,7 +742,30 @@ void FieldView::paintEvent(QPaintEvent *)
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
 
-    // --- Bench box strips (left = home, right = away; Mockup F) -----------
+    // --- Selection ring (last in field space, so it is always visible) -------
+    if (!m_selectedPlayer.isEmpty()) {
+        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
+            for (const PlayerToken &t : team)
+                if (t.playerId == m_selectedPlayer)
+                    return &t;
+            return nullptr;
+        };
+        const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
+        if (sel) {
+            const QRectF c = cellRect(sel->x, sel->y);
+            const QRectF ring(c.center().x() - cellW * 0.44, c.center().y() - cellH * 0.44,
+                              cellW * 0.88, cellH * 0.88);
+            QPen selPen(QColor(0xff, 0xd2, 0x4a), qMax(2.0, cellW * 0.09));
+            p.setPen(selPen);
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(ring, cellW * 0.12, cellW * 0.12);
+        }
+    }
+
+    p.restore(); // end of the zoomed field space
+
+    // --- Bench box strips (left = home, right = away; Mockup F). HUD: drawn
+    //     in screen space so they stay visible while the field zooms/pans. --
     paintBoxStrip(p, f, m_homeColor, m_homeBox, true);
     paintBoxStrip(p, f, m_awayColor, m_awayBox, false);
 
@@ -580,23 +792,4 @@ void FieldView::paintEvent(QPaintEvent *)
         }
     }
 
-    // --- Selection ring (drawn last so it is always visible) -----------------
-    if (!m_selectedPlayer.isEmpty()) {
-        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
-            for (const PlayerToken &t : team)
-                if (t.playerId == m_selectedPlayer)
-                    return &t;
-            return nullptr;
-        };
-        const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
-        if (sel) {
-            const QRectF c = cellRect(sel->x, sel->y);
-            const QRectF ring(c.center().x() - cellW * 0.44, c.center().y() - cellH * 0.44,
-                              cellW * 0.88, cellH * 0.88);
-            QPen selPen(QColor(0xff, 0xd2, 0x4a), qMax(2.0, cellW * 0.09));
-            p.setPen(selPen);
-            p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(ring, cellW * 0.12, cellW * 0.12);
-        }
-    }
 }

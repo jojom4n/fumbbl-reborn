@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QSet>
 #include <QSpinBox>
 
@@ -27,14 +28,13 @@
 #include "core/gamemodel.h"
 #include "core/matchlist.h"
 #include "core/reportparser.h"
+#include "ui/actionlog.h"
 #include "ui/chatwidget.h"
-#include "ui/dicelogwidget.h"
 #include "ui/fieldview.h"
 #include "ui/headerview.h"
 #include "ui/mainwindow.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
-#include "ui/rosterwidget.h"
 #include "ui/spectatedialog.h"
 
 namespace {
@@ -116,9 +116,11 @@ void UiWiringTest::gameStatePopulatesUi()
     w.show();
     GameModel *model = w.model();
     FieldView *field = w.findChild<FieldView *>();
-    RosterWidget *home = w.findChild<RosterWidget *>(QStringLiteral("roster_home"));
-    RosterWidget *away = w.findChild<RosterWidget *>(QStringLiteral("roster_away"));
-    QVERIFY(model && field && home && away);
+    ActionLogWidget *actionLog = w.findChild<ActionLogWidget *>();
+    // Round 8: rosters are gone (field box strips cover box/KO/reserve).
+    QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_home")));
+    QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_away")));
+    QVERIFY(model && field && actionLog);
 
     w.onGameState(fixtureGame());
 
@@ -134,10 +136,6 @@ void UiWiringTest::gameStatePopulatesUi()
     QCOMPARE(hv->teamAwayName(), QStringLiteral("Dwarves FC"));
     QCOMPARE(hv->scoreHome(), 0);
     QCOMPARE(hv->scoreAway(), 0);
-
-    // Rosters populated (11 each)
-    QCOMPARE(home->count(), 11);
-    QCOMPARE(away->count(), 11);
 
     // Field: 22 tokens, ball at (8,5)
     QCOMPARE(field->playerCount(), 22);
@@ -328,7 +326,7 @@ void UiWiringTest::talkAndJoinPopulateChatAndSpectators()
     MainWindow w;
     w.show();
     ChatWidget *chat = w.findChild<ChatWidget *>();
-    DiceLogWidget *dice = w.findChild<DiceLogWidget *>();
+    ActionLogWidget *dice = w.findChild<ActionLogWidget *>();
     QVERIFY(chat && dice);
 
     // serverTalk: coach + talks[]
@@ -420,9 +418,11 @@ void UiWiringTest::panelLayoutPersistAndReset()
     MainWindow w;
     w.show();
 
-    RosterWidget *home = w.findChild<RosterWidget *>(QStringLiteral("roster_home"));
-    QVERIFY(home);
-    FloatingPanel *panel = panelFor(&w, home);
+    // Round 8: the rosters are gone — use the player info panel (it still
+    // participates in the layout system until hover drives it).
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+    FloatingPanel *panel = panelFor(&w, info);
     QVERIFY(panel);
 
     // The default layout lands on the first stage resize.
@@ -461,11 +461,7 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
     QSettings settings;
     QJsonObject panels;
     const struct { const char *name; int x, y, w, h; } seed[] = {
-        { "home_roster", 40, 40, 300, 400 },
-        { "away_roster", 450, 40, 260, 300 },
         { "player_info", 40, 350, 380, 220 },
-        { "dice_log", 430, 350, 280, 220 },
-        { "chat", 450, 60, 260, 220 },
         { "protocol", 700, 40, 200, 200 },
     };
     for (const auto &s2 : seed) {
@@ -483,16 +479,17 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
                       QJsonDocument(root).toJson(QJsonDocument::Compact));
 
     MainWindow w; // ctor shows maximized; the saved layout lands on first sizing
-    RosterWidget *home = w.findChild<RosterWidget *>(QStringLiteral("roster_home"));
-    QVERIFY(home);
-    FloatingPanel *panel = panelFor(&w, home);
+    // Round 8: rosters gone — assert on the player_info seed.
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+    FloatingPanel *panel = panelFor(&w, info);
     QVERIFY(panel);
 
     QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 3000);
     QCOMPARE(panel->x(), 40);
-    QCOMPARE(panel->y(), 40);
-    QCOMPARE(panel->width(), 300);
-    QCOMPARE(panel->height(), 400);
+    QCOMPARE(panel->y(), 350);
+    QCOMPARE(panel->width(), 380);
+    QCOMPARE(panel->height(), 220);
 }
 
 void UiWiringTest::matchListParsing()
@@ -599,13 +596,13 @@ void UiWiringTest::faceBareNameLookup()
              faceBytes(QStringLiteral("Skaven Clanrat")));
 }
 
-// The dice log must show the player's NAME, not the raw numeric id from the
-// report payload (user reported "18234934 dodged…" instead of the name).
+// The action log must show the player's NAME, not the raw numeric id from
+// the report payload (user reported "18234934 dodged…" instead of the name).
 void UiWiringTest::diceLogShowsPlayerName()
 {
     MainWindow w;
     w.show();
-    DiceLogWidget *dice = w.findChild<DiceLogWidget *>();
+    ActionLogWidget *dice = w.findChild<ActionLogWidget *>();
     QVERIFY(dice);
     w.onGameState(fixtureGame());
 
