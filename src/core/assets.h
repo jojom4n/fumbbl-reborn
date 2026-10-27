@@ -48,6 +48,11 @@ QPixmap cardPixmap(const QString &cardName);
 // those at runtime). Null pixmap when the file is missing (FieldView falls
 // back to the flat fill).
 QPixmap fieldTexture();
+// The DUGOUT panel (assets/dugout/dugout.png): the earthy soil bench zone,
+// a SEPARATE asset from the field texture — identical for every field type
+// (round 12). 1:2 aspect, 3 equal bands RESERVE / KO / INJURED. Null pixmap
+// when missing (FieldView falls back to a flat soil fill).
+QPixmap dugoutTexture();
 
 // True when the face set is available.
 bool isAvailable();

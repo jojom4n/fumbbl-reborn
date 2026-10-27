@@ -80,10 +80,13 @@ public:
     // The game model (exposed for tests / tooling; the UI reads from it).
     GameModel *model() const { return m_model; }
     // The currently selected player (playerId, "" = none).
-    QString selectedPlayerId() const { return m_selectedPlayerId; }
+    // Show the info card for a player (no selection: the spectator does not
+    // select players — the field rim glow is the REMOTE coach's selection,
+    // driven by the model's actingPlayer).
+    void showPlayerCardById(const QString &playerId);
     // Select a model player (field highlight + Player Info panel). Public so
     // tests can drive the same path the field/roster clicks take.
-    void selectPlayer(const QString &playerId);
+
     // Round 10: match-list team logos (e.g. "/i/486335") used as the logo
     // source when the game state's logoUrl is null. Public so tests can
     // drive the same path the Spectate dialog takes.
@@ -156,7 +159,7 @@ private:
     void loadTeamLogos();
     void onLogoReplyFinished(QNetworkReply *reply);
 
-    QString m_selectedPlayerId; // the player shown in the Player Info panel
+
     bool m_layoutApplied = false; // default/saved geometry applied once
 
     // Core

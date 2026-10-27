@@ -79,9 +79,10 @@ class UiWiringTest : public QObject
 private slots:
     void gameStatePopulatesUi();
     void modelSyncUpdatesUi();
-    void fieldClickSelectsPlayer();
-    void fieldClickEmptyDeselects();
-    void selectionFollowsModelSync();
+    void fieldClickShowsCard();
+    void fieldClickEmptyHidesCard();
+    void glowFollowsRemoteSelection();
+    void cardFollowsModelSync();
     void gameTimeDrivesTimer();
     void talkAndJoinPopulateChatAndSpectators();
     void assetsLoad();
@@ -104,7 +105,7 @@ private slots:
     // ---- Round 10 (header spacing, logos, chat default, upward log, glow) ----
     void chatStartsCollapsedByDefault();
     void actionLogExpandsUpward();
-    void hoverDoesNotMoveSelectionGlow();
+    void hoverAndClickDoNotMoveGlow();
     void playerInfoCardIsChromeless();
     void matchListLogoFallbackUsedWhenGameStateNull();
     void proneAndStunnedMarksRendered();
@@ -113,6 +114,9 @@ private slots:
     void downedFaceNotSquashed();
     void diceAssetsPreScaled();
     void playerCardGrowsWithSkillCount();
+    // ---- Round 12 (remote glow, animated rain) ----
+    void rainSimulationDropsAndSplashes();
+    void fieldRainAnimationActive();
 };
 
 namespace {
@@ -120,9 +124,13 @@ namespace {
 // as FieldView (the field now fills the whole widget, 26x15 cells, phase 10).
 QPoint cellCenter(const FieldView *field, int x, int y)
 {
-    const qreal cellW = field->width() / 26.0;
-    const qreal cellH = field->height() / 15.0;
-    return QPoint(int((x + 0.5) * cellW), int((y + 0.5) * cellH));
+    // Round 12 scene: [dugout 5 | pitch 26 | dugout 5] = 36x15 cells, SQUARE
+    // (the scene is fitted into the widget and centered — letterbox).
+    const qreal W = field->width(), H = field->height();
+    const qreal cell = qMin(W / 36.0, H / 15.0);
+    const qreal ox = (W - 36.0 * cell) / 2.0;
+    const qreal oy = (H - 15.0 * cell) / 2.0;
+    return QPoint(int(ox + (5 + x + 0.5) * cell), int(oy + (y + 0.5) * cell));
 }
 
 // The FloatingPanel that wraps `content` (the HUD overlay of phase 10).
@@ -201,9 +209,10 @@ void UiWiringTest::modelSyncUpdatesUi()
     QCOMPARE(field->playerCount(), 21);
 }
 
-// Clicking a player token selects it: the Player Info panel fills with the
-// model data and the field highlights the token.
-void UiWiringTest::fieldClickSelectsPlayer()
+// Round 12: clicking a player token only shows its info card (the same as
+// hovering it). The field rim glow is the REMOTE coach's selection (the
+// model's actingPlayer) and a local click never moves it.
+void UiWiringTest::fieldClickShowsCard()
 {
     MainWindow w;
     w.show();
@@ -218,25 +227,38 @@ void UiWiringTest::fieldClickSelectsPlayer()
     field->setFixedSize(780, 450);
     QApplication::processEvents();
 
-    // Acting player 18109690 stands at (3,2).
-    const FFBPlayer *p = model->findPlayerById(QStringLiteral("18109690"));
-    QVERIFY(p && p->hasCoords);
-    const QPoint pt = cellCenter(field, 3, 2);
-    QCOMPARE(field->tokenAt(pt)->playerId, QStringLiteral("18109690"));
+    // The fixture's REMOTE acting player is 18109690 at (3,2): the glow is
+    // on it before any local input.
+    QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
+
+    // Find ANOTHER on-field player and click it.
+    const FFBPlayer *other = nullptr;
+    for (const FieldToken &t : model->fieldTokens()) {
+        if (t.playerId == QStringLiteral("18109690"))
+            continue;
+        if (const FFBPlayer *c = model->findPlayerById(t.playerId)) {
+            other = c;
+            break;
+        }
+    }
+    QVERIFY(other && other->hasCoords);
+    const QPoint pt = cellCenter(field, other->fieldX, other->fieldY);
 
     QTest::mouseClick(field, Qt::LeftButton, {}, pt);
 
-    QCOMPARE(w.selectedPlayerId(), QStringLiteral("18109690"));
-    QCOMPARE(info->shownPlayerId(), QStringLiteral("18109690"));
+    // The CARD shows the clicked player...
+    QCOMPARE(info->shownPlayerId(), other->playerId);
+    // ...but the GLOW stays on the remote acting player.
     QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
     // The panel shows the player's name (uppercase, Mockup F card) and a
     // stat (ST from the model).
-    QVERIFY(labelContains(info, p->name.toUpper()));
+    QVERIFY(labelContains(info, other->name.toUpper()));
     QVERIFY(labelContains(info, QStringLiteral("ST")));
 }
 
-// Clicking an empty square deselects (placeholder back, no highlight).
-void UiWiringTest::fieldClickEmptyDeselects()
+// Round 12: clicking an empty square hides the card; the glow (remote
+// selection) is untouched.
+void UiWiringTest::fieldClickEmptyHidesCard()
 {
     MainWindow w;
     w.show();
@@ -248,6 +270,13 @@ void UiWiringTest::fieldClickEmptyDeselects()
     w.onGameState(fixtureGame());
     field->setFixedSize(780, 450);
     QApplication::processEvents();
+
+    // Glow: the fixture's remote acting player.
+    QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
+
+    // Show the card for 18109690 with a real click (it stands at (3,2)).
+    QTest::mouseClick(field, Qt::LeftButton, {}, cellCenter(field, 3, 2));
+    QCOMPARE(info->shownPlayerId(), QStringLiteral("18109690"));
 
     // Find a field cell with no player on it.
     QSet<QPoint> occupied;
@@ -263,23 +292,63 @@ void UiWiringTest::fieldClickEmptyDeselects()
             }
     QVERIFY(ex >= 0);
 
-    // Select first, then click the empty cell.
-    const FieldToken first = model->fieldTokens().first();
-    const FFBPlayer *any = model->findPlayerById(first.playerId);
-    QVERIFY(any);
-    w.selectPlayer(first.playerId);
-    QCOMPARE(w.selectedPlayerId(), first.playerId);
-
     QTest::mouseClick(field, Qt::LeftButton, {}, cellCenter(field, ex, ey));
 
-    QCOMPARE(w.selectedPlayerId(), QString());
-    QCOMPARE(info->shownPlayerId(), QString());
+    QCOMPARE(info->shownPlayerId(), QString()); // card hidden
+    QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690")); // glow unchanged
+}
+
+// Round 12: the rim glow is the REMOTE human's selection. It follows the
+// actingPlayerSetPlayerId model changes (the moment the coach picks a
+// player to act) and clears when the action ends (null value).
+void UiWiringTest::glowFollowsRemoteSelection()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(model && field);
+
+    w.onGameState(fixtureGame());
+    field->setFixedSize(780, 450);
+    QApplication::processEvents();
+
+    // Initial: the fixture's acting player.
+    QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690"));
+
+    // The remote coach picks another player: the glow moves there.
+    const FFBPlayer *other = nullptr;
+    for (const FieldToken &t : model->fieldTokens()) {
+        if (t.playerId == QStringLiteral("18109690"))
+            continue;
+        if (model->findPlayerById(t.playerId)) {
+            other = model->findPlayerById(t.playerId);
+            break;
+        }
+    }
+    QVERIFY(other);
+    QJsonArray changes;
+    QJsonObject c;
+    c.insert(QStringLiteral("modelChangeId"), QStringLiteral("actingPlayerSetPlayerId"));
+    c.insert(QStringLiteral("modelChangeValue"), other->playerId);
+    changes.append(c);
+    w.onModelSync(changes, QJsonArray());
+    QCOMPARE(field->selectedPlayer(), other->playerId);
+
+    // The action ends: actingPlayer cleared (null) -> no glow.
+    QJsonArray changes2;
+    QJsonObject c2;
+    c2.insert(QStringLiteral("modelChangeId"), QStringLiteral("actingPlayerSetPlayerId"));
+    c2.insert(QStringLiteral("modelChangeValue"), QJsonValue()); // null
+    changes2.append(c2);
+    w.onModelSync(changes2, QJsonArray());
     QCOMPARE(field->selectedPlayer(), QString());
 }
 
-// The selection survives model updates: state changes refresh the panel;
-// removing the player deselects.
-void UiWiringTest::selectionFollowsModelSync()
+// The info card survives model updates: state changes refresh it; removing
+// the player hides it (round 12: the card is opened by hover/click but its
+// data stays live).
+void UiWiringTest::cardFollowsModelSync()
 {
     MainWindow w;
     w.show();
@@ -293,11 +362,10 @@ void UiWiringTest::selectionFollowsModelSync()
     QApplication::processEvents();
 
     const QString id = QStringLiteral("18109690");
-    w.selectPlayer(id);
-    QCOMPARE(w.selectedPlayerId(), id);
+    QTest::mouseClick(field, Qt::LeftButton, {}, cellCenter(field, 3, 2));
+    QCOMPARE(info->shownPlayerId(), id);
 
-    // The selected player is KO'd into the home box: selection kept, panel
-    // shows the box state.
+    // The player is KO'd into the home box: card kept, shows the box state.
     QJsonArray changes;
     QJsonArray ko;
     ko << -2 << 0;
@@ -313,11 +381,10 @@ void UiWiringTest::selectionFollowsModelSync()
     changes.append(c2);
     w.onModelSync(changes, QJsonArray());
 
-    QCOMPARE(w.selectedPlayerId(), id);
     QCOMPARE(info->shownPlayerId(), id);
     QVERIFY(labelContains(info, QStringLiteral("KO")));
 
-    // The player is removed from the game: the selection is dropped.
+    // The player is removed from the game: the card is hidden.
     QJsonArray changes2;
     QJsonObject c3;
     c3.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelRemovePlayer"));
@@ -326,7 +393,6 @@ void UiWiringTest::selectionFollowsModelSync()
     changes2.append(c3);
     w.onModelSync(changes2, QJsonArray());
 
-    QCOMPARE(w.selectedPlayerId(), QString());
     QCOMPARE(info->shownPlayerId(), QString());
 }
 
@@ -1128,40 +1194,42 @@ void UiWiringTest::actionLogExpandsUpward()
     QVERIFY2(qAbs(log->geometry().y() - yCompact) <= 1, "back to the compact slot");
 }
 
-// Round 10 point 5: the selection GLOW follows the player the user CLICKED
-// to act on — the spectator mouse hover only drives the info card and must
-// not move the glow. The glow moves on the next click (or clears on an
-// empty-field click).
-void UiWiringTest::hoverDoesNotMoveSelectionGlow()
+// Round 12: NO local mouse input moves the rim glow — it is the REMOTE
+// human's selection (model-driven). Hover and click only drive the info
+// card; only an actingPlayerSetPlayerId model change moves the glow.
+void UiWiringTest::hoverAndClickDoNotMoveGlow()
 {
     MainWindow w;
     w.show();
     FieldView *field = w.findChild<FieldView *>();
     QVERIFY(field);
     w.onGameState(fixtureGame());
+    field->setFixedSize(780, 450);
     PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
     QVERIFY(info);
 
-    // Two different on-field home players.
-    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    // The remote acting player (fixture): the glow starts on it.
+    const QString acting = QStringLiteral("18109690");
+    QCOMPARE(field->selectedPlayer(), acting);
+
+    // Two other on-field players: A and B.
     const FFBPlayer *a = nullptr;
     const FFBPlayer *b = nullptr;
-    for (const FFBPlayer &cand : home) {
-        if (!cand.hasCoords || !GameModel::isOnField(cand.fieldX, cand.fieldY))
+    for (const FieldToken &t : w.model()->fieldTokens()) {
+        if (t.playerId == acting)
+            continue;
+        const FFBPlayer *cand = w.model()->findPlayerById(t.playerId);
+        if (!cand || !cand->hasCoords || !GameModel::isOnField(cand->fieldX, cand->fieldY))
             continue;
         if (!a)
-            a = &cand;
-        else if (cand.playerId != a->playerId)
-            b = &cand;
+            a = cand;
+        else if (cand->playerId != a->playerId)
+            b = cand;
     }
     QVERIFY(a && b);
 
-    // Click-select A: glow + card on A.
-    w.selectPlayer(a->playerId);
-    QCOMPARE(field->selectedPlayer(), a->playerId);
-
     // Hover B (real field mouse path): the card follows the hover, the GLOW
-    // stays on A.
+    // stays on the remote acting player.
     {
         const QPoint at = cellCenter(field, b->fieldX, b->fieldY);
         QMouseEvent move(QMouseEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
@@ -1169,52 +1237,22 @@ void UiWiringTest::hoverDoesNotMoveSelectionGlow()
         QApplication::processEvents();
     }
     QCOMPARE(info->shownPlayerId(), b->playerId); // card follows hover
-    QCOMPARE(field->selectedPlayer(), a->playerId); // glow unchanged
-    QCOMPARE(w.selectedPlayerId(), a->playerId);
+    QCOMPARE(field->selectedPlayer(), acting); // glow unchanged
 
-    // Mouse moves to an empty cell: the card hides, the glow STILL on A.
-    const auto occupied = [&](int x, int y) {
-        for (const FieldToken &t : w.model()->fieldTokens())
-            if (t.x == x && t.y == y)
-                return true;
-        return false;
-    };
-    int ex = -1, ey = -1;
-    for (int y = 0; y < 15 && ex < 0; ++y)
-        for (int x = 0; x < 26; ++x)
-            if (!occupied(x, y)) {
-                ex = x;
-                ey = y;
-                break;
-            }
-    QVERIFY(ex >= 0);
-    {
-        const QPoint at = cellCenter(field, ex, ey);
-        QMouseEvent move(QMouseEvent::MouseMove, at, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
-        QApplication::sendEvent(field, &move);
-        QApplication::processEvents();
-    }
-    QCOMPARE(info->shownPlayerId(), QString()); // card hidden
-    QCOMPARE(field->selectedPlayer(), a->playerId); // glow still on A
-    QCOMPARE(w.selectedPlayerId(), a->playerId);
+    // CLICK B (real mouse path): the card stays on B, the GLOW is STILL
+    // untouched — the spectator does not select players.
+    QTest::mouseClick(field, Qt::LeftButton, {}, cellCenter(field, b->fieldX, b->fieldY));
+    QCOMPARE(info->shownPlayerId(), b->playerId);
+    QCOMPARE(field->selectedPlayer(), acting);
 
-    // Click B: the glow moves to B.
-    w.selectPlayer(b->playerId);
+    // The remote coach now selects B: ONLY a model change moves the glow.
+    QJsonArray changes;
+    QJsonObject c;
+    c.insert(QStringLiteral("modelChangeId"), QStringLiteral("actingPlayerSetPlayerId"));
+    c.insert(QStringLiteral("modelChangeValue"), b->playerId);
+    changes.append(c);
+    w.onModelSync(changes, QJsonArray());
     QCOMPARE(field->selectedPlayer(), b->playerId);
-
-    // Empty-field click (real mouse path): selection clears.
-    {
-        const QPoint at = cellCenter(field, ex, ey);
-        QMouseEvent press(QMouseEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
-                          Qt::NoModifier);
-        QApplication::sendEvent(field, &press);
-        QMouseEvent release(QMouseEvent::MouseButtonRelease, at, Qt::NoButton, Qt::NoButton,
-                            Qt::NoModifier);
-        QApplication::sendEvent(field, &release);
-        QApplication::processEvents();
-    }
-    QCOMPARE(field->selectedPlayer(), QString());
-    QCOMPARE(w.selectedPlayerId(), QString());
 }
 
 // Round 10 (player_info.png): the hover card is CHROMELESS — no "Player
@@ -1271,7 +1309,7 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 {
     const auto renderState = [](int state) -> QImage {
         FieldView field;
-        field.resize(1040, 600); // 26x15 cells of 40px
+        field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1294,8 +1332,9 @@ void UiWiringTest::proneAndStunnedMarksRendered()
         return n;
     };
 
-    // Cell (13,7) center = ((13.5)*40, (7.5)*40) = (540, 300).
-    const QRect patch(540 - 12, 300 - 12, 24, 24);
+    // Cell (13,7) center = ((5+13.5)*40, (7.5)*40) = (740, 300) (round 12:
+// +5 dugout columns).
+    const QRect patch(740 - 12, 300 - 12, 24, 24);
     const QImage clean = renderState(1);  // standing
     const QImage prone = renderState(3);  // prone  -> "/"
     const QImage stunned = renderState(4); // stunned -> "X"
@@ -1327,7 +1366,7 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 void UiWiringTest::wideZoneLinesDrawn()
 {
     FieldView field;
-    field.resize(1040, 600); // 40px cells
+    field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
     field.show();
     QApplication::processEvents();
     const QImage img = field.grab().toImage();
@@ -1338,7 +1377,9 @@ void UiWiringTest::wideZoneLinesDrawn()
     // Brightness the line adds over the 8px-below pixel (same grass stripe).
     const auto lineBoost = [&](int row) {
         int sum = 0, n = 0;
-        for (int x = 60; x < 980; x += 10) {
+        // The pitch spans x 200..1240 (round 12: 5 dugout columns on each
+        // side) — sample the interior only.
+        for (int x = 240; x < 1200; x += 10) {
             sum += qMax(0, lum(x, row * 40) - lum(x, row * 40 + 8));
             ++n;
         }
@@ -1366,7 +1407,7 @@ void UiWiringTest::downedFaceNotSquashed()
 {
     const auto render = [](int state) -> QImage {
         FieldView field;
-        field.resize(1040, 600);
+        field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1384,9 +1425,10 @@ void UiWiringTest::downedFaceNotSquashed()
 
     const QImage standing = render(1);
     const QImage prone = render(3);
-    // Token center (540, 300); the 12-o'clock ring pixel is (540, 283).
-    QVERIFY2(goldish(standing, 540, 283), "geometry sanity: standing token ring is gold");
-    QVERIFY2(goldish(prone, 540, 283),
+    // Token center (740, 300) (round 12: +5 dugout columns); the 12-o'clock
+    // ring pixel is (740, 283).
+    QVERIFY2(goldish(standing, 740, 283), "geometry sanity: standing token ring is gold");
+    QVERIFY2(goldish(prone, 740, 283),
              "downed token must keep the FULL round circle (face not squashed)");
 }
 
@@ -1462,7 +1504,7 @@ void UiWiringTest::playerCardGrowsWithSkillCount()
             break;
         }
     QVERIFY(p);
-    w.selectPlayer(p->playerId);
+    w.showPlayerCardById(p->playerId);
     QApplication::processEvents();
     FloatingPanel *panel = panelFor(&w, info);
     QVERIFY2(panel, "the card is a FloatingPanel");
@@ -1470,6 +1512,69 @@ void UiWiringTest::playerCardGrowsWithSkillCount()
              qPrintable(QStringLiteral("panel (%1px) must fit the card content (%2px)")
                             .arg(panel->height())
                             .arg(info->sizeHint().height())));
+}
+
+// Round 12: the rain simulation — deterministic drops fall, landings become
+// splash ripples, and drops landing in the puddle make PUDDLE splashes
+// (which live longer than the grass ones).
+void UiWiringTest::rainSimulationDropsAndSplashes()
+{
+    RainSim sim;
+    sim.seed(42);
+    // A big puddle (most of the field) so puddle landings are frequent and
+    // the test is fast and deterministic (seeded sim).
+    const QVector<QRectF> puddles = { QRectF(100, 100, 600, 300) };
+    sim.configure(800, 500, puddles);
+    QVERIFY(sim.active());
+    QVERIFY(sim.drops().size() > 20);
+
+    // ~3 seconds at 30fps: every pre-populated drop lands at least once.
+    for (int i = 0; i < 91; ++i)
+        sim.step(33.0f);
+    QVERIFY2(sim.landingsOnGrass() > 0, "drops landed on the grass");
+    QVERIFY2(sim.landingsOnPuddle() > 0, "drops landed in the puddle");
+    QVERIFY(!sim.splashes().isEmpty());
+
+    // All splashes are inside the field; puddle splashes are inside the
+    // puddle.
+    for (const RainSim::Splash &s : sim.splashes()) {
+        QVERIFY2(s.x >= 0 && s.x <= 800 && s.y >= 0 && s.y <= 500,
+                 "splash inside the field");
+        if (s.onPuddle)
+            QVERIFY(puddles[0].contains(QPointF(s.x, s.y)));
+    }
+
+    // Puddle splashes outlive grass splashes (650ms vs 380ms): step until a
+    // splash outlives the grass lifetime — only a puddle splash can be that
+    // old (seeded sim, so this is deterministic and fast).
+    bool sawOldPuddleSplash = false;
+    for (int i = 0; i < 400 && !sawOldPuddleSplash; ++i) {
+        sim.step(33.0f);
+        for (const RainSim::Splash &s : sim.splashes())
+            if (s.ageMs > 380.0f) {
+                QVERIFY2(s.onPuddle, "a grass splash could not be this old");
+                sawOldPuddleSplash = true;
+                break;
+            }
+    }
+    QVERIFY2(sawOldPuddleSplash, "a puddle ripple outlived the grass lifetime");
+}
+
+// Round 12: the field starts/stops the rain animation with the weather.
+void UiWiringTest::fieldRainAnimationActive()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+
+    QVERIFY(!field.isRaining());
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    QVERIFY(field.isRaining());
+    field.setWeather(QStringLiteral("Nice Weather"));
+    QVERIFY(!field.isRaining());
+    field.setWeather(QStringLiteral("Light Rain"));
+    QVERIFY(field.isRaining());
 }
 
 QTEST_MAIN(UiWiringTest)

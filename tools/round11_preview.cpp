@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
     w.onModelSync(QJsonArray(), reports);
 
     // --- Selection: the rim glow (must be clearly visible now) ---------------
-    w.selectPlayer(homePid);
+    w.showPlayerCardById(homePid);
     QThread::msleep(120);
     QApplication::processEvents();
 

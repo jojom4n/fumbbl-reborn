@@ -4,6 +4,7 @@
 #include "ui/headerview.h"
 
 #include <QFontMetricsF>
+#include <QPainterPath>
 #include <QPaintEvent>
 #include <QPainter>
 
@@ -14,17 +15,40 @@ namespace {
 
 const QColor INK(34, 40, 50);       // primary text
 const QColor INK2(104, 114, 128);   // secondary text
-const QColor GOLD(212, 175, 55);    // team on turn
+const QColor GREEN(56, 142, 60);      // team on turn (round 12: green, was gold)
+const QColor GREEN_DARK(27, 94, 32); // emboss shadow
 
-// Team name of the team on turn: gold, raised (embossed shadow below).
-// yTop is the text TOP (Mockup F coordinates); drawText needs the baseline.
-void goldEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f)
+// Team name of the team on turn: green, raised (embossed dark shadow below)
+// and GLOWING — a soft wide green halo is stroked around the glyph outline
+// before the text itself (round 12: the gold emboss was replaced with a
+// glowing green one, user request). yTop is the text TOP (Mockup F
+// coordinates); drawText needs the baseline.
+void greenEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f)
 {
     p.setFont(f);
     const int base = yTop + int(QFontMetricsF(f).ascent());
-    p.setPen(QColor(122, 88, 22));
+
+    // Glow: two passes of the glyph outline stroked with a soft green.
+    QPainterPath path;
+    path.addText(x, base, f, s);
+    p.save();
+    p.setBrush(Qt::NoBrush);
+    QPen halo(QColor(129, 223, 129, 55));
+    halo.setWidthF(9.0);
+    halo.setJoinStyle(Qt::RoundJoin);
+    p.setPen(halo);
+    p.drawPath(path);
+    QPen halo2(QColor(102, 210, 102, 80));
+    halo2.setWidthF(3.5);
+    halo2.setJoinStyle(Qt::RoundJoin);
+    p.setPen(halo2);
+    p.drawPath(path);
+    p.restore();
+
+    // Emboss: dark green shadow 2px below, bright green text on top.
+    p.setPen(GREEN_DARK);
     p.drawText(x, base + 2, s);
-    p.setPen(GOLD);
+    p.setPen(GREEN);
     p.drawText(x, base, s);
 }
 
@@ -194,8 +218,9 @@ void HeaderView::paintEvent(QPaintEvent *)
     // --- names + sublines -----------------------------------------------------
     // NOTE: QPainter::drawText(x, y, ...) takes y as the BASELINE, while the
     // Mockup F coordinates are text TOPS — so every draw adds the ascent.
+    // Round 12: team names are BIGGER and bold (user request).
     QFont nameF = font();
-    nameF.setPointSizeF(14);
+    nameF.setPointSizeF(17);
     nameF.setBold(true);
     QFont subF = font();
     subF.setPointSizeF(10);
@@ -206,16 +231,16 @@ void HeaderView::paintEvent(QPaintEvent *)
 
     const QString homeName = m_home.toUpper();
     const QString awayName = m_away.toUpper();
-    const int nameY = 8 + int(fmName.ascent());
-    const int subY = 28 + int(fmSub.ascent());
+    const int nameY = 6 + int(fmName.ascent());
+    const int subY = 31 + int(fmSub.ascent());
     if (m_homePlaying) {
-        goldEmboss(p, 64, 8, homeName, nameF);
+        greenEmboss(p, 64, 6, homeName, nameF);
         p.setPen(INK);
         p.drawText(W - 64 - fmName.horizontalAdvance(awayName), nameY, awayName);
     } else {
         p.setPen(INK);
         p.drawText(64, nameY, homeName);
-        goldEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 8, awayName, nameF);
+        greenEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 6, awayName, nameF);
     }
     p.setPen(INK2);
     p.setFont(subF);

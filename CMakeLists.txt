@@ -92,6 +92,7 @@ add_executable(fumbbl-qt
     src/ui/spectatedialog.cpp
     src/ui/fieldview.h
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.h
     src/ui/actionlog.cpp
     src/ui/chatwidget.h
@@ -189,6 +190,7 @@ add_executable(logo_probe
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
@@ -249,6 +251,7 @@ add_executable(ui_connect_probe
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
@@ -281,6 +284,7 @@ add_executable(round9_preview
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
@@ -315,6 +319,7 @@ add_executable(round10_preview
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
@@ -349,6 +354,7 @@ add_executable(round11_preview
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
     src/ui/actionlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
@@ -368,12 +374,46 @@ target_link_libraries(round11_preview PRIVATE
     Qt6::WebSockets
 )
 
+add_executable(round12_preview
+    tools/round12_preview.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+    src/core/assets.cpp
+    src/core/matchlist.cpp
+    src/ui/mainwindow.cpp
+    src/ui/spectatedialog.cpp
+    src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
+    src/ui/actionlog.cpp
+    src/ui/chatwidget.cpp
+    src/ui/headerview.cpp
+    src/ui/playerinfowidget.cpp
+    src/ui/panel.cpp
+
+    ${DICE_RCC}
+)
+target_include_directories(round12_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(round12_preview PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(round12_preview PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
 # Offscreen FieldView renderer for visual verification of the Mockup F
 # design (feeds a real serverGameState fixture, saves a PNG).
 add_executable(field_preview
     tools/field_preview.cpp
     src/core/assets.cpp
     src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
 )
 target_include_directories(field_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(field_preview PRIVATE

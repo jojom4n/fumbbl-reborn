@@ -121,14 +121,18 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
     // 1:1 — the 256px originals were re-scaled by the rich-text layout with
     // fast scaling (grainy d6, square pips, unreadable skulls). Bigger and
     // crisp (user reports #2 and #3).
-    // Block dice: the six official-style faces.
+    // Round 12: multi-die rolls (block AND d6) must stay readable — every
+    // die gets an hspace so consecutive dice no longer touch (plain spaces
+    // between <img> tags collapse in the rich-text layout). All dice share
+    // the same 28px size.
     if (!line.blockFaces.isEmpty()) {
         html += QStringLiteral(" ");
         for (const QString &face : line.blockFaces) {
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral("<img src=\":/dice/block%1_s.png\" width=\"28\" height=\"28\">")
+            html += QStringLiteral(
+                        "<img src=\":/dice/block%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
                         .arg(v);
         }
     }
@@ -142,11 +146,13 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral(" <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\">")
+            html += QStringLiteral(
+                        " <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
                         .arg(v);
         }
     } else if (line.d6Roll > 0) {
-        html += QStringLiteral(" <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\">")
+        html += QStringLiteral(
+                    " <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
                     .arg(line.d6Roll);
     }
     if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {

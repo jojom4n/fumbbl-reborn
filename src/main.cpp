@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
             if (id.isEmpty() && !m->fieldTokens().isEmpty())
                 id = m->fieldTokens().first().playerId;
             if (!id.isEmpty())
-                window.selectPlayer(id);
+                window.showPlayerCardById(id);
         }
     };
     if (!demoPath.isEmpty())

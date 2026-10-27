@@ -137,7 +137,133 @@ void FieldView::setWeather(const QString &weather)
     if (m_weather == weather)
         return;
     m_weather = weather;
+    rainConfigure(); // round 12: rain on/off starts/stops the animation
     update();
+}
+
+void FieldView::resizeEvent(QResizeEvent *e)
+{
+    QWidget::resizeEvent(e);
+    clampPan(); // re-center / re-clamp the letterboxed scene
+    if (m_raining)
+        rainConfigure(); // reseed the sim + puddles at the new size
+}
+
+// ---------------------------------------------------------------------------
+// Round 12 — animated rain (user request): droplet streaks falling over the
+// field, a splash ripple where each drop lands. The puddles (water patches
+// drawn on the grass) catch their own drops with a BIGGER, longer ripple.
+// The puddle layout is stable (fixed fractions of the field) so the water
+// patches do not jump around between frames/resizes.
+// ---------------------------------------------------------------------------
+namespace {
+const QVector<QPointF> kPuddleCenters = {
+    QPointF(0.155, 0.27), QPointF(0.335, 0.64), QPointF(0.465, 0.21),
+    QPointF(0.575, 0.79), QPointF(0.665, 0.36), QPointF(0.815, 0.68),
+    QPointF(0.895, 0.22), QPointF(0.275, 0.86),
+};
+const QVector<qreal> kPuddleWidths = {
+    0.055, 0.07, 0.05, 0.08, 0.06, 0.05, 0.045, 0.065,
+}; // fraction of the field width (full ellipse width)
+} // namespace
+
+void FieldView::rainConfigure()
+{
+    const bool rain = m_weather.toLower().contains(QLatin1String("rain"));
+    m_raining = rain;
+    if (!rain) {
+        if (m_rainTimer)
+            m_rainTimer->stop();
+        m_puddles.clear();
+        return;
+    }
+    const QRectF f = fieldRect();
+    if (f.isEmpty())
+        return;
+
+    // Puddles: fixed layout in field space.
+    m_puddles.clear();
+    for (int i = 0; i < kPuddleCenters.size(); ++i) {
+        const QPointF c = kPuddleCenters[i];
+        const float rx = float(kPuddleWidths[i]) * float(f.width()) * 0.5f;
+        const float ry = rx * 0.55f;
+        m_puddles.append(QRectF(float(c.x()) * float(f.width()) - rx,
+                                float(c.y()) * float(f.height()) - ry,
+                                rx * 2.0f, ry * 2.0f));
+    }
+
+    // "Light Rain" (and friends) is sparser than a downpour.
+    const int intensity =
+        m_weather.toLower().contains(QLatin1String("light")) ? 45 : 85;
+    m_rain.configure(float(f.width()), float(f.height()), m_puddles);
+    m_rain.setIntensity(intensity);
+
+    if (!m_rainTimer) {
+        m_rainTimer = new QTimer(this);
+        m_rainTimer->setInterval(33); // ~30 fps
+        connect(m_rainTimer, &QTimer::timeout, this, [this]() {
+            const float dt = float(m_rainClock.isValid() ? m_rainClock.restart()
+                                                         : 33.0);
+            m_rain.step(qMin(dt, 100.0f));
+            update();
+        });
+    }
+    m_rainClock.start();
+    m_rainTimer->start();
+}
+
+void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
+{
+    // The puddle rects are in PITCH space (0..pitch); the painter is in
+    // scene space, so translate by the pitch origin.
+    p.save();
+    p.translate(f.x(), f.y());
+    for (const QRectF &pd : m_puddles) {
+        // Glossy water on the grass.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(30, 58, 84, 95));
+        p.drawEllipse(pd);
+        // Darker rim.
+        p.setPen(QPen(QColor(18, 38, 58, 110), qMax(1.0, pd.height() * 0.06)));
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(pd);
+        // Top-left glint.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(150, 190, 215, 45));
+        p.drawEllipse(pd.adjusted(pd.width() * 0.18, pd.height() * 0.22,
+                                  -pd.width() * 0.30, -pd.height() * 0.52));
+    }
+    p.restore();
+}
+
+void FieldView::drawRain(QPainter &p)
+{
+    // The sim is in PITCH space (0..pitch); translate into scene space.
+    const QRectF f = fieldRect();
+    p.save();
+    p.translate(f.x(), f.y());
+    // Droplet streaks (slanted short lines). Bright + slightly thick so the
+    // rain reads clearly over the grass at any zoom.
+    p.setPen(QPen(QColor(224, 236, 250, 145), 1.5, Qt::SolidLine, Qt::RoundCap));
+    for (const RainSim::Drop &d : m_rain.drops())
+        p.drawLine(QPointF(d.x - d.slant, d.y - d.len), QPointF(d.x, d.y));
+
+    // Splash ripples (flattened ellipses: water seen top-down).
+    p.setBrush(Qt::NoBrush);
+    for (const RainSim::Splash &s : m_rain.splashes()) {
+        const float maxAge = s.onPuddle ? 650.0f : 380.0f;
+        const float t = qMin(1.0f, s.ageMs / maxAge);
+        const float r = (s.onPuddle ? 3.0f : 2.0f) +
+                        t * (s.onPuddle ? 9.0f : 4.5f);
+        const int a = int((1.0 - t) * (s.onPuddle ? 225 : 160));
+        p.setPen(QPen(QColor(228, 240, 252, a), 1.4));
+        p.drawEllipse(QPointF(s.x, s.y), r, r * 0.62);
+        if (s.onPuddle) {
+            p.setPen(QPen(QColor(228, 240, 252, a / 2), 1.1));
+            p.drawEllipse(QPointF(s.x, s.y), r * 0.55, r * 0.55 * 0.62);
+        }
+    }
+    p.restore();
 }
 
 void FieldView::setSelectedPlayer(const QString &playerId)
@@ -310,6 +436,7 @@ void FieldView::resetView()
 {
     m_zoom = 1.0;
     m_pan = QPointF();
+    clampPan(); // center the letterboxed scene
     update();
 }
 
@@ -320,19 +447,59 @@ QPointF FieldView::toFieldSpace(const QPointF &pos) const
 
 void FieldView::clampPan()
 {
-    // Keep the (zoomed) field covering the widget.
+    // Keep the (zoomed) scene covering the widget. On an axis where the
+    // zoomed scene is SMALLER than the widget (always true at zoom=1 for at
+    // least one axis: the letterbox), the scene is centered on that axis.
+    const QRectF s = sceneRect();
+    const qreal zw = s.width() * m_zoom, zh = s.height() * m_zoom;
     const qreal W = width(), H = height();
-    m_pan.setX(qBound(W - W * m_zoom, m_pan.x(), 0.0));
-    m_pan.setY(qBound(H - H * m_zoom, m_pan.y(), 0.0));
+    if (zw <= W)
+        m_pan.setX((W - zw) / 2.0);
+    else
+        m_pan.setX(qBound(W - zw, m_pan.x(), 0.0));
+    if (zh <= H)
+        m_pan.setY((H - zh) / 2.0);
+    else
+        m_pan.setY(qBound(H - zh, m_pan.y(), 0.0));
+}
+
+QRectF FieldView::sceneRect() const
+{
+    // The scene (round 12): [dugout | pitch | dugout] = 36x15 cells. The
+    // cells stay SQUARE (a Blood Bowl grid is square): the scene is fitted
+    // into the widget and centered; the leftover is the dark stadium apron
+    // (paintEvent fills the widget with it first). ORIGIN at (0,0) — the
+    // m_pan transform (centering at zoom=1, user pan when zoomed) places it
+    // on screen.
+    if (width() <= 0 || height() <= 0)
+        return QRectF();
+    const qreal cell = qMin(width() / qreal(kSceneWidth), height() / qreal(kFieldHeight));
+    return QRectF(0, 0, kSceneWidth * cell, kFieldHeight * cell);
+}
+
+QRectF FieldView::dugoutPanelRect(bool leftSide) const
+{
+    const QRectF s = sceneRect();
+    if (s.isEmpty())
+        return QRectF();
+    const qreal cw = s.width() / kSceneWidth;
+    const qreal ch = s.height() / kFieldHeight;
+    const qreal x = leftSide ? s.x() : s.right() - kDugoutCells * cw;
+    const qreal ph = kDugoutPanelRows * ch;
+    const qreal y = s.center().y() - ph / 2;
+    return QRectF(x, y, kDugoutCells * cw, ph);
 }
 
 QRectF FieldView::fieldRect() const
 {
-    // The field stretches over the WHOLE widget (fullscreen HUD: no margins,
-    // no letterboxing stripes around it). Cells follow the window aspect.
-    if (width() <= 0 || height() <= 0)
+    // The PITCH (round 12): the middle 26 columns of the scene. The dugout
+    // panels occupy the outer kDugoutCells columns on each side (they stand
+    // outside the TD columns, separated from the touchdown).
+    const QRectF s = sceneRect();
+    if (s.isEmpty())
         return QRectF();
-    return QRectF(0, 0, width(), height());
+    const qreal cw = s.width() / kSceneWidth;
+    return QRectF(s.x() + kDugoutCells * cw, s.y(), kFieldWidth * cw, s.height());
 }
 
 QRectF FieldView::cellRect(int x, int y) const
@@ -345,63 +512,65 @@ QRectF FieldView::cellRect(int x, int y) const
     return QRectF(f.x() + x * cellW, f.y() + y * cellH, cellW, cellH);
 }
 
-// Layout of the filled slots of one strip: shared by the painter and the
-// hover hit-test, so the two never drift apart. Scaled against the field
-// height (the mockup was authored at a 739px field).
-QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
-    const QRectF &f, const QVector<BoxEntry> &entries, bool leftSide) const
+// Dugout sections (round 12): the box sections, shared by the slot painter
+// and the hover hit-test. State bases from ffb-common PlayerState:
+// RESERVE = 9, KO = 5, INJURED = 6..8,10.
+namespace {
+struct DugoutSection { const char *label; QVector<int> codes; };
+const DugoutSection kDugoutSections[] = {
+    { "RESERVE", { 9 } },
+    { "KO", { 5 } },
+    { "INJURED", { 6, 7, 8, 10 } },
+};
+bool dugoutInSection(int st, const QVector<int> &codes)
 {
-    Q_UNUSED(leftSide)
-    QVector<QPair<QRectF, const BoxEntry*>> filled;
-    if (f.isEmpty())
+    st &= 0xFF;
+    return codes.contains(st);
+}
+} // namespace
+
+// Round 12: the bench slots live on the DUGOUT PANEL (outside the TD
+// columns). Each of the 3 image bands (RESERVE / KO / INJURED) holds a
+// 2-column x 4-row grid of slots below the baked-in band label. Field space;
+// shared by painter + hover so the two never drift apart.
+QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
+    const QVector<BoxEntry> &entries, bool leftSide) const
+{
+    QVector<QPair<QRectF, const FieldView::BoxEntry*>> filled;
+    const QRectF panel = dugoutPanelRect(leftSide);
+    if (panel.isEmpty())
         return filled;
-    const qreal s = f.height() / 739.0;
-    const qreal stripW = 46 * s;
-    const qreal x = leftSide ? f.x() + 8 * s : f.right() - 8 * s - stripW;
-    const qreal y0 = f.y() + 120 * s;
 
-    const auto inSection = [](int st, const QVector<int> &codes) {
-        st &= 0xFF;
-        return codes.contains(st);
-    };
-    const struct { const char *label; QVector<int> codes; } sections[] = {
-        { "RESERVE", { 9 } },
-        { "KO", { 5 } },
-        { "INJURED", { 6, 7, 8, 10 } },
-    };
-
-    qreal y = y0 + 20 * s;
-    for (const auto &sec : sections) {
-        y += 13 * s; // section label row
-        const QVector<int> &codes = sec.codes;
+    constexpr int kCols = 2, kRows = 4;
+    const qreal bandH = panel.height() / 3.0;
+    for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
-            if (inSection(e.state, codes))
+            if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
-        const int n = qMax(2, mine.size());
-        const qreal ringR = 12 * s;
-        const qreal cx = x + 23 * s;
-        for (int i = 0; i < n; ++i) {
-            if (i < mine.size()) {
-                const qreal sy = y + i * 24 * s + 12 * s;
-                filled.append({ QRectF(cx - ringR, sy - ringR, ringR * 2, ringR * 2),
-                               mine[i] });
-            }
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.34; // below the label
+        const qreal slotH = bandH * 0.62;
+        const qreal pitch = slotH / kRows;
+        const qreal r = pitch * 0.42;
+        for (int i = 0; i < mine.size() && i < kCols * kRows; ++i) {
+            const int col = i % kCols, row = i / kCols;
+            const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
+            const qreal cy = slotTop + row * pitch + pitch / 2;
+            filled.append({ QRectF(cx - r, cy - r, r * 2, r * 2), mine[i] });
         }
-        y += n * 24 * s + 6 * s;
     }
     return filled;
 }
 
-// The box-strip entry under a WIDGET point (screen space: the strips are HUD
-// and stay put while the field zooms/pans).
+// The dugout slot under a WIDGET point (round 12: the dugouts are inside
+// the zoomed scene, so the point is mapped to field space first).
 const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHome) const
 {
-    const QRectF f(0, 0, width(), height());
+    const QPointF w = toFieldSpace(pos);
     sideHome = true;
-    const auto hit = [this, f, pos](const QVector<BoxEntry> &entries, bool left) -> const BoxEntry * {
-        for (const auto &sl : boxSlots(f, entries, left))
-            if (sl.first.contains(QPointF(pos)))
+    const auto hit = [this, w](const QVector<BoxEntry> &entries, bool left) -> const BoxEntry * {
+        for (const auto &sl : boxSlots(entries, left))
+            if (sl.first.contains(w))
                 return sl.second;
         return nullptr;
     };
@@ -412,93 +581,75 @@ const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHo
     return hit(m_awayBox, false);
 }
 
-// Bench box strip (Mockup F): a thin translucent vertical card on the field
-// edge with RESERVE / KO / INJURED sections. Filled slots show the player's
-// face in a team-colored ring; empty slots are plain gray rings. Scaled
-// against the field height (the mockup was authored at a 739px field).
-void FieldView::paintBoxStrip(QPainter &p, const QRectF &f, const QColor &accent,
+// Dugout bench slots (round 12): faces in team-colored rings on the DUGOUT
+// panel image (the soil art provides the RESERVE / KO / INJURED labels and
+// the band structure). Empty slots are plain gray rings. A team-color bar on
+// the panel edge facing the pitch says whose dugout it is.
+void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                               const QVector<BoxEntry> &entries, bool leftSide) const
 {
-    if (f.isEmpty())
+    const QRectF panel = dugoutPanelRect(leftSide);
+    if (panel.isEmpty())
         return;
-    const qreal s = f.height() / 739.0;
-    const qreal stripW = 46 * s;
-    const qreal x = leftSide ? f.x() + 8 * s : f.right() - 8 * s - stripW;
-    const qreal y0 = f.y() + 120 * s;
-    const qreal y1 = f.y() + 470 * s;
 
-    // Card background (translucent paper) + team-color top bar.
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(250, 250, 253, 205));
-    p.drawRoundedRect(QRectF(x, y0, stripW, y1 - y0), 12 * s, 12 * s);
-    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 220));
-    p.drawRoundedRect(QRectF(x + 4 * s, y0 + 4 * s, stripW - 8 * s, 6 * s), 3 * s, 3 * s);
-
-    // Group entries by section (FFB PlayerState bases).
-    const auto inSection = [](int st, const QVector<int> &codes) {
-        st &= 0xFF;
-        return codes.contains(st);
-    };
-
-    const QColor INK2(104, 114, 128);
+    constexpr int kCols = 2, kRows = 4;
     const QColor EMPTY(160, 166, 178);
-    const struct { const char *label; QVector<int> codes; } sections[] = {
-        { "RESERVE", { 9 } },
-        { "KO", { 5 } },
-        { "INJURED", { 6, 7, 8, 10 } },
-    };
+    const qreal bandH = panel.height() / 3.0;
 
-    qreal y = y0 + 20 * s;
-    QFont base = font();
-    for (const auto &sec : sections) {
-        // Section label.
-        QFont lf = base;
-        lf.setPixelSize(qMax(6, int(7 * s))); // mockup: 7px at 739px field
-        lf.setBold(true);
-        p.setFont(lf);
-        p.setPen(QColor(INK2.red(), INK2.green(), INK2.blue(), 220));
-        p.drawText(QRectF(x + 8 * s, y, stripW - 12 * s, 13 * s),
-                   Qt::AlignLeft | Qt::AlignVCenter, QString::fromUtf8(sec.label));
-        y += 13 * s;
-
-        const QVector<int> &codes = sec.codes;
+    for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
-            if (inSection(e.state, codes))
+            if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
-        const int n = qMax(2, mine.size());
-        const qreal ringR = 12 * s; // ring radius
-        const qreal cx = x + 23 * s;
-        for (int i = 0; i < n; ++i) {
-            const qreal sy = y + i * 24 * s + 12 * s;
-            QRectF ring(cx - ringR, sy - ringR, ringR * 2, ringR * 2);
+
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.34; // below the label
+        const qreal slotH = bandH * 0.62;
+        const qreal pitch = slotH / kRows;
+        const qreal r = pitch * 0.42;
+
+        for (int i = 0; i < kCols * kRows; ++i) {
+            const int col = i % kCols, row = i / kCols;
+            const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
+            const qreal cy = slotTop + row * pitch + pitch / 2;
+            const QRectF ring(cx - r, cy - r, r * 2, r * 2);
             if (i < mine.size()) {
                 const BoxEntry *e = mine[i];
                 const QPixmap pm = assets::playerFace(e->positionName, e->race);
                 if (!pm.isNull()) {
-                    const qreal fr = 10 * s; // face radius
-                    QRectF faceR(cx - fr, sy - fr, fr * 2, fr * 2);
+                    const qreal fr = r * 0.78;
+                    const QRectF faceR(cx - fr, cy - fr, fr * 2, fr * 2);
                     p.save();
                     QPainterPath clip;
                     clip.addEllipse(faceR);
                     p.setClipPath(clip);
+                    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
                     p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
                     p.restore();
                 }
-                p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 230),
-                              qMax(1.0, 2 * s)));
+                p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 235),
+                              qMax(1.0, r * 0.16)));
                 p.setBrush(Qt::NoBrush);
                 p.drawEllipse(ring);
             } else {
-                p.setPen(QPen(QColor(EMPTY.red(), EMPTY.green(), EMPTY.blue(), 160),
-                              qMax(1.0, 2 * s)));
+                p.setPen(QPen(QColor(EMPTY.red(), EMPTY.green(), EMPTY.blue(), 150),
+                              qMax(1.0, r * 0.14)));
                 p.setBrush(Qt::NoBrush);
                 p.drawEllipse(ring);
             }
         }
-        y += n * 24 * s + 6 * s;
     }
+
+    // Whose dugout: a team-color bar on the panel edge facing the pitch.
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 215));
+    const qreal barW = qMax(2.0, panel.width() * 0.035);
+    const qreal barX = leftSide ? panel.right() - barW : panel.x();
+    p.fillRect(QRectF(barX, panel.y() + panel.height() * 0.04,
+                      barW, panel.height() * 0.92),
+               QColor(accent.red(), accent.green(), accent.blue(), 215));
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Action wheel (Mockup F): white disc around the acting player with the six
@@ -598,15 +749,52 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
-    // Field navigation (round 8): the WHOLE field (texture, grid, tokens,
-    // rain) lives in a zoomed/panned space; the bench strips are HUD and are
-    // drawn afterwards in screen space.
+    // Stadium apron (round 12): the 36x15 scene keeps SQUARE cells and is
+    // letterboxed inside the widget — everything outside it is dark stadium.
+    p.fillRect(QRectF(0, 0, width(), height()), QColor(58, 56, 54));
+
+    // Field navigation (round 8): the WHOLE scene (dugouts, texture, grid,
+    // tokens, rain) lives in a zoomed/panned space. Round 12: the dugout
+    // panels are part of the scene too (they zoom with the field).
     p.save();
     p.translate(m_pan);
     p.scale(m_zoom, m_zoom);
 
+    const QRectF s = sceneRect();
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
+
+    // --- Dugouts (round 12): team 1 left of the left TD band, team 2 right
+    //     of the right one. The panel is a SEPARATE soil-themed asset
+    //     (identical for every field type); the side area behind/around it
+    //     is a dark stadium apron.
+    const auto drawDugout = [&](bool leftSide) {
+        const QRectF side = leftSide
+                                ? QRectF(s.x(), s.y(), kDugoutCells * (s.width() / kSceneWidth), s.height())
+                                : QRectF(s.right() - kDugoutCells * (s.width() / kSceneWidth), s.y(),
+                                         kDugoutCells * (s.width() / kSceneWidth), s.height());
+        // Apron.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(58, 56, 54));
+        p.fillRect(side, QColor(58, 56, 54));
+        // Panel image (the 1:2 soil art fits the 5x10 panel exactly).
+        const QRectF panel = dugoutPanelRect(leftSide);
+        const QPixmap dg = assets::dugoutTexture();
+        if (!dg.isNull()) {
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            p.drawPixmap(panel, dg, QRectF(0, 0, dg.width(), dg.height()));
+            p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+        } else {
+            p.fillRect(panel, QColor(122, 88, 52)); // fallback soil
+        }
+        // Inner edge facing the pitch: a dark seam separating dugout and TD.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(30, 28, 26, 200));
+        const qreal seamX = leftSide ? side.right() - 3 : side.x();
+        p.fillRect(QRectF(seamX, s.y(), 3, s.height()), QColor(30, 28, 26, 200));
+    };
+    drawDugout(true);
+    drawDugout(false);
 
     // --- Field texture (baked Mockup-F art: grass, mowing stripes, crimson
     //     1-column TD zones with vertical TOUCHDOWN) or flat fallback ------
@@ -671,6 +859,12 @@ void FieldView::paintEvent(QPaintEvent *)
     };
     drawLogo(m_homeLogo, 6.5);
     drawLogo(m_awayLogo, 19.5);
+
+    // --- Puddles (round 12): water patches on the grass, drawn UNDER the
+    //     tokens/ball. Present only when it rains — the animated rain's
+    //     drops splash into them.
+    if (m_raining)
+        drawPuddles(p, f);
 
     // --- Ball on an empty square -------------------------------------------
     const auto atBall = [this](const QVector<PlayerToken> &team) {
@@ -894,34 +1088,19 @@ void FieldView::paintEvent(QPaintEvent *)
         }
     }
 
+    // --- Animated rain (round 12): droplet streaks + splash ripples, in the
+    //     zoomed field space so they belong to the field scene. Stepped by
+    //     m_rainTimer (see rainConfigure). Replaces the old static specks.
+    if (m_raining)
+        drawRain(p);
+
+    // --- Bench box slots on the dugout panels (left = home, right = away).
+    //     Round 12: the dugouts are part of the scene, so the slots are drawn
+    //     in the zoomed scene space (the hover hit-test uses the same field
+    //     space via toFieldSpace).
+    paintBoxStrip(p, m_homeColor, m_homeBox, true);
+    paintBoxStrip(p, m_awayColor, m_awayBox, false);
+
     p.restore(); // end of the zoomed field space
-
-    // --- Bench box strips (left = home, right = away; Mockup F). HUD: drawn
-    //     in screen space so they stay visible while the field zooms/pans. --
-    paintBoxStrip(p, f, m_homeColor, m_homeBox, true);
-    paintBoxStrip(p, f, m_awayColor, m_awayBox, false);
-
-    // --- Rain (MicroProse-Soccer style: fine top-down droplet specks) ------
-    if (m_weather.toLower().contains(QLatin1String("rain"))) {
-        QRandomGenerator rng(7);
-        p.setPen(Qt::NoPen);
-        for (int i = 0; i < 520; ++i) {
-            const qreal x0 = rng.bounded(int(f.width()));
-            const qreal y0 = rng.bounded(int(f.height()));
-            const int a = 35 + rng.bounded(81);
-            static constexpr qreal kRadii[] = { 0.9, 0.9, 1.1, 1.5 };
-            const qreal r = kRadii[rng.bounded(4)];
-            p.setBrush(QColor(235, 240, 250, a));
-            p.drawEllipse(QPointF(x0, y0), r, r);
-        }
-        for (int i = 0; i < 90; ++i) {
-            const qreal x0 = rng.bounded(int(f.width()));
-            const qreal y0 = rng.bounded(int(f.height()));
-            const qreal L = 2.5 + rng.bounded(40) / 10.0;
-            const int a = 28 + rng.bounded(45);
-            p.setPen(QPen(QColor(235, 240, 250, a), 1));
-            p.drawLine(QPointF(x0, y0), QPointF(x0, y0 + L));
-        }
-    }
 
 }

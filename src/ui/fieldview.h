@@ -18,9 +18,13 @@
 // =============================================================================
 #pragma once
 
+#include <QElapsedTimer>
 #include <QEvent>
+#include <QTimer>
 #include <QVector>
 #include <QWidget>
+
+#include "ui/rainsim.h"
 
 class FieldView : public QWidget
 {
@@ -70,6 +74,7 @@ public:
     // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
     // ...). When it contains "rain" a top-down droplet overlay is drawn.
     void setWeather(const QString &weather);
+    bool isRaining() const { return m_raining; } // round 12: animated rain on
 
     // Selected player. Rendered (round 9, user decision) as a BLUE GLOWING
     // RADIAL circle: a soft radial halo (QRadialGradient, alpha fading out)
@@ -123,6 +128,7 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override; // round 12: reseed the rain
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
@@ -132,15 +138,29 @@ protected:
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
     static constexpr int kFieldHeight = 15;  // Y: 0..14
+    // Round 12: the widget scene is [dugout | pitch | dugout]. The dugout
+    // panels are a SEPARATE asset (earthy theme, identical for every field
+    // type) standing outside the TD columns: team 1's dugout is left of the
+    // left TD band, team 2's right of the right one.
+    static constexpr int kDugoutCells = 5;   // dugout panel width (cells)
+    static constexpr int kSceneWidth = kFieldWidth + 2 * kDugoutCells; // 36
 
-    QRectF fieldRect() const;
+    // The DUGOUT PANEL (the Qwen soil image): kDugoutCells wide x 10 cells
+    // tall, vertically centered (rows 2.5..12.5). The image is 1:2 (5:10),
+    // so it fits the panel with zero crop/stretch.
+    static constexpr int kDugoutPanelRows = 10;
+
+    QRectF sceneRect() const;        // the whole widget (zoom target)
+    QRectF dugoutPanelRect(bool leftSide) const;
+    QRectF fieldRect() const;        // the PITCH (middle 26 columns)
     QRectF cellRect(int x, int y) const;
-    // Paint one box strip (the Mockup F left/right bench strip).
-    void paintBoxStrip(QPainter &p, const QRectF &f, const QColor &accent,
+    // Paint one dugout's bench slots (round 12: on the dugout panel image).
+    void paintBoxStrip(QPainter &p, const QColor &accent,
                        const QVector<BoxEntry> &entries, bool leftSide) const;
-    // The filled-slot rectangles of one strip (shared by painter + hover).
+    // The slot rectangles of one dugout (shared by painter + hover, field
+    // space). Two columns x four rows per section (RESERVE/KO/INJURED).
     QVector<QPair<QRectF, const BoxEntry*>> boxSlots(
-        const QRectF &f, const QVector<BoxEntry> &entries, bool leftSide) const;
+        const QVector<BoxEntry> &entries, bool leftSide) const;
     // Map a widget point through the zoom/pan transform into field space.
     QPointF toFieldSpace(const QPointF &pos) const;
     void clampPan();
@@ -162,7 +182,20 @@ private:
     QString m_selectedPlayer; // playerId highlighted with a ring
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
-    QString m_weather;   // display name; "rain" substring => droplet overlay
+    QString m_weather;   // display name; "rain" substring => ANIMATED rain
+
+    // Round 12: animated rain (user request) — falling droplet streaks +
+    // splash ripples where they land; ripples inside the puddles are bigger
+    // and last longer. The sim is stepped by a ~30fps timer and painted in
+    // the zoomed field space (the rain belongs to the field scene).
+    RainSim m_rain;
+    QTimer *m_rainTimer = nullptr;
+    QElapsedTimer m_rainClock;
+    bool m_raining = false;
+    QVector<QRectF> m_puddles; // field space; recomputed on configure/resize
+    void rainConfigure();
+    void drawPuddles(QPainter &p, const QRectF &f) const;
+    void drawRain(QPainter &p);
 
     // Field navigation state (round 8).
     qreal m_zoom = 1.0;      // 1.0 = fit, up to 3.0

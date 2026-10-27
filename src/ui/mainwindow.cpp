@@ -532,19 +532,27 @@ void MainWindow::applyModelToUi()
     };
     m_field->setBoxes(boxEntries(true), boxEntries(false));
 
-    // Keep the selection valid: if the selected player still exists, re-assert
-    // the field glow (round 10: the GLOW is the click-selection highlight —
-    // hovering must not move it). The Player Info CARD is hover-driven: a
-    // sync refreshes it only while it is showing the SELECTED player (right
-    // after a click, before the mouse moved on) — otherwise the hover rules
-    // the card and the glow stays put.
-    if (!m_selectedPlayerId.isEmpty()) {
-        if (m_model->findPlayerById(m_selectedPlayerId)) {
-            m_field->setSelectedPlayer(m_selectedPlayerId);
-            if (m_playerInfo && m_playerInfo->shownPlayerId() == m_selectedPlayerId)
-                selectPlayer(m_selectedPlayerId); // refresh card + reposition
-        } else
-            onFieldPlayerClicked(QString()); // deselect
+    // Round 12: the field rim GLOW is the REMOTE human's selection — it
+    // follows the game state's actingPlayer (set live by the
+    // actingPlayerSetPlayerId model change when the coach picks a player to
+    // act, cleared when the action ends). The spectator does NOT select
+    // players: clicks only drive the info card.
+    const QString acting = m_model->activePlayerId();
+    if (!acting.isEmpty() && m_model->findPlayerById(acting))
+        m_field->setSelectedPlayer(acting);
+    else
+        m_field->setSelectedPlayer(QString());
+
+    // The info card tracks the player it currently shows: a model sync
+    // refreshes its content (state changes to box, injuries, ...) and a
+    // player removed from the game hides the card (round 12: the card is
+    // opened by hover/click, but its DATA stays live).
+    if (m_playerInfo && !m_playerInfo->shownPlayerId().isEmpty()) {
+        const FFBPlayer *cp = m_model->findPlayerById(m_playerInfo->shownPlayerId());
+        if (cp)
+            showPlayerCard(cp, cp->hasCoords ? cp->fieldX : (cp->sideHome ? 6 : 19));
+        else
+            m_playerInfo->showPlaceholder();
     }
 
     int bx = -1, by = -1;
@@ -825,29 +833,23 @@ void MainWindow::clearMatchUi()
 
 void MainWindow::onFieldPlayerClicked(const QString &playerId)
 {
+    // Round 12: the spectator does not select players (the rim glow is the
+    // remote coach's selection, model-driven). Clicking a player only shows
+    // its info card — exactly like hovering it. Clicking empty field hides
+    // the card; the glow is never touched by local input.
     if (playerId.isEmpty()) {
-        m_selectedPlayerId.clear();
-        m_playerInfo->showPlaceholder();
-        m_field->setSelectedPlayer(QString());
+        if (m_playerInfo)
+            m_playerInfo->showPlaceholder();
         return;
     }
-    if (!m_model->findPlayerById(playerId))
-        return; // unknown id (stale click)
-    selectPlayer(playerId);
+    showPlayerCardById(playerId);
 }
 
-void MainWindow::selectPlayer(const QString &playerId)
+void MainWindow::showPlayerCardById(const QString &playerId)
 {
-    const FFBPlayer *p = m_model->findPlayerById(playerId);
-    if (!p) {
-        m_selectedPlayerId.clear();
-        m_playerInfo->showPlaceholder();
-        m_field->setSelectedPlayer(QString());
-        return;
-    }
-    m_selectedPlayerId = playerId;
-    m_field->setSelectedPlayer(playerId);
-
+    const FFBPlayer *p = m_model ? m_model->findPlayerById(playerId) : nullptr;
+    if (!p)
+        return; // unknown id (stale click)
     // Round 8: fill + positioning live in showPlayerCard (shared with the
     // hover path).
     showPlayerCard(p, p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19));
@@ -880,9 +882,8 @@ void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
         hidePlayerCard();
         return;
     }
-    // Round 10: hovering ONLY shows the card — it must not move the click
-    // selection's rim glow. The glow follows the player the user CLICKED to
-    // act on, until they click someone else.
+    // Round 12: hovering ONLY shows the card. The rim glow is the REMOTE
+    // coach's selection (model-driven) — no local mouse input moves it.
     const int fieldX = p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19);
     showPlayerCard(p, fieldX);
 }
@@ -963,9 +964,8 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
 
 void MainWindow::hidePlayerCard()
 {
-    // Round 10: hiding the HOVER card must not clear the click selection —
-    // the rim glow stays on the clicked player until the user clicks
-    // elsewhere (or the player leaves the game).
+    // Round 12: hiding the card never touches the rim glow — the glow is
+    // the remote coach's selection, model-driven.
     if (m_playerInfo)
         m_playerInfo->showPlaceholder();
     if (FloatingPanel *panel = panelFor(m_playerInfo))

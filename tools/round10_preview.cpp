@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
     QApplication::processEvents();
 
     // --- Selection: rim glow (round 10 #5) ------------------------------------
-    w.selectPlayer(homePid);
+    w.showPlayerCardById(homePid);
     QThread::msleep(120); // pulse frames
     QApplication::processEvents();
 
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
 
     // Re-select the player: the rim glow back for the window shot.
     if (!homePid.isEmpty())
-        w.selectPlayer(homePid);
+        w.showPlayerCardById(homePid);
     QApplication::processEvents();
 
     // --- Header: taller pills + logos (round 10 #1, #2) -------------------------
