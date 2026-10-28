@@ -74,6 +74,12 @@ in `memory-bank/` (soprattutto `activeContext.md`).
   `tools/reports_capturer.cpp` (cattura live), `tools/reports_render.cpp`.
 - Ground truth del protocollo: sorgenti Java locali `~/Projects/ffb/ffb-common`
   e la cattura `tests/live_reports_capture.jsonl`.
+- **La GPU è occupata da ME**: l'agente è servito da `llama-server`
+  (Qwen3.8-27B, `-ngl 99`) che gira sulla GPU. rocm-smi mostra quindi
+  sempre molta VRAM usata: NON è un leak, NON è un processo orfano, e
+  "No KFD PIDs" non è una prova di GPU libera. ComfyUI (e qualsiasi altro
+  carico) va SEMPRE su CPU (`--cpu`): la GPU non si "libera" mai mentre
+  l'agente gira.
 
 ## 7. QUANDO SI È BLOCCATI / NON SI CAPISCE
 - Non indovinare. Chiedere un'informazione concreta ALL'UTENTE o verificare
