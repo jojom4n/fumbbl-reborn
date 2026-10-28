@@ -9,6 +9,7 @@
 // =============================================================================
 #include "ui/mainwindow.h"
 
+#include "core/assets.h"
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
@@ -95,6 +96,16 @@ MainWindow::MainWindow(QWidget *parent)
     // Hover card (round 8): the player info follows the mouse over the
     // field / bench and sits on the opposite side of the field.
     connect(m_field, &FieldView::playerHovered, this, &MainWindow::onPlayerHovered);
+    // Round 13: hover a player NAME in the action log -> show that player's
+    // card (like the field hover/click). Empty id = the mouse left the name.
+    connect(m_actionLog, &ActionLogWidget::playerHoveredId, this,
+            [this](const QString &playerId) {
+                if (playerId.isEmpty()) {
+                    hidePlayerCard();
+                    return;
+                }
+                showPlayerCardById(playerId);
+            });
 
     connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
@@ -512,6 +523,12 @@ void MainWindow::applyModelToUi()
     }
     m_field->setPlayers(homeTokens, awayTokens);
 
+    // Round 13: the actor's CUMULATIVE move trail (one polyline per move
+    // action, drawn progressively behind the player as the server steps him
+    // square by square; cleared when the actor changes or a new turn
+    // starts — see GameModel::moveTrace()).
+    m_field->setMoveTrace(m_model->moveTrace());
+
     // Bench box strips (left = home, right = away): players with a box
     // coordinate (x < 0 or x > 25), grouped by state inside the field view.
     auto boxEntries = [this](bool sideHome) {
@@ -705,7 +722,31 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
     appendProtocol(QStringLiteral("< "),
                    QStringLiteral("logo ok: %1x%2 (%3 bytes)")
                        .arg(img.width()).arg(img.height()).arg(data.size()));
-    const QPixmap pm = QPixmap::fromImage(img);
+    // Round 13 (user point 10): the fetched logo often comes with a FLAT
+    // backdrop (white is the common case, but any color — the user may also
+    // upload their own image) which painted an ugly opaque box behind the
+    // field watermark. Key the backdrop out: the color is estimated from the
+    // image border (not assumed white) and removed by a border flood fill;
+    // images that already have real alpha, or whose border is not a flat
+    // backdrop, are left untouched.
+    const QImage keyed = assets::keyBackground(img);
+    if (!img.hasAlphaChannel() && keyed.hasAlphaChannel()) {
+        // Log only when a REAL amount of backdrop was removed (keyBackground
+        // converts to ARGB32 even when its guard skips the key, so the alpha
+        // channel alone is not proof).
+        int transparent = 0, total = 0;
+        for (int y = 0; y < keyed.height(); y += 4)
+            for (int x = 0; x < keyed.width(); x += 4) {
+                ++total;
+                if (qAlpha(keyed.pixel(x, y)) == 0)
+                    ++transparent;
+            }
+        if (total > 0 && transparent * 100 > total * 5)
+            appendProtocol(QStringLiteral("< "),
+                           QStringLiteral("logo flat backdrop keyed out (%1% transparent)")
+                               .arg(transparent * 100 / total));
+    }
+    const QPixmap pm = QPixmap::fromImage(keyed);
     if (side == 0) {
         m_homeLogoPm = pm;
         m_field->setTeamLogos(pm, m_awayLogoPm);

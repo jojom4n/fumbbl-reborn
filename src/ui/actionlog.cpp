@@ -3,6 +3,10 @@
 // =============================================================================
 #include "ui/actionlog.h"
 
+#include <QEnterEvent>
+#include <QEvent>
+#include <QFunctionPointer>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -11,9 +15,15 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
+#include <functional>
+
 namespace {
 
-const int kRowH = 32;      // one entry row (round 11: 24 -> 32 so the 28px dice fit)
+// Round 13: 48px rows and 44px dice (was 32/28 — user: the dice were small,
+// unspaced, symbols unreadable). hspace 8 between consecutive dice.
+const int kRowH = 48;
+const int kDice = 44;
+const int kDiceGap = 8;
 const int kHeaderH = 26;   // title + chevron strip
 const int kPad = 8;
 const int kMaxEntries = 300;
@@ -28,6 +38,31 @@ QColor inkColor(const QColor &c)
     d.setAlpha(255);
     return d.darker(185);
 }
+
+// Round 13: a player NAME in the log — hover shows that player's info card
+// (user: "hover sui nomi dei giocatori nell'action log → mostra la relativa
+// scheda, come il click sul campo"). Plain QLabel + enter/leave events (no
+// Q_OBJECT needed: we override virtuals on an existing QObject base).
+class NameLabel : public QLabel
+{
+public:
+    NameLabel(const QString &playerId, const QString &html,
+              const std::function<void(const QString &)> &hoverCb,
+              QWidget *parent)
+        : QLabel(html, parent), m_id(playerId), m_cb(hoverCb)
+    {
+        setCursor(Qt::PointingHandCursor);
+    }
+    QString playerId() const { return m_id; }
+
+protected:
+    void enterEvent(QEnterEvent *) override { m_cb(m_id); }
+    void leaveEvent(QEvent *) override { m_cb(QString()); }
+
+private:
+    QString m_id;
+    std::function<void(const QString &)> m_cb;
+};
 
 } // namespace
 
@@ -106,25 +141,19 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
     p.drawRoundedRect(r, 10, 10);
 }
 
-QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &actorName,
-                                    const QString &defenderName) const
+QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
 {
-    const QString actor = actorName.isEmpty() ? QString()
-                                              : QStringLiteral("<b><span style=\"color:#8a6d1f\">%1</span></b> ")
-                                                    .arg(actorName.toHtmlEscaped());
     // NOTE (round 9, user rule): a participant the UI could not resolve is
     // DROPPED, never shown as a raw id — "MAI id numerici a schermo".
-    const QString html0 = actor + line.text.toHtmlEscaped();
-    QString html = html0;
+    QString html = line.text.toHtmlEscaped();
 
-    // Round 11: the dice use the PRE-SCALED 28px assets (*_s.png) rendered
-    // 1:1 — the 256px originals were re-scaled by the rich-text layout with
-    // fast scaling (grainy d6, square pips, unreadable skulls). Bigger and
-    // crisp (user reports #2 and #3).
-    // Round 12: multi-die rolls (block AND d6) must stay readable — every
-    // die gets an hspace so consecutive dice no longer touch (plain spaces
-    // between <img> tags collapse in the rich-text layout). All dice share
-    // the same 28px size.
+    // Round 11: the dice use the PRE-SCALED assets (*_s.png) rendered 1:1 —
+    // the 256px originals were re-scaled by the rich-text layout with fast
+    // scaling (grainy d6, square pips, unreadable skulls).
+    // Round 13 (user): dice 44px with REAL spacing (hspace 8) — "i dadi
+    // block sono piccoli, non hanno spacing tra loro e non si vede bene il
+    // simbolo". Every die gets hspace so consecutive dice no longer touch
+    // (plain spaces between <img> tags collapse in the rich-text layout).
     if (!line.blockFaces.isEmpty()) {
         html += QStringLiteral(" ");
         for (const QString &face : line.blockFaces) {
@@ -132,8 +161,10 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             if (v < 1 || v > 6)
                 continue;
             html += QStringLiteral(
-                        "<img src=\":/dice/block%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
-                        .arg(v);
+                        "<img src=\":/dice/block%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
+                        .arg(v)
+                        .arg(kDice)
+                        .arg(kDiceGap);
         }
     }
 
@@ -147,13 +178,17 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             if (v < 1 || v > 6)
                 continue;
             html += QStringLiteral(
-                        " <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
-                        .arg(v);
+                        " <img src=\":/dice/d6_%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
+                        .arg(v)
+                        .arg(kDice)
+                        .arg(kDiceGap);
         }
     } else if (line.d6Roll > 0) {
         html += QStringLiteral(
-                    " <img src=\":/dice/d6_%1_s.png\" width=\"28\" height=\"28\" hspace=\"4\">")
-                    .arg(line.d6Roll);
+                    " <img src=\":/dice/d6_%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
+                    .arg(line.d6Roll)
+                    .arg(kDice)
+                    .arg(kDiceGap);
     }
     if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {
         if (line.d6Target > 0)
@@ -168,47 +203,81 @@ QString ActionLogWidget::renderLine(const DiceLogLine &line, const QString &acto
             html += QStringLiteral(" <span style=\"color:#5f6368\">[RR]</span>");
     }
 
-    if (!defenderName.isEmpty())
-        html += QStringLiteral(" \u2192 <b><span style=\"color:%1\">%2</span></b>")
-                    .arg(inkColor(line.color).name())
-                    .arg(defenderName.toHtmlEscaped());
-
     return html;
 }
 
-void ActionLogWidget::addEntry(const QString &html, const QString &plain)
+void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName,
+                               const QString &defenderName, const QString &actorId,
+                               const QString &defenderId)
 {
-    auto *label = new QLabel(m_stack);
-    label->setTextFormat(Qt::RichText);
-    label->setText(html);
-    label->setStyleSheet(QStringLiteral("background: transparent; color: #222832;"));
-    QFont f = label->font();
+    // Round 13: the row is [actor name | action text + dice | defender
+    // name] — the two names are HOVERABLE (they show the player's card);
+    // the middle is plain rich text.
+    auto *row = new QWidget(m_stack);
+    auto *rl = new QHBoxLayout(row);
+    rl->setContentsMargins(0, 0, 0, 0);
+    rl->setSpacing(3);
+
+    const auto style = QStringLiteral("background: transparent; color: #222832;");
+    QFont f = font();
     f.setBold(true);
     f.setPointSizeF(10);
-    label->setFont(f);
-    label->setFixedHeight(kRowH);
-    m_stackLayout->insertWidget(m_stackLayout->count() - 1, label); // before the stretch
 
+    const auto hover = [this](const QString &id) { emit playerHoveredId(id); };
+
+    if (!actorName.isEmpty()) {
+        auto *nl = new NameLabel(
+            actorId, QStringLiteral(
+                         "<b><span style=\"color:#8a6d1f\">%1</span></b>")
+                         .arg(actorName.toHtmlEscaped()),
+            hover, row);
+        nl->setStyleSheet(style);
+        nl->setFont(f);
+        rl->addWidget(nl, 0, Qt::AlignVCenter);
+    }
+
+    auto *mid = new QLabel(renderMiddle(line), row);
+    mid->setTextFormat(Qt::RichText);
+    mid->setStyleSheet(style);
+    mid->setFont(f);
+    rl->addWidget(mid, 1, Qt::AlignVCenter);
+
+    if (!defenderName.isEmpty()) {
+        auto *dl = new NameLabel(
+            defenderId, QStringLiteral(
+                            "<b><span style=\"color:%1\">%2</span></b>")
+                            .arg(inkColor(line.color).name())
+                            .arg(defenderName.toHtmlEscaped()),
+            hover, row);
+        dl->setStyleSheet(style);
+        dl->setFont(f);
+        rl->addWidget(dl, 0, Qt::AlignVCenter);
+    }
+
+    row->setFixedHeight(kRowH);
+    m_stackLayout->insertWidget(m_stackLayout->count() - 1, row); // before the stretch
+
+    // Plain dump: actor + text + "→ defender" (the defender is part of the
+    // visible line, so it belongs in the plain form too).
+    QString plain = QStringLiteral("%1 %2").arg(actorName, line.text).trimmed();
+    if (!defenderName.isEmpty())
+        plain += QStringLiteral(" \u2192 %1").arg(defenderName);
     m_plain << plain;
     ++m_entryCount;
     while (m_plain.size() > kMaxEntries)
         m_plain.removeFirst();
 
     // Keep the newest entry visible.
-    m_scroll->ensureWidgetVisible(label);
+    m_scroll->ensureWidgetVisible(row);
     const auto sb = m_scroll->verticalScrollBar();
     sb->setValue(sb->maximum());
 }
 
 void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
-                                 const QString &defenderName)
+                                 const QString &defenderName, const QString &actorId,
+                                 const QString &defenderId)
 {
-    // Plain dump: actor + text + "→ defender" (the defender is part of the
-    // visible line, so it belongs in the plain form too).
-    QString plain = QStringLiteral("%1 %2").arg(actorName, line.text).trimmed();
-    if (!defenderName.isEmpty())
-        plain += QStringLiteral(" \u2192 %1").arg(defenderName);
-    addEntry(renderLine(line, actorName, defenderName), plain);
+    addEntry(line, actorName, defenderName, actorId, defenderId);
 }
 
 void ActionLogWidget::mousePressEvent(QMouseEvent *event)
@@ -226,9 +295,10 @@ void ActionLogWidget::mousePressEvent(QMouseEvent *event)
 
 void ActionLogWidget::clearLog()
 {
-    for (auto *w : m_stack->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly))
-        if (w != m_title)
-            w->deleteLater();
+    // Round 13: entries are ROW WIDGETS now (name labels inside) — delete
+    // the direct children (the rows), not just top-level labels.
+    for (auto *w : m_stack->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly))
+        w->deleteLater();
     m_plain.clear();
     m_entryCount = 0;
 }

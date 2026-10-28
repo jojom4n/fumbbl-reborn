@@ -25,6 +25,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
+#include <QPoint>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -148,6 +149,34 @@ public:
     bool ballAt(int &x, int &y) const;
     QString activePlayerId() const { return m_activePlayerId; }
 
+    // --- Move trail (round 13, user request) ---------------------------------
+    // The CUMULATIVE movement trace of the remote acting player: each entry
+    // is one MOVE ACTION, a list of field cells from the start square to the
+    // last stepped square (one arrow per path in the UI).
+    //
+    // The server steps the player ONE SQUARE AT A TIME (ffb-server StepMove:
+    // the MOVE_STACK is consumed square by square, each square a
+    // fieldModelSetPlayerCoordinate), so the trail draws progressively
+    // behind the player, exactly like the official client's step-by-step
+    // movement.
+    //
+    // Persistence semantics (user, round 13):
+    //   * NO timeout — the trace stays until the actor changes or a new
+    //     turn starts;
+    //   * a NEW move by the SAME player does NOT replace the trace: it
+    //     APPENDS another path (its own arrow) — the spectator sees the
+    //     whole cumulative route;
+    //   * when the coach activates ANOTHER player, the whole trace of the
+    //     previous player disappears and the new one starts clean.
+    //
+    // Protocol ground truth (live capture game_1957772, 28/ott):
+    //   actingPlayerSetPlayerId    = who is acting (null between actions)
+    //   actingPlayerSetPlayerAction = "move"/"standUp"/... (plain string)
+    //   fieldModelSetPlayerCoordinate [x,y] per stepped square
+    QVector<QVector<QPoint>> moveTrace() const { return m_tracePaths; }
+    QString moveTraceActor() const { return m_traceActor; }
+    void clearMoveTrace();
+
     // --- Coordinate helpers (port of ffb-common FieldCoordinate) -------------
     // Field square: x 0..25, y 0..14.
     static bool isOnField(int x, int y);
@@ -225,6 +254,13 @@ private:
 
     // Acting player (turn holder).
     QString m_activePlayerId;
+
+    // Move trail of the acting player (round 13 — see moveTrace()).
+    QString m_traceActor;                  // player whose trace is tracked
+    QVector<QVector<QPoint>> m_tracePaths; // one entry per move action
+    bool m_movePending = false;            // a move action was dispatched:
+                                           // the next coordinate change of
+                                           // the actor starts a NEW path
 
     // Ball
     bool m_ballOnField = false;

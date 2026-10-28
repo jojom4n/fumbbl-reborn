@@ -41,6 +41,7 @@ private slots:
     void initializeFromLiveGameState();
     void modelChangesEssentials();
     void boxAndRemovePlayer();
+    void moveTrailAccumulatesAndClears();
     void staticHelpers();
     void positionNames();
     void resetClearsState();
@@ -301,8 +302,91 @@ void GameModelTest::boxAndRemovePlayer()
     QCOMPARE(box.first().playerId, QStringLiteral("18109690"));
     QCOMPARE(box.first().state, 5);
 
-    // Removed player is gone from the roster too
-    QCOMPARE(model.rosterHome().size(), 10);
+    // ROUND 13 (point 17 fix): fieldModelRemovePlayer clears the player's
+    // FIELD DATA but does NOT delete the player from the roster. The server
+    // emits it for EVERY player before each re-placement (post-TD / half
+    // setup) — removing them from the roster is what made players vanish
+    // after every drive (they were re-placed with setPlayerCoordinate, but
+    // the model had already dropped them). The player must survive with its
+    // field coordinates cleared.
+    const FFBPlayer *removed = model.findPlayerById(QStringLiteral("18109691"));
+    QVERIFY(removed != nullptr);          // still in the roster
+    QCOMPARE(model.rosterHome().size(), 11);
+    QVERIFY(!removed->hasCoords);         // field data cleared
+}
+
+// Round 13 (point 6): the CUMULATIVE move trail of the remote acting player.
+// Semantics (user clarifications):
+//   * the server steps the actor ONE SQUARE AT A TIME, so the trail grows
+//     progressively behind him (one cell per fieldModelSetPlayerCoordinate);
+//   * a NEW move by the SAME player APPENDS another path (its own arrow) —
+//     the spectator sees the whole cumulative route (no timeout, no replace);
+//   * when ANOTHER player is activated the whole trace is wiped and the new
+//     actor starts clean.
+void GameModelTest::moveTrailAccumulatesAndClears()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadFixtureGame()));
+    // Fixture: 18109690 at (3,2); 18109691 at (4,3).
+
+    QJsonArray changes;
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+    auto coords = [](int x, int y) { QJsonArray a; a << x << y; return QJsonValue(a); };
+    const QString actor = QStringLiteral("18109690");
+    const QString other = QStringLiteral("18109691");
+
+    // Activate the actor + first move: (3,2) -> (3,3) -> (4,3).
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(), QJsonValue(actor)));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(), QJsonValue(QStringLiteral("move"))));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor, coords(3, 3)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor, coords(4, 3)));
+    model.applyModelChanges(changes);
+
+    QCOMPARE(model.moveTraceActor(), actor);
+    QCOMPARE(model.moveTrace().size(), 1);
+    QCOMPARE(model.moveTrace().first().size(), 3);
+    QCOMPARE(model.moveTrace().first().at(0), QPoint(3, 2)); // start square
+    QCOMPARE(model.moveTrace().first().at(1), QPoint(3, 3));
+    QCOMPARE(model.moveTrace().first().at(2), QPoint(4, 3));
+
+    // A SECOND move by the SAME player: (4,3) -> (5,3). It APPENDS a new
+    // path (the trace is cumulative, not replaced).
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(), QJsonValue(QStringLiteral("move"))));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor, coords(5, 3)));
+    model.applyModelChanges(changes);
+
+    QCOMPARE(model.moveTrace().size(), 2);
+    QCOMPARE(model.moveTrace().last().size(), 2);
+    QCOMPARE(model.moveTrace().last().at(0), QPoint(4, 3));
+    QCOMPARE(model.moveTrace().last().at(1), QPoint(5, 3));
+
+    // A non-actor moving (a defended/pushed player) does NOT touch the trace.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), other, coords(5, 4)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveTrace().size(), 2);
+
+    // Activating ANOTHER player wipes the previous actor's whole trace.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(), QJsonValue(other)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveTraceActor(), other);
+    QCOMPARE(model.moveTrace().size(), 0);
+
+    // A NEW turn (setup/kickoff) also clears the trace.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), other, coords(6, 4)));
+    QJsonObject ko; ko.insert(QStringLiteral("name"), QStringLiteral("kickoff"));
+    changes.append(change(QStringLiteral("gameSetTurnMode"), QString(), QJsonValue(ko)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveTrace().size(), 0);
 }
 
 void GameModelTest::staticHelpers()

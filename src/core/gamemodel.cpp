@@ -30,6 +30,34 @@ bool readCoords(const QJsonValue &value, int &x, int &y)
     return true;
 }
 
+// Enums on the wire are usually {"name": ...} but some (PlayerAction in
+// actingPlayerSetPlayerAction, verified live) are PLAIN strings.
+QString enumNameValue(const QJsonValue &v)
+{
+    if (v.isObject())
+        return v.toObject().value(QStringLiteral("name")).toString();
+    if (v.isString())
+        return v.toString();
+    return QString();
+}
+
+// The moving PlayerActions (port of ffb-common PlayerAction.isMoving(),
+// plus standUpBlitz — it stands up AND blitz-moves). Wire names are the
+// enum's lowercase fName ("move", "blitzMove", ...).
+bool isMovingActionName(const QString &n)
+{
+    static const QSet<QString> kMoving = {
+        QStringLiteral("move"),                  QStringLiteral("blitzMove"),
+        QStringLiteral("handOverMove"),          QStringLiteral("passMove"),
+        QStringLiteral("foulMove"),              QStringLiteral("throwTeamMateMove"),
+        QStringLiteral("kickTeamMateMove"),      QStringLiteral("gazeMove"),
+        QStringLiteral("putridRegurgitationMove"), QStringLiteral("kickEmBlitz"),
+        QStringLiteral("secureTheBall"),         QStringLiteral("puntMove"),
+        QStringLiteral("standUpBlitz"),
+    };
+    return kMoving.contains(n);
+}
+
 int readInt(const QJsonValue &v)
 {
     if (v.isDouble())
@@ -99,12 +127,21 @@ void GameModel::clearState()
     m_ballX = -1;
     m_ballY = -1;
     m_weather.clear();
+    m_traceActor.clear();
+    m_tracePaths.clear();
+    m_movePending = false;
 }
 
 void GameModel::reset()
 {
     clearState();
     emit stateUpdated();
+}
+
+void GameModel::clearMoveTrace()
+{
+    m_tracePaths.clear();
+    m_movePending = false;
 }
 
 bool GameModel::initialize(const QJsonObject &game)
@@ -364,8 +401,35 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
 
     if (id == QLatin1String("fieldModelSetPlayerCoordinate")) {
         FFBPlayer *player = findPlayer(key);
-        if (player)
+        if (player) {
+            // Round 13: the move trail. Only the ACTOR's steps are traced
+            // (pushed/defended players are not). The server steps the actor
+            // one square at a time, so each change appends the new cell;
+            // a step whose previous cell does not match the path's tail
+            // (e.g. the player was pushed meanwhile) starts a new path.
+            int nx = -1, ny = -1;
+            if (readCoords(value, nx, ny) && !isOnField(nx, ny) && key == m_traceActor) {
+                // The actor left the field (into a box: knocked out, sent
+                // to the bench...) — its route is over.
+                m_tracePaths.clear();
+                m_movePending = false;
+            }
+            if (readCoords(value, nx, ny) && isOnField(nx, ny) && key == m_traceActor) {
+                const bool cont = !m_tracePaths.isEmpty()
+                    && m_tracePaths.last().last() == QPoint(player->fieldX, player->fieldY);
+                if (m_movePending || !cont) {
+                    QVector<QPoint> path;
+                    if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
+                        path << QPoint(player->fieldX, player->fieldY);
+                    path << QPoint(nx, ny);
+                    m_tracePaths.append(path);
+                } else {
+                    m_tracePaths.last().append(QPoint(nx, ny));
+                }
+                m_movePending = false;
+            }
             setPlayerCoords(player, value);
+        }
         return;
     }
 
@@ -377,22 +441,29 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     }
 
     if (id == QLatin1String("fieldModelRemovePlayer")) {
-        const auto it = m_playerIndex.find(key);
-        if (it != m_playerIndex.end()) {
-            const int idx = it.value();
-            m_rosterHomeIds.removeAll(m_players.at(idx).playerId);
-            m_rosterAwayIds.removeAll(m_players.at(idx).playerId);
-            m_players.removeAt(idx);
-            // Reindex (cheap: rosters are small).
-            m_playerIndex.clear();
-            for (int i = 0; i < m_players.size(); ++i)
-                m_playerIndex.insert(m_players.at(i).playerId, i);
+        // ROUND 13 BUG FIX (user report: players vanished after every TD /
+        // half end). ffb-common FieldModel.remove(player) clears ONLY the
+        // player's LIVE FIELD DATA (coordinate + state map) — the player
+        // REMAINS in the team roster. The server does this for EVERY player
+        // at the start of each turn (post-TD / half setup) right before
+        // re-placing them with fieldModelSetPlayerCoordinate (verified in
+        // the live capture game_1957772: 22x removePlayer + 22x
+        // setPlayerCoordinate in one batch). The old code deleted the
+        // player from the model — the follow-up setPlayerCoordinate then
+        // found no player and the player stayed gone forever (and every
+        // report referencing it lost its subject: "Move" without a name).
+        FFBPlayer *player = findPlayer(key);
+        if (player) {
+            player->fieldX = -1;
+            player->fieldY = -1;
+            player->hasCoords = false;
         }
         return;
     }
 
     if (id == QLatin1String("gameSetHalf")) {
         m_half = readInt(value);
+        clearMoveTrace(); // a new half: the trace dies with the old turn
         return;
     }
 
@@ -415,6 +486,18 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         m_turnMode = obj.contains(QStringLiteral("name"))
                          ? obj.value(QStringLiteral("name")).toString()
                          : value.toString();
+        // Turn START (post-TD or post-half setup: the players are about to
+        // be re-placed) — the trace of the old drive is gone. (Live
+        // capture: the mode sequence at a new turn is ...regular ->
+        // setup -> kickoff -> regular/first_turn.)
+        static const QSet<QString> kTurnStartModes = {
+            QStringLiteral("setup"),      QStringLiteral("kickoff"),
+            QStringLiteral("quick_snap"), QStringLiteral("first_turn"),
+            QStringLiteral("halftime"),   QStringLiteral("overtime"),
+            QStringLiteral("ended"),
+        };
+        if (kTurnStartModes.contains(m_turnMode))
+            clearMoveTrace();
         return;
     }
 
@@ -446,6 +529,26 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
 
     if (id == QLatin1String("actingPlayerSetPlayerId")) {
         m_activePlayerId = playerIdKey(value);
+        // Round 13 trace semantics: the value is null BETWEEN actions of
+        // the same player (the trace must survive — a new move of the same
+        // player appends, it does not replace), so only a DIFFERENT non-
+        // null actor wipes the previous player's whole trace.
+        if (!m_activePlayerId.isEmpty() && m_activePlayerId != m_traceActor) {
+            m_traceActor = m_activePlayerId;
+            m_tracePaths.clear();
+            m_movePending = false;
+        }
+        return;
+    }
+
+    if (id == QLatin1String("actingPlayerSetPlayerAction")) {
+        // Value: a plain PlayerAction name on the wire ("move", "standUp",
+        // "blitzMove", ... — verified in the live capture). A MOVING action
+        // arms the trace: the actor's next coordinate change starts a NEW
+        // path (its own arrow).
+        const QString an = enumNameValue(value);
+        if (isMovingActionName(an))
+            m_movePending = true;
         return;
     }
 

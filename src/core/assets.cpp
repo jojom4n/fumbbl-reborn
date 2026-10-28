@@ -10,6 +10,8 @@
 #include <QImage>
 #include <QPixmap>
 
+#include <algorithm>
+
 namespace assets {
 
 namespace {
@@ -270,6 +272,126 @@ QPixmap cardPixmap(const QString &cardName)
 bool isAvailable()
 {
     return !playerFace(QStringLiteral("Ogre")).isNull();
+}
+
+// ---------------------------------------------------------------------------
+// keyBackground — generic flat-backdrop removal for team logos (round 13,
+// user point 10). The backdrop is NOT assumed white: it is estimated from the
+// image border and removed by a border-connected flood fill, so it works for
+// any flat color (or a user-uploaded logo with its own backdrop).
+// ---------------------------------------------------------------------------
+namespace {
+
+struct Rgb { float r, g, b; };
+
+float sqDist(const Rgb &a, const Rgb &b)
+{
+    const float dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+    return dr * dr + dg * dg + db * db;
+}
+
+bool imageHasAlpha(const QImage &im)
+{
+    // A real transparency channel: a meaningful fraction of pixels is not
+    // fully opaque. Sampled (logos are small, but stay cheap on big ones).
+    const int w = im.width(), h = im.height();
+    int total = 0, transparent = 0;
+    for (int y = 0; y < h; y += 3) {
+        for (int x = 0; x < w; x += 3) {
+            const QRgb px = im.pixel(x, y);
+            ++total;
+            if (qAlpha(px) < 250)
+                ++transparent;
+        }
+    }
+    return total > 0 && (transparent * 100) > total; // >10% sampled pixels
+}
+
+} // namespace
+
+QImage keyBackground(QImage img)
+{
+    if (img.isNull())
+        return img;
+    // Already transparent (a real PNG alpha): nothing to key.
+    if (imageHasAlpha(img))
+        return img;
+
+    img = img.convertToFormat(QImage::Format_ARGB32);
+    const int w = img.width(), h = img.height();
+    if (w < 4 || h < 4)
+        return img;
+
+    // 1) Estimate the backdrop color = MEDIAN of the border pixels (robust to
+    //    a few outlier edge pixels). Border = the 4 outer edges.
+    auto borderPix = [&](int x, int y) -> Rgb {
+        const QRgb px = img.pixel(x, y);
+        return Rgb{ float(qRed(px)), float(qGreen(px)), float(qBlue(px)) };
+    };
+    QVector<float> rs, gs, bs;
+    auto push = [&](int x, int y) {
+        const Rgb c = borderPix(x, y);
+        rs.append(c.r); gs.append(c.g); bs.append(c.b);
+    };
+    for (int x = 0; x < w; ++x) { push(x, 0); push(x, h - 1); }
+    for (int y = 0; y < h; ++y) { push(0, y); push(w - 1, y); }
+    auto median = [](QVector<float> v) -> float {
+        std::sort(v.begin(), v.end());
+        return v.isEmpty() ? 0.0f : v[v.size() / 2];
+    };
+    const Rgb bg{ median(rs), median(gs), median(bs) };
+
+    // 2) Guard: the border must be a UNIFORM flat color (a real backdrop),
+    //    otherwise the logo likely touches the edges / it's a photo -> skip.
+    const float uniformTol2 = 34.0f * 34.0f;
+    const auto within = [&](int x, int y) { return sqDist(borderPix(x, y), bg) <= uniformTol2; };
+    int uniformCount = 0, total = 0;
+    for (int x = 0; x < w; ++x) { if (within(x, 0)) ++uniformCount; ++total; if (within(x, h - 1)) ++uniformCount; ++total; }
+    for (int y = 0; y < h; ++y) { if (within(0, y)) ++uniformCount; ++total; if (within(w - 1, y)) ++uniformCount; ++total; }
+    if (total == 0 || (uniformCount * 100) < (total * 60)) // <60% of border flat
+        return img;
+
+    // 3) Tolerance for the flood fill: a bit beyond the uniformity window.
+    const float tol2 = 48.0f * 48.0f;
+
+    // 4) Border-connected flood fill -> transparent.
+    const int n = w * h;
+    QVector<quint8> visited(n, 0);
+    QVector<int> queue;
+    queue.reserve(1024);
+    auto seed = [&](int x, int y) {
+        const int i = y * w + x;
+        if (!visited[i] && within(x, y)) {
+            visited[i] = 1;
+            queue.append(i);
+        }
+    };
+    for (int x = 0; x < w; ++x) { seed(x, 0); seed(x, h - 1); }
+    for (int y = 0; y < h; ++y) { seed(0, y); seed(w - 1, y); }
+
+    QRgb *bits = reinterpret_cast<QRgb *>(img.bits());
+    for (int q = 0; q < queue.size(); ++q) {
+        const int i = queue[q];
+        const int x = i % w, y = i / w;
+        bits[i] = bits[i] & 0x00FFFFFFu; // alpha = 0
+        const int nx[4] = { x - 1, x + 1, x, x };
+        const int ny[4] = { y, y, y - 1, y + 1 };
+        for (int k = 0; k < 4; ++k) {
+            const int a = nx[k], b = ny[k];
+            if (a < 0 || a >= w || b < 0 || b >= h)
+                continue;
+            const int j = b * w + a;
+            if (visited[j])
+                continue;
+            const QRgb px = bits[j];
+            const Rgb c{ float(qRed(px)), float(qGreen(px)), float(qBlue(px)) };
+            if (sqDist(c, bg) <= tol2) {
+                visited[j] = 1;
+                queue.append(j);
+            }
+        }
+    }
+    return img;
 }
 
 } // namespace assets

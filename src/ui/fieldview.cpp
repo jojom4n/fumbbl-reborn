@@ -5,7 +5,9 @@
 
 #include "core/assets.h"
 
+#include <QCursor>
 #include <QEvent>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -25,6 +27,19 @@ FieldView::FieldView(QWidget *parent)
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
     setMouseTracking(true); // hover cards (Mockup F round 8)
     setCursor(Qt::OpenHandCursor);
+    // Round 13: WASD pan — the field can take keyboard focus (clicking it or
+    // zooming with the wheel grabs it; typing in the chat input still works
+    // because that widget has the focus then).
+    setFocusPolicy(Qt::StrongFocus);
+
+    // Round 13: EDGE PAN — a fast timer polls the cursor position: pressed
+    // against the window's edge the view scrolls in that direction (and the
+    // cursor is clamped to the window, multi-monitor safe). Active only
+    // while zoomed (see edgePanTick).
+    m_edgePanTimer = new QTimer(this);
+    m_edgePanTimer->setInterval(16); // ~60 fps
+    connect(m_edgePanTimer, &QTimer::timeout, this, &FieldView::edgePanTick);
+    m_edgePanTimer->start();
 
     // Round 9: selection-halo pulse (~1.2 Hz breathing). The timer only
     // repaints the selected token's rect — never the whole field.
@@ -266,6 +281,68 @@ void FieldView::drawRain(QPainter &p)
     p.restore();
 }
 
+// Mowing stripes (round 13): every GRASS column (1..24; 0/25 are the TD
+// columns) is tinted light or dark alternating — the same values the
+// mockup baked (tools/mockup/compose_f.py grid_mow_tint: even x1.252, odd
+// x0.884). Drawn as a white/black overlay in code so it stays perfectly
+// grid-aligned and crisp at any zoom.
+void FieldView::drawMowStripes(QPainter &p, const QRectF &f) const
+{
+    const qreal cellW = f.width() / kFieldWidth;
+    p.save();
+    p.setPen(Qt::NoPen);
+    for (int i = 1; i < kFieldWidth - 1; ++i) {
+        const QRectF col(f.x() + i * cellW, f.y(), cellW, f.height());
+        p.setBrush(i % 2 == 0 ? QColor(255, 255, 255, 42) : QColor(0, 0, 0, 32));
+        p.fillRect(col, p.brush().color());
+    }
+    p.restore();
+}
+
+// The crimson 1-column TOUCHDOWN zones + the vertical vector "TOUCHDOWN"
+// (round 13: code-drawn — the baked version blurred with the texture at
+// zoom). Port of the mockup's narrow_td_zone (crimson 128,30,28 + white
+// 900-weight text, rotated 90 deg, reads top-to-bottom, centered in the
+// column).
+void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
+{
+    const qreal cellW = f.width() / kFieldWidth;
+    const QColor crimson(128, 30, 28);
+    p.save();
+    p.setPen(Qt::NoPen);
+    p.setBrush(crimson);
+    p.fillRect(QRectF(f.x(), f.y(), cellW, f.height()), crimson);
+    p.fillRect(QRectF(f.right() - cellW, f.y(), cellW, f.height()), crimson);
+
+    // Vector TOUCHDOWN, rotated 90 deg (reads top-to-bottom) and centered in
+    // the column. Font: the app font at Black weight (crisp at any zoom).
+    QFont tf = p.font();
+    tf.setWeight(QFont::Black);
+    tf.setPointSizeF(14.0);
+    QFontMetricsF fm(tf);
+    const QString text = QStringLiteral("TOUCHDOWN");
+    const qreal maxLen = 0.94 * f.height();
+    const qreal maxCap = 0.62 * cellW; // cap height across the column width
+    while ((fm.horizontalAdvance(text) > maxLen || fm.capHeight() > maxCap) &&
+           tf.pointSizeF() > 2.0) {
+        tf.setPointSizeF(tf.pointSizeF() * 0.97);
+        fm = QFontMetricsF(tf);
+    }
+    p.setFont(tf);
+    p.setPen(QColor(255, 255, 255, 235));
+    const qreal adv = fm.horizontalAdvance(text);
+    for (const qreal colCenter : { f.x() + cellW * 0.5,
+                                   f.right() - cellW * 0.5 }) {
+        p.save();
+        p.translate(colCenter, f.center().y());
+        p.rotate(90); // local +x now points DOWN: the text reads top->bottom
+        p.drawText(QRectF(-adv / 2, -fm.ascent() / 2, adv, fm.ascent()),
+                   Qt::AlignHCenter, text);
+        p.restore();
+    }
+    p.restore();
+}
+
 void FieldView::setSelectedPlayer(const QString &playerId)
 {
     if (m_selectedPlayer == playerId)
@@ -291,6 +368,156 @@ void FieldView::setActionWheelTarget(const QString &playerId)
 void FieldView::setPlayMode(bool play)
 {
     m_playMode = play;
+}
+
+// ---------------------------------------------------------------------------
+// Round 13 — navigation (user spec, replaces the round-8 drag pan):
+//   * EDGE PAN: cursor pressed against the window edge scrolls the view;
+//   * WASD: W up, A left, S down, D right;
+//   * no button-drag pan (left or right);
+//   * left click = select, right click = reset (kept).
+// ---------------------------------------------------------------------------
+void FieldView::edgePanTick()
+{
+    // At zoom 1 the letterboxed scene cannot pan: never trap the mouse.
+    if (m_zoom <= 1.0001)
+        return;
+    QWidget *top = window();
+    if (!top)
+        return;
+    const QRect wr = top->frameGeometry(); // global (incl. title bar)
+    const QPoint cur = QCursor::pos();
+    if (!wr.contains(cur))
+        return;
+    const QPointF d = edgePanDelta(wr, cur, m_zoom);
+    if (d.isNull())
+        return;
+    m_pan += d;
+    clampPan();
+    update();
+    // MULTI-MONITOR (user request): while the user keeps the mouse against
+    // the edge, clamp it INSIDE the window — it can never spill onto the
+    // neighboring monitor, and the clamped cursor is still in the edge zone
+    // so the pan keeps running.
+    const QPoint clamped(qBound(wr.left() + 1, cur.x(), wr.right() - 1),
+                         qBound(wr.top() + 1, cur.y(), wr.bottom() - 1));
+    if (clamped != cur)
+        QCursor::setPos(clamped);
+}
+
+QPointF FieldView::edgePanDelta(const QRect &wr, const QPoint &cursor, qreal zoom)
+{
+    if (zoom <= 1.0001 || !wr.contains(cursor))
+        return QPointF();
+    static const int kZone = 24;      // px from the window edge
+    static const qreal kMax = 14.0;   // widget px per frame at full depth
+    const auto depth = [](int dist) -> qreal {
+        return qBound(0.0, 1.0 - qreal(dist) / kZone, 1.0);
+    };
+    // Looking toward an edge = the content moves toward that edge on screen:
+    // left edge -> pan right (positive), top edge -> pan down (positive).
+    qreal dx = 0.0, dy = 0.0;
+    if (cursor.x() < wr.left() + kZone)
+        dx = depth(cursor.x() - wr.left()) * kMax;
+    else if (cursor.x() > wr.right() - kZone)
+        dx = -depth(wr.right() - cursor.x()) * kMax;
+    if (cursor.y() < wr.top() + kZone)
+        dy = depth(cursor.y() - wr.top()) * kMax;
+    else if (cursor.y() > wr.bottom() - kZone)
+        dy = -depth(wr.bottom() - cursor.y()) * kMax;
+    return QPointF(dx, dy);
+}
+
+void FieldView::keyPressEvent(QKeyEvent *event)
+{
+    // WASD pan (round 13). Only meaningful while zoomed (at zoom 1 the
+    // scene is letterboxed and centered: panning would clamp right back).
+    if (m_zoom > 1.0001) {
+        const qreal step = 24.0; // widget px per key press (auto-repeat)
+        QPointF d;
+        switch (event->key()) {
+        case Qt::Key_W: d = QPointF(0.0, step); break;   // look up
+        case Qt::Key_S: d = QPointF(0.0, -step); break;  // look down
+        case Qt::Key_A: d = QPointF(step, 0.0); break;   // look left
+        case Qt::Key_D: d = QPointF(-step, 0.0); break;  // look right
+        default:
+            break;
+        }
+        if (!d.isNull()) {
+            m_pan += d;
+            clampPan();
+            update();
+            event->accept();
+            return;
+        }
+    }
+    QWidget::keyPressEvent(event);
+}
+
+void FieldView::setMoveTrace(const QVector<QVector<QPoint>> &paths)
+{
+    if (paths == m_moveTrace)
+        return;
+    m_moveTrace = paths;
+    update();
+}
+
+QPointF FieldView::cellCenter(int x, int y) const
+{
+    const QRectF c = cellRect(x, y);
+    return c.center();
+}
+
+// The actor's CUMULATIVE move trail (round 13): one polyline per move
+// action, through the FIELD CELL CENTERS (the line follows the grid — a
+// center-to-center segment per stepped square, never a straight line from
+// start to end), with an arrow at the end of each path. White over a dark
+// under-stroke so it reads on both the grass and the crimson TD. Drawn in
+// the zoomed scene space, under the tokens (the trail belongs to the field,
+// the player walks on top of it).
+void FieldView::drawMoveTrail(QPainter &p)
+{
+    if (m_moveTrace.isEmpty())
+        return;
+    const QRectF f = fieldRect();
+    if (f.isEmpty())
+        return;
+    const qreal cellW = f.width() / kFieldWidth;
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    for (const QVector<QPoint> &path : m_moveTrace) {
+        if (path.size() < 2)
+            continue; // a single square: nothing to trace yet
+        QVector<QPointF> pts;
+        pts.reserve(path.size());
+        for (const QPoint &c : path)
+            pts << cellCenter(c.x(), c.y());
+        // Dark under-stroke + white main stroke (rounded joins: the path
+        // turns along the grid).
+        p.setPen(QPen(QColor(24, 24, 30, 200), cellW * 0.16,
+                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolyline(pts.constData(), pts.size());
+        p.setPen(QPen(QColor(255, 255, 255, 235), cellW * 0.075,
+                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolyline(pts.constData(), pts.size());
+        // Arrow at the end, pointing along the last stepped segment.
+        const QPointF a = pts[pts.size() - 2];
+        const QPointF b = pts.last();
+        const QPointF dir(b.x() - a.x(), b.y() - a.y());
+        const qreal len = std::hypot(dir.x(), dir.y());
+        if (len < 1e-6)
+            continue;
+        const QPointF u(dir.x() / len, dir.y() / len);
+        const qreal s = cellW * 0.24; // arrow size
+        const QPointF base = b - u * s;
+        const QPointF perp(-u.y(), u.x());
+        QPolygonF tri;
+        tri << b << (base + perp * s * 0.62) << (base - perp * s * 0.62);
+        p.setBrush(QColor(255, 255, 255, 240));
+        p.setPen(QPen(QColor(24, 24, 30, 200), qMax(1.5, cellW * 0.05)));
+        p.drawPolygon(tri);
+    }
+    p.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -324,17 +551,17 @@ const FieldView::PlayerToken *FieldView::tokenAt(const QPoint &pos) const
 void FieldView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
+        // Left button = SELECT / show the info card (the round-12 behavior,
+        // kept — round 13 only retracted the DRAG-PAN, not the click). An
+        // EMPTY id (clicked an empty square) is emitted too: the caller uses
+        // it to HIDE the card. Emitted on the press, as before.
         const PlayerToken *t = tokenAt(event->pos());
         emit playerClicked(t ? t->playerId : QString());
+        setFocus(Qt::MouseFocusReason); // WASD pan right after a click
     } else if (event->button() == Qt::RightButton) {
-        // Right button: potential pan (round 8). A click without movement
-        // resets the view; a drag pans (the move handler clamps). Round 9:
-        // in PLAY mode a right-click that lands ON A PLAYER opens the
-        // action wheel instead (remember who was under the button; the
-        // release handler decides click vs drag).
-        m_panning = true;
-        m_panStart = event->pos();
-        m_panStartOffset = m_pan;
+        // Round 13: right button no longer pans. A right CLICK resets the
+        // view (or, in play mode on a player: the action wheel — remember
+        // who was under the button; the release decides).
         const PlayerToken *t = tokenAt(event->pos());
         m_rightPressPlayerId = t ? t->playerId : QString();
     }
@@ -343,14 +570,6 @@ void FieldView::mousePressEvent(QMouseEvent *event)
 
 void FieldView::mouseMoveEvent(QMouseEvent *event)
 {
-    if (m_panning) {
-        if (m_zoom > 1.0001) {
-            m_pan = m_panStartOffset + QPointF(event->pos() - m_panStart);
-            clampPan();
-            update();
-        }
-        return;
-    }
     // Hover: field tokens first, then bench faces. The hover "key" (token
     // id, or the box-entry name) changes only when the target changes.
     const PlayerToken *t = tokenAt(event->pos());
@@ -381,18 +600,19 @@ void FieldView::mouseMoveEvent(QMouseEvent *event)
 
 void FieldView::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::RightButton && m_panning) {
-        m_panning = false;
-        const bool wasClick = QLineF(m_panStart, event->pos()).length() < 4.0;
-        if (wasClick) {
-            if (m_playMode && !m_rightPressPlayerId.isEmpty()) {
-                // Play mode: right-click ON A PLAYER = action wheel target
-                // (the game logic shows the wheel menu from the signal).
-                setActionWheelTarget(m_rightPressPlayerId);
-                emit actionWheelRequested(m_rightPressPlayerId);
-            } else {
-                resetView(); // plain right click = reset zoom/pan
-            }
+    if (event->button() == Qt::LeftButton) {
+        // Left click already fired on the press (see mousePressEvent); the
+        // release does nothing (the round-13 drag-pan was retracted).
+    } else if (event->button() == Qt::RightButton) {
+        const PlayerToken *tRel = tokenAt(event->pos());
+        if (m_playMode && !m_rightPressPlayerId.isEmpty()
+            && tRel && tRel->playerId == m_rightPressPlayerId) {
+            // Play mode: right-click ON A PLAYER = action wheel target
+            // (the game logic shows the wheel menu from the signal).
+            setActionWheelTarget(m_rightPressPlayerId);
+            emit actionWheelRequested(m_rightPressPlayerId);
+        } else {
+            resetView(); // plain right click = reset zoom/pan
         }
         m_rightPressPlayerId.clear();
     }
@@ -429,6 +649,7 @@ void FieldView::wheelEvent(QWheelEvent *event)
         m_pan = QPointF();
     clampPan();
     update();
+    setFocus(Qt::OtherFocusReason); // round 13: WASD right after zooming
     event->accept();
 }
 
@@ -465,12 +686,12 @@ void FieldView::clampPan()
 
 QRectF FieldView::sceneRect() const
 {
-    // The scene (round 12): [dugout | pitch | dugout] = 36x15 cells. The
-    // cells stay SQUARE (a Blood Bowl grid is square): the scene is fitted
-    // into the widget and centered; the leftover is the dark stadium apron
-    // (paintEvent fills the widget with it first). ORIGIN at (0,0) — the
-    // m_pan transform (centering at zoom=1, user pan when zoomed) places it
-    // on screen.
+    // The scene (round 13): [dugout | gap | pitch | gap | dugout] = 38x15
+    // cells. The cells stay SQUARE (a Blood Bowl grid is square): the scene
+    // is fitted into the widget and centered; the leftover is the dark
+    // stadium apron (paintEvent fills the widget with it first). ORIGIN at
+    // (0,0) — the m_pan transform (centering at zoom=1, user pan when
+    // zoomed) places it on screen.
     if (width() <= 0 || height() <= 0)
         return QRectF();
     const qreal cell = qMin(width() / qreal(kSceneWidth), height() / qreal(kFieldHeight));
@@ -479,27 +700,29 @@ QRectF FieldView::sceneRect() const
 
 QRectF FieldView::dugoutPanelRect(bool leftSide) const
 {
+    // Round 13: the panel is the FULL scene height (15 rows — the asset is
+    // regenerated 1:3) — bigger slots, more recognizable faces (user).
     const QRectF s = sceneRect();
     if (s.isEmpty())
         return QRectF();
     const qreal cw = s.width() / kSceneWidth;
-    const qreal ch = s.height() / kFieldHeight;
     const qreal x = leftSide ? s.x() : s.right() - kDugoutCells * cw;
-    const qreal ph = kDugoutPanelRows * ch;
-    const qreal y = s.center().y() - ph / 2;
-    return QRectF(x, y, kDugoutCells * cw, ph);
+    return QRectF(x, s.y(), kDugoutCells * cw, s.height());
 }
 
 QRectF FieldView::fieldRect() const
 {
-    // The PITCH (round 12): the middle 26 columns of the scene. The dugout
-    // panels occupy the outer kDugoutCells columns on each side (they stand
-    // outside the TD columns, separated from the touchdown).
+    // The PITCH (round 13): the middle 26 columns of the scene. The dugout
+    // panels occupy the outer kDugoutCells columns; between each panel and
+    // the pitch there is a visible GAP (kSceneGapCells) of dark stadium
+    // apron — user round 13: the dugout must be separated HORIZONTALLY from
+    // the field (the old baked wood frame ran "under" the field).
     const QRectF s = sceneRect();
     if (s.isEmpty())
         return QRectF();
     const qreal cw = s.width() / kSceneWidth;
-    return QRectF(s.x() + kDugoutCells * cw, s.y(), kFieldWidth * cw, s.height());
+    return QRectF(s.x() + (kDugoutCells + kSceneGapCells) * cw, s.y(),
+                  kFieldWidth * cw, s.height());
 }
 
 QRectF FieldView::cellRect(int x, int y) const
@@ -541,18 +764,24 @@ QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
     if (panel.isEmpty())
         return filled;
 
-    constexpr int kCols = 2, kRows = 4;
+    // Round 13: full-height panel (15 rows -> 3 bands of 5 rows). The slots
+    // are BIGGER than round 12 (user: "slot più grandi, volti più
+    // riconoscibili"): RESERVE 2x2 (the reserve bench is short), KO and
+    // INJURED 2x4 (down players accumulate).
+    constexpr int kCols = 2;
+    const int kRows[] = { 2, 4, 4 };
     const qreal bandH = panel.height() / 3.0;
     for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.34; // below the label
-        const qreal slotH = bandH * 0.62;
-        const qreal pitch = slotH / kRows;
-        const qreal r = pitch * 0.42;
-        for (int i = 0; i < mine.size() && i < kCols * kRows; ++i) {
+        const int rows = kRows[sec];
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.30; // below the label
+        const qreal slotH = bandH * 0.66;
+        const qreal pitch = slotH / rows;
+        const qreal r = pitch * 0.46;
+        for (int i = 0; i < mine.size() && i < kCols * rows; ++i) {
             const int col = i % kCols, row = i / kCols;
             const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
             const qreal cy = slotTop + row * pitch + pitch / 2;
@@ -592,7 +821,9 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
     if (panel.isEmpty())
         return;
 
-    constexpr int kCols = 2, kRows = 4;
+    // Round 13: same (bigger) slot grid as boxSlots — keep the two in sync.
+    constexpr int kCols = 2;
+    const int kRows[] = { 2, 4, 4 };
     const QColor EMPTY(160, 166, 178);
     const qreal bandH = panel.height() / 3.0;
 
@@ -602,12 +833,13 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
 
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.34; // below the label
-        const qreal slotH = bandH * 0.62;
-        const qreal pitch = slotH / kRows;
-        const qreal r = pitch * 0.42;
+        const int rows = kRows[sec];
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.30; // below the label
+        const qreal slotH = bandH * 0.66;
+        const qreal pitch = slotH / rows;
+        const qreal r = pitch * 0.46; // = boxSlots' radius (faces/hit-test)
 
-        for (int i = 0; i < kCols * kRows; ++i) {
+        for (int i = 0; i < kCols * rows; ++i) {
             const int col = i % kCols, row = i / kCols;
             const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
             const qreal cy = slotTop + row * pitch + pitch / 2;
@@ -764,20 +996,13 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
 
-    // --- Dugouts (round 12): team 1 left of the left TD band, team 2 right
-    //     of the right one. The panel is a SEPARATE soil-themed asset
-    //     (identical for every field type); the side area behind/around it
-    //     is a dark stadium apron.
+    // --- Dugouts (round 13): team 1 left of the left TD column, team 2
+    //     right of the right one. The panel is a SEPARATE soil-themed asset
+    //     (identical for every field type), now FULL HEIGHT (the 1:3 art
+    //     fits the 5x15 panel exactly). The kSceneGapCells column between
+    //     panel and pitch stays dark stadium apron — the visible gap the
+    //     user asked for (no more baked frame "under" the field).
     const auto drawDugout = [&](bool leftSide) {
-        const QRectF side = leftSide
-                                ? QRectF(s.x(), s.y(), kDugoutCells * (s.width() / kSceneWidth), s.height())
-                                : QRectF(s.right() - kDugoutCells * (s.width() / kSceneWidth), s.y(),
-                                         kDugoutCells * (s.width() / kSceneWidth), s.height());
-        // Apron.
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(58, 56, 54));
-        p.fillRect(side, QColor(58, 56, 54));
-        // Panel image (the 1:2 soil art fits the 5x10 panel exactly).
         const QRectF panel = dugoutPanelRect(leftSide);
         const QPixmap dg = assets::dugoutTexture();
         if (!dg.isNull()) {
@@ -787,30 +1012,30 @@ void FieldView::paintEvent(QPaintEvent *)
         } else {
             p.fillRect(panel, QColor(122, 88, 52)); // fallback soil
         }
-        // Inner edge facing the pitch: a dark seam separating dugout and TD.
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 28, 26, 200));
-        const qreal seamX = leftSide ? side.right() - 3 : side.x();
-        p.fillRect(QRectF(seamX, s.y(), 3, s.height()), QColor(30, 28, 26, 200));
     };
     drawDugout(true);
     drawDugout(false);
 
-    // --- Field texture (baked Mockup-F art: grass, mowing stripes, crimson
-    //     1-column TD zones with vertical TOUCHDOWN) or flat fallback ------
+    // --- Field texture (round 13): the Qwen art is PURE GRASS now (the
+    //     baked grid/TD/TOUCHDOWN came out blurred and duplicated at zoom —
+    //     user round 12/13). Everything structural is drawn in CODE over it:
+    //     mowing stripes, crimson 1-column TD zones + vector TOUCHDOWN,
+    //     the exact grid. The texture only supplies the grass detail, which
+    //     stays soft even when zoomed (fine detail, tolerable) while lines
+    //     and text stay razor-sharp at any zoom/HiDPI (user point 15).
     const QPixmap tex = assets::fieldTexture();
     if (!tex.isNull()) {
-        // Cover scaling (preserve aspect, center-crop to the widget).
+        // Cover scaling (preserve aspect, center-crop to the pitch).
         const qreal scale = qMax(f.width() / tex.width(), f.height() / tex.height());
         const QSize sz(int(tex.width() * scale) + 1, int(tex.height() * scale) + 1);
         p.drawPixmap(QRectF(f.center().x() - sz.width() / 2, f.center().y() - sz.height() / 2,
                             sz.width(), sz.height()),
                      tex, QRectF(0, 0, tex.width(), tex.height()));
     } else {
-        p.fillRect(f, QColor(0x3d, 0x6b, 0x35));
-        p.fillRect(cellRect(0, 0).united(cellRect(0, 14)), QColor(0x80, 0x20, 0x1e));
-        p.fillRect(cellRect(25, 0).united(cellRect(25, 14)), QColor(0x80, 0x20, 0x1e));
+        p.fillRect(f, QColor(0x3d, 0x6b, 0x35)); // flat fallback
     }
+    drawMowStripes(p, f);
+    drawTouchdownZones(p, f);
 
     // --- Exact 26x15 grid over the WHOLE field ----------------------------
     QPen linePen(QColor(255, 255, 255, 110));
@@ -865,6 +1090,10 @@ void FieldView::paintEvent(QPaintEvent *)
     //     drops splash into them.
     if (m_raining)
         drawPuddles(p, f);
+
+    // --- The actor's cumulative MOVE TRAIL (round 13): drawn on the field,
+    //     under the tokens — the player walks on top of his own trail.
+    drawMoveTrail(p);
 
     // --- Ball on an empty square -------------------------------------------
     const auto atBall = [this](const QVector<PlayerToken> &team) {

@@ -124,13 +124,14 @@ namespace {
 // as FieldView (the field now fills the whole widget, 26x15 cells, phase 10).
 QPoint cellCenter(const FieldView *field, int x, int y)
 {
-    // Round 12 scene: [dugout 5 | pitch 26 | dugout 5] = 36x15 cells, SQUARE
-    // (the scene is fitted into the widget and centered — letterbox).
+    // Round 13 scene: [dugout 5 | gap 1 | pitch 26 | gap 1 | dugout 5] =
+    // 38x15 cells, SQUARE (the scene is fitted into the widget and centered
+    // — letterbox). The pitch starts at column 6 (dugout 5 + gap 1).
     const qreal W = field->width(), H = field->height();
-    const qreal cell = qMin(W / 36.0, H / 15.0);
-    const qreal ox = (W - 36.0 * cell) / 2.0;
+    const qreal cell = qMin(W / 38.0, H / 15.0);
+    const qreal ox = (W - 38.0 * cell) / 2.0;
     const qreal oy = (H - 15.0 * cell) / 2.0;
-    return QPoint(int(ox + (5 + x + 0.5) * cell), int(oy + (y + 0.5) * cell));
+    return QPoint(int(ox + (6 + x + 0.5) * cell), int(oy + (y + 0.5) * cell));
 }
 
 // The FloatingPanel that wraps `content` (the HUD overlay of phase 10).
@@ -384,7 +385,13 @@ void UiWiringTest::cardFollowsModelSync()
     QCOMPARE(info->shownPlayerId(), id);
     QVERIFY(labelContains(info, QStringLiteral("KO")));
 
-    // The player is removed from the game: the card is hidden.
+    // ROUND 13 (point 17 fix): fieldModelRemovePlayer clears the player's
+    // FIELD DATA but does NOT remove the player from the game — the server
+    // emits it for every player before each re-placement (post-TD / half
+    // setup). The old code deleted the player from the model here, which
+    // (a) made players vanish after every drive and (b) wrongly hid the card.
+    // Correct behavior: the player survives, field coordinates are cleared,
+    // and the card STAYS (the player is still in the match).
     QJsonArray changes2;
     QJsonObject c3;
     c3.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelRemovePlayer"));
@@ -393,7 +400,9 @@ void UiWiringTest::cardFollowsModelSync()
     changes2.append(c3);
     w.onModelSync(changes2, QJsonArray());
 
-    QCOMPARE(info->shownPlayerId(), QString());
+    QCOMPARE(info->shownPlayerId(), id); // still in the game -> card kept
+    const FFBPlayer *after = model->findPlayerById(id);
+    QVERIFY(after && !after->hasCoords); // field data cleared
 }
 
 void UiWiringTest::gameTimeDrivesTimer()
@@ -1366,7 +1375,7 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 void UiWiringTest::wideZoneLinesDrawn()
 {
     FieldView field;
-    field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
+    field.resize(1520, 600); // round 13: 38x15 scene of 40px cells
     field.show();
     QApplication::processEvents();
     const QImage img = field.grab().toImage();
@@ -1377,9 +1386,9 @@ void UiWiringTest::wideZoneLinesDrawn()
     // Brightness the line adds over the 8px-below pixel (same grass stripe).
     const auto lineBoost = [&](int row) {
         int sum = 0, n = 0;
-        // The pitch spans x 200..1240 (round 12: 5 dugout columns on each
+        // The pitch spans x 240..1280 (round 13: 5 dugout + 1 gap on each
         // side) — sample the interior only.
-        for (int x = 240; x < 1200; x += 10) {
+        for (int x = 280; x < 1240; x += 10) {
             sum += qMax(0, lum(x, row * 40) - lum(x, row * 40 + 8));
             ++n;
         }
@@ -1442,8 +1451,9 @@ void UiWiringTest::diceAssetsPreScaled()
         const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
         QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
         QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
-        QCOMPARE(QImage(d6).size(), QSize(28, 28));
-        QCOMPARE(QImage(bl).size(), QSize(28, 28));
+        // Round 13: 44px (was 28) — bigger, more readable dice.
+        QCOMPARE(QImage(d6).size(), QSize(44, 44));
+        QCOMPARE(QImage(bl).size(), QSize(44, 44));
     }
 }
 

@@ -108,10 +108,36 @@ public:
     // bench face shows the player card too.
     const BoxEntry *boxEntryAt(const QPoint &pos, bool &sideHome) const;
 
-    // Field navigation (round 8): mouse wheel = zoom (1.0..3.0, anchored on
-    // the cursor), right-mouse drag while zoomed = pan, right click = reset.
+    // Field navigation (round 13, user spec — replaces the round-8 drag pan
+    // and the retracted left-drag idea):
+    //   * mouse WHEEL = zoom (1.0..3.0, anchored on the cursor)
+    //   * EDGE PAN: the mouse pressed against the window's edge scrolls the
+    //     view in that direction (no button needed);
+    //   * WASD: W up, A left, S down, D right;
+    //   * MULTI-MONITOR: while the cursor is in the edge zone it is CLAMPED
+    //     to the window (QCursor::setPos) so it can never spill onto the
+    //     neighboring monitor;
+    //   * LEFT CLICK = select/show card (round-12 behavior, kept);
+    //   * RIGHT CLICK = reset the view.
+    // NO button-drag pan anymore (left or right).
     qreal zoom() const { return m_zoom; }
+    QPointF pan() const { return m_pan; } // tests
     void resetView();
+
+    // Pure edge-pan computation (testable without a real cursor): the pan
+    // delta in WIDGET px for the cursor at `cursor` (global) given the
+    // top-level `windowRect` (global). Zero outside the edge zone / at
+    // zoom 1. Looking left = content moves right = positive x.
+    static QPointF edgePanDelta(const QRect &windowRect, const QPoint &cursor,
+                                qreal zoom);
+
+    // The actor's CUMULATIVE move trail (round 13): one polyline per move
+    // action, through the field cell centers, with an arrow at the end of
+    // each path. Empty = nothing drawn. See GameModel::moveTrace() for the
+    // persistence semantics (no timeout; appends per move; cleared when the
+    // actor changes or a new turn starts).
+    void setMoveTrace(const QVector<QVector<QPoint>> &paths);
+    QVector<QVector<QPoint>> moveTrace() const { return m_moveTrace; }
 
     QSize sizeHint() const override;
 
@@ -134,26 +160,33 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void leaveEvent(QEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override; // round 13: WASD pan
 
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
     static constexpr int kFieldHeight = 15;  // Y: 0..14
-    // Round 12: the widget scene is [dugout | pitch | dugout]. The dugout
-    // panels are a SEPARATE asset (earthy theme, identical for every field
-    // type) standing outside the TD columns: team 1's dugout is left of the
-    // left TD band, team 2's right of the right one.
+    // Round 13: the widget scene is [dugout | gap | pitch | gap | dugout].
+    // The dugout panels are a SEPARATE asset (earthy theme, identical for
+    // every field type) standing outside the TD columns — and round 13 adds
+    // a visible GAP between each dugout and the pitch (user: the baked wood
+    // frame used to run "under" the field; the dugout must be separated
+    // horizontally from it).
     static constexpr int kDugoutCells = 5;   // dugout panel width (cells)
-    static constexpr int kSceneWidth = kFieldWidth + 2 * kDugoutCells; // 36
+    static constexpr int kSceneGapCells = 1; // apron gap between dugout and pitch
+    static constexpr int kSceneWidth =
+        kFieldWidth + 2 * (kDugoutCells + kSceneGapCells); // 38
 
-    // The DUGOUT PANEL (the Qwen soil image): kDugoutCells wide x 10 cells
-    // tall, vertically centered (rows 2.5..12.5). The image is 1:2 (5:10),
-    // so it fits the panel with zero crop/stretch.
-    static constexpr int kDugoutPanelRows = 10;
+    // The DUGOUT PANEL (the Qwen soil image): kDugoutCells wide x the FULL
+    // scene height (round 13: 15 rows — user: "dugout a tutta altezza
+    // verticale, slot più grandi, volti più riconoscibili"). The asset is
+    // regenerated 1:3 (5:15) so it fits with zero crop/stretch.
+    static constexpr int kDugoutPanelRows = kFieldHeight; // 15
 
-    QRectF sceneRect() const;        // the whole widget (zoom target)
+    QRectF sceneRect() const;        // the whole scene (zoom target)
     QRectF dugoutPanelRect(bool leftSide) const;
     QRectF fieldRect() const;        // the PITCH (middle 26 columns)
     QRectF cellRect(int x, int y) const;
+    QPointF cellCenter(int x, int y) const;
     // Paint one dugout's bench slots (round 12: on the dugout panel image).
     void paintBoxStrip(QPainter &p, const QColor &accent,
                        const QVector<BoxEntry> &entries, bool leftSide) const;
@@ -196,14 +229,26 @@ private:
     void rainConfigure();
     void drawPuddles(QPainter &p, const QRectF &f) const;
     void drawRain(QPainter &p);
+    void drawMowStripes(QPainter &p, const QRectF &f) const;
+    void drawTouchdownZones(QPainter &p, const QRectF &f) const;
+    void drawMoveTrail(QPainter &p);
 
-    // Field navigation state (round 8).
+    // Field navigation state (round 8, pan rewritten in round 13).
     qreal m_zoom = 1.0;      // 1.0 = fit, up to 3.0
     QPointF m_pan;           // translation in widget px (0,0 at zoom 1)
-    bool m_panning = false;  // right button down
-    QPoint m_panStart;       // cursor at press
-    QPointF m_panStartOffset; // pan at press
     QString m_hoverId; // hover key: token playerId, "box:<name>", or ""
+
+    // Round 13: EDGE PAN — a fast timer polls the global cursor position:
+    // inside the window's edge zone the view scrolls in that direction and
+    // the cursor is clamped to the window (multi-monitor: it must not spill
+    // onto the neighboring screen). Active only while zoomed (at zoom 1 the
+    // letterboxed scene cannot pan, and trapping the mouse would be a
+    // nuisance).
+    QTimer *m_edgePanTimer = nullptr;
+    void edgePanTick();
+
+    // Round 13: the actor's cumulative move trail (drawn under the tokens).
+    QVector<QVector<QPoint>> m_moveTrace;
 
     // Round 9: selection glow pulse + explicit action-wheel target.
     QTimer *m_pulseTimer = nullptr; // breathes the selection halo

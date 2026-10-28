@@ -7,6 +7,7 @@
 #include <QPainterPath>
 #include <QPaintEvent>
 #include <QPainter>
+#include <QTimer>
 
 #include <cmath>
 #include <QPushButton>
@@ -21,9 +22,12 @@ const QColor GREEN_DARK(27, 94, 32); // emboss shadow
 // Team name of the team on turn: green, raised (embossed dark shadow below)
 // and GLOWING — a soft wide green halo is stroked around the glyph outline
 // before the text itself (round 12: the gold emboss was replaced with a
-// glowing green one, user request). yTop is the text TOP (Mockup F
-// coordinates); drawText needs the baseline.
-void greenEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f)
+// glowing green one, user request). ROUND 13: the glow BREATHES (breath
+// 0..1): halo width and alpha pulse so the active team's name visibly
+// pulses. yTop is the text TOP (Mockup F coordinates); drawText needs the
+// baseline.
+void greenEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f,
+                 qreal breath = 0.0)
 {
     p.setFont(f);
     const int base = yTop + int(QFontMetricsF(f).ascent());
@@ -33,22 +37,24 @@ void greenEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f)
     path.addText(x, base, f, s);
     p.save();
     p.setBrush(Qt::NoBrush);
-    QPen halo(QColor(129, 223, 129, 55));
-    halo.setWidthF(9.0);
+    QPen halo(QColor(129, 223, 129, int(55 + 65 * breath)));
+    halo.setWidthF(9.0 + 4.0 * breath);
     halo.setJoinStyle(Qt::RoundJoin);
     p.setPen(halo);
     p.drawPath(path);
-    QPen halo2(QColor(102, 210, 102, 80));
-    halo2.setWidthF(3.5);
+    QPen halo2(QColor(102, 210, 102, int(80 + 70 * breath)));
+    halo2.setWidthF(3.5 + 1.5 * breath);
     halo2.setJoinStyle(Qt::RoundJoin);
     p.setPen(halo2);
     p.drawPath(path);
     p.restore();
 
-    // Emboss: dark green shadow 2px below, bright green text on top.
+    // Emboss: dark green shadow 2px below, bright green text on top (the
+    // text itself brightens slightly with the pulse).
     p.setPen(GREEN_DARK);
     p.drawText(x, base + 2, s);
-    p.setPen(GREEN);
+    const QColor live(int(56 + 40 * breath), int(142 + 50 * breath), int(60 + 40 * breath));
+    p.setPen(live);
     p.drawText(x, base, s);
 }
 
@@ -104,12 +110,40 @@ HeaderView::HeaderView(QWidget *parent)
     // mockup puts them (left team / center info / right team) instead of
     // clustering at the left edge.
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    // Round 13: the breathing glow of the active team name (~0.6 Hz — slow
+    // and calm, like the field selection pulse). Started/stopped by
+    // setTeams (a live match has team names; the idle header must not
+    // repaint at 30 fps).
+    m_glowTimer = new QTimer(this);
+    m_glowTimer->setInterval(33); // ~30 fps
+    connect(m_glowTimer, &QTimer::timeout, this, &HeaderView::glowTick);
+}
+
+void HeaderView::ensureGlowTimer()
+{
+    // The glow only makes sense with a live match (real team names).
+    const bool live = !m_home.isEmpty() && !m_away.isEmpty()
+                      && m_home != QStringLiteral("Home");
+    if (live && !m_glowTimer->isActive())
+        m_glowTimer->start();
+    else if (!live)
+        m_glowTimer->stop();
+}
+
+void HeaderView::glowTick()
+{
+    m_glowPhase += 2.0 * M_PI * 0.6 * 0.033;
+    if (m_glowPhase > 2.0 * M_PI)
+        m_glowPhase -= 2.0 * M_PI;
+    update();
 }
 
 void HeaderView::setTeams(const QString &home, const QString &away)
 {
     m_home = home;
     m_away = away;
+    ensureGlowTimer(); // round 13: glow timer on with a live match
     update();
 }
 
@@ -231,16 +265,28 @@ void HeaderView::paintEvent(QPaintEvent *)
 
     const QString homeName = m_home.toUpper();
     const QString awayName = m_away.toUpper();
-    const int nameY = 6 + int(fmName.ascent());
-    const int subY = 31 + int(fmSub.ascent());
+    // Round 13: the two team-name lines are spaced a bit more (user: "a
+    // volta la distanza tra riga nome e riga sottostante è poca") — name
+    // top 5, subline top 36 in the 62px strip.
+    const int nameY = 5 + int(fmName.ascent());
+    const int subY = 36 + int(fmSub.ascent());
+    // ROUND 13 FONT BUG FIX (user: "il nome del team inattivo a volte è a
+    // dimensione diversa da quello attivo, quando si apre una partita"): in
+    // the !m_homePlaying branch the home name was drawn BEFORE greenEmboss
+    // set nameF — with the widget's DEFAULT font (10pt, not bold) instead
+    // of the 17pt bold name font. Both names now set the font explicitly,
+    // in every branch.
+    const qreal breath = 0.5 - 0.5 * std::cos(m_glowPhase);
     if (m_homePlaying) {
-        greenEmboss(p, 64, 6, homeName, nameF);
+        greenEmboss(p, 64, 5, homeName, nameF, breath);
+        p.setFont(nameF);
         p.setPen(INK);
         p.drawText(W - 64 - fmName.horizontalAdvance(awayName), nameY, awayName);
     } else {
+        p.setFont(nameF);
         p.setPen(INK);
         p.drawText(64, nameY, homeName);
-        greenEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 6, awayName, nameF);
+        greenEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 5, awayName, nameF, breath);
     }
     p.setPen(INK2);
     p.setFont(subF);
@@ -252,10 +298,10 @@ void HeaderView::paintEvent(QPaintEvent *)
     // away name (mockup layout).
     const qreal xh = 64 + fmName.horizontalAdvance(homeName) + 16;
     for (int i = 0; i < 3; ++i)
-        coin(p, xh + i * 19, 17, 7, i < m_rerollsHome);
+        coin(p, xh + i * 19, 16, 7, i < m_rerollsHome);
     const qreal xa = W - 64 - 3 * 19 - 16 - fmName.horizontalAdvance(awayName);
     for (int i = 0; i < 3; ++i)
-        coin(p, xa + i * 19, 17, 7, i < m_rerollsAway);
+        coin(p, xa + i * 19, 16, 7, i < m_rerollsAway);
 
     // --- center: score ---------------------------------------------------------
     // Round 9: the score/center-row gap was too small — score moved up

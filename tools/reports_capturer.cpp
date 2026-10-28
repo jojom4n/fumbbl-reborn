@@ -53,6 +53,22 @@ static void logLine(const QString &what)
     std::fflush(stdout);
 }
 
+// Round 13: the MODEL CHANGES are the ground truth for the move trail
+// (actingPlayerSetPlayerId / actingPlayerSetPlayerAction /
+// fieldModelSetPlayerCoordinate) and for the post-TD repositioning bug
+// (point 17): every change object is dumped raw, one per line.
+static void logChange(const QJsonObject &c)
+{
+    const QString id = c.value(QStringLiteral("modelChangeId")).toString();
+    if (id == QLatin1String("actingPlayerSetPlayerId")
+        || id == QLatin1String("actingPlayerSetPlayerAction")
+        || id == QLatin1String("gameSetTurnMode")
+        || id == QLatin1String("gameSetHalf")
+        || id == QLatin1String("fieldModelSetPlayerState")
+        || id.contains(QLatin1String("turnEnd")))
+        logLine(QStringLiteral("CHANGE    ") + QJsonDocument(c).toJson(QJsonDocument::Compact));
+}
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
@@ -106,9 +122,15 @@ int main(int argc, char *argv[])
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"));
     const QString jsonlPath = QStringLiteral("%1/game_%2_%3.jsonl").arg(outDir, QString::number(gameId), stamp);
     const QString statePath = QStringLiteral("%1/game_%2_%3_state.json").arg(outDir, QString::number(gameId), stamp);
+    const QString changesPath = QStringLiteral("%1/game_%2_%3_changes.jsonl").arg(outDir, QString::number(gameId), stamp);
     QFile jsonlFile(jsonlPath);
     if (!jsonlFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         logLine(QStringLiteral("FATAL: cannot write %1").arg(jsonlPath));
+        return 2;
+    }
+    QFile changesFile(changesPath);
+    if (!changesFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        logLine(QStringLiteral("FATAL: cannot write %1").arg(changesPath));
         return 2;
     }
 
@@ -117,6 +139,7 @@ int main(int argc, char *argv[])
                 .arg(durationSec));
     logLine(QStringLiteral("  reports -> ") + jsonlPath);
     logLine(QStringLiteral("  state   -> ") + statePath);
+    logLine(QStringLiteral("  changes -> ") + changesPath);
 
     // --- Session ----------------------------------------------------------------
     SpectatorSession session;
@@ -140,9 +163,24 @@ int main(int argc, char *argv[])
                              logLine(QStringLiteral("DUMP FAIL ") + statePath);
                          }
                      });
+    int changeCount = 0;
+    QHash<QString, int> changeCounts; // modelChangeId -> count
     QObject::connect(&session, &SpectatorSession::modelSyncReceived,
-                     [&](const QJsonArray &, const QJsonArray &reports) {
+                     [&](const QJsonArray &changes, const QJsonArray &reports) {
                          ++modelSyncs;
+                         for (const QJsonValue &cv : changes) {
+                             const QJsonObject change = cv.toObject();
+                             if (change.isEmpty())
+                                 continue;
+                             // One RAW change per line — the ground truth for
+                             // the move trail + the post-TD repositioning.
+                             changesFile.write(QJsonDocument(change).toJson(QJsonDocument::Compact));
+                             changesFile.write("\n");
+                             ++changeCount;
+                             const QString id = change.value(QStringLiteral("modelChangeId")).toString();
+                             changeCounts[id]++;
+                             logChange(change);
+                         }
                          for (const QJsonValue &rv : reports) {
                              const QJsonObject report = rv.toObject();
                              if (report.isEmpty())
@@ -154,8 +192,11 @@ int main(int argc, char *argv[])
                              ++reportCount;
                              const QString id = report.value(QStringLiteral("reportId")).toString();
                              reportCounts[id]++;
+                             if (id == QLatin1String("turnEnd") || id == QLatin1String("playerAction"))
+                                 logLine(QStringLiteral("REPORT    ") + QJsonDocument(report).toJson(QJsonDocument::Compact));
                          }
                          jsonlFile.flush();
+                         changesFile.flush();
                      });
 
     QElapsedTimer watch;
@@ -172,6 +213,10 @@ int main(int argc, char *argv[])
         std::printf("  serverGameState    : %s\n", gotGameState ? "yes" : "no");
         std::printf("  serverModelSync    : %d\n", modelSyncs);
         std::printf("  reports captured   : %d\n", reportCount);
+        std::printf("  changes captured   : %d\n", changeCount);
+        std::printf("  change id histogram:\n");
+        for (auto it = changeCounts.cbegin(); it != changeCounts.cend(); ++it)
+            std::printf("    %-34s %4d\n", it.key().toUtf8().constData(), it.value());
         std::printf("  report id histogram:\n");
         for (auto it = reportCounts.cbegin(); it != reportCounts.cend(); ++it)
             std::printf("    %-28s %4d\n", it.key().toUtf8().constData(), it.value());

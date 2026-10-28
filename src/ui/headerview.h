@@ -27,6 +27,10 @@
 #include <QWidget>
 
 
+QT_BEGIN_NAMESPACE
+class QTimer;
+QT_END_NAMESPACE
+
 class HeaderView : public QWidget
 {
     Q_OBJECT
@@ -87,4 +91,14 @@ private:
     QPixmap m_homeLogo;
     QPixmap m_awayLogo;
     QString m_weather;
+
+    // Round 13: the ACTIVE team's name GLOWS with a breathing pulse (user
+    // request — the turn holder must pop out of the strip). A timer advances
+    // the phase; greenEmboss reads m_glowPhase. Repaints only while a match
+    // is live (a team name is set) — otherwise the timer stays stopped and
+    // the idle header costs nothing.
+    QTimer *m_glowTimer = nullptr;
+    qreal m_glowPhase = 0.0;
+    void ensureGlowTimer();
+    void glowTick();
 };

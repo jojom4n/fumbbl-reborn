@@ -16,6 +16,7 @@
 // =============================================================================
 #pragma once
 
+#include <QImage>
 #include <QPixmap>
 #include <QString>
 
@@ -56,5 +57,20 @@ QPixmap dugoutTexture();
 
 // True when the face set is available.
 bool isAvailable();
+
+// --- logo background keying (round 13, user: point 10) -----------------------
+// Removes a FLAT background from a team logo. The background color is NOT
+// assumed to be white — it is ESTIMATED from the image border (median of the
+// edge pixels), so ANY flat background works (white, red, blue, or a logo the
+// user uploaded with their own backdrop). Every pixel CONNECTED to the border
+// and within a tolerance of the estimated background becomes transparent; the
+// SAME color INSIDE the logo (not border-connected) is preserved (e.g. a white
+// emblem on a white field stays white).
+//
+// Guards (return the image UNCHANGED when keying would be destructive):
+//   * the image already carries a real alpha channel (transparent PNG);
+//   * the border is not a uniform flat color (the logo touches the edges, or
+//     the backdrop is a gradient/photo) — keying there would eat the logo.
+QImage keyBackground(QImage img);
 
 } // namespace assets

@@ -407,6 +407,41 @@ target_link_libraries(round12_preview PRIVATE
     Qt6::WebSockets
 )
 
+# Round 13 offscreen visual verification (grass texture + vector grid/TD,
+# full-height dugouts + gap, move trail, 44px spaced dice, header glow).
+add_executable(round13_preview
+    tools/round13_preview.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+    src/core/assets.cpp
+    src/core/matchlist.cpp
+    src/ui/mainwindow.cpp
+    src/ui/spectatedialog.cpp
+    src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
+    src/ui/actionlog.cpp
+    src/ui/chatwidget.cpp
+    src/ui/headerview.cpp
+    src/ui/playerinfowidget.cpp
+    src/ui/panel.cpp
+
+    ${DICE_RCC}
+)
+target_include_directories(round13_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(round13_preview PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(round13_preview PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
 # Offscreen FieldView renderer for visual verification of the Mockup F
 # design (feeds a real serverGameState fixture, saves a PNG).
 add_executable(field_preview
