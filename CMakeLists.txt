@@ -61,6 +61,18 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4.png
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5.png
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6_s.png
     VERBATIM
 )
 
@@ -143,6 +155,18 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4.png
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5.png
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5_s.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6_s.png
     VERBATIM
 )
 # Game assets: cartoon faces (assets/faces, per roster piece) + procedural

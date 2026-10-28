@@ -1067,7 +1067,9 @@ void UiWiringTest::selectionDoesNotOpenActionWheel()
     QCOMPARE(field->selectedPlayer(), pid);
     QCOMPARE(field->actionWheelTarget(), QString());
 
-    // Spectator (default): right-click on the player = view reset, no wheel.
+    // Spectator (default): a right CLICK on the player does NOT open the
+    // wheel and — round 13 — no longer resets the view either (reset moved
+    // to the MIDDLE click; the right button is the drag-pan again).
     field->setPlayMode(false);
     const QPoint at = cellCenter(field, p->fieldX, p->fieldY);
     {
@@ -1451,9 +1453,9 @@ void UiWiringTest::diceAssetsPreScaled()
         const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
         QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
         QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
-        // Round 13: 44px (was 28) — bigger, more readable dice.
-        QCOMPARE(QImage(d6).size(), QSize(44, 44));
-        QCOMPARE(QImage(bl).size(), QSize(44, 44));
+        // Round 13: 32px (the 44px were too big / the log too confusing).
+        QCOMPARE(QImage(d6).size(), QSize(32, 32));
+        QCOMPARE(QImage(bl).size(), QSize(32, 32));
     }
 }
 

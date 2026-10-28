@@ -259,6 +259,11 @@ QPixmap dugoutTexture()
     return loadPixmap(QStringLiteral("dugout/dugout.png"));
 }
 
+QPixmap stadiumTexture()
+{
+    return loadPixmap(QStringLiteral("stadium/stands.png"));
+}
+
 QPixmap skillPixmap(const QString &skillName)
 {
     return loadPixmap(QStringLiteral("skills/%1.png").arg(skillIconSlug(skillName)));

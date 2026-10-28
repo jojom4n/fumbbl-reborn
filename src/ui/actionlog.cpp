@@ -19,11 +19,12 @@
 
 namespace {
 
-// Round 13: 48px rows and 44px dice (was 32/28 — user: the dice were small,
-// unspaced, symbols unreadable). hspace 8 between consecutive dice.
-const int kRowH = 48;
-const int kDice = 44;
-const int kDiceGap = 8;
+// Round 13: 40px rows and 32px dice (the 48/44 were "eccessivamente
+// grandi" — the log looked big and confusing, user). Spacing between
+// consecutive dice is done with explicit &nbsp; (Qt's rich-text <img> does
+// NOT honor `hspace`, which is why the block dice used to touch).
+const int kRowH = 40;
+const int kDice = 32;
 const int kHeaderH = 26;   // title + chevron strip
 const int kPad = 8;
 const int kMaxEntries = 300;
@@ -150,21 +151,25 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
     // Round 11: the dice use the PRE-SCALED assets (*_s.png) rendered 1:1 —
     // the 256px originals were re-scaled by the rich-text layout with fast
     // scaling (grainy d6, square pips, unreadable skulls).
-    // Round 13 (user): dice 44px with REAL spacing (hspace 8) — "i dadi
-    // block sono piccoli, non hanno spacing tra loro e non si vede bene il
-    // simbolo". Every die gets hspace so consecutive dice no longer touch
-    // (plain spaces between <img> tags collapse in the rich-text layout).
+    // Round 13 (user): 32px dice with RELIABLE spacing. The block dice used
+    // to touch because `hspace` is NOT honored by Qt's rich-text <img>; use
+    // an explicit non-breaking space before every die so consecutive dice are
+    // always separated (block AND d6, the same way).
+    // NOTE: `src` already carries the leading ':' (":/dice/..."), so the
+    // format string must NOT add another one (that produced "::/dice/...",
+    // an unresolvable resource path -> broken-image icons in the log).
+    const auto dieImg = [](const QString &src) {
+        return QStringLiteral(" &nbsp;<img src=\"%1\" width=\"%2\" height=\"%2\">")
+            .arg(src)
+            .arg(kDice)
+            .arg(kDice);
+    };
     if (!line.blockFaces.isEmpty()) {
-        html += QStringLiteral(" ");
         for (const QString &face : line.blockFaces) {
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral(
-                        "<img src=\":/dice/block%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
-                        .arg(v)
-                        .arg(kDice)
-                        .arg(kDiceGap);
+            html += dieImg(QStringLiteral(":/dice/block%1_s.png").arg(v));
         }
     }
 
@@ -177,18 +182,10 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
             const int v = face.toInt();
             if (v < 1 || v > 6)
                 continue;
-            html += QStringLiteral(
-                        " <img src=\":/dice/d6_%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
-                        .arg(v)
-                        .arg(kDice)
-                        .arg(kDiceGap);
+            html += dieImg(QStringLiteral(":/dice/d6_%1_s.png").arg(v));
         }
     } else if (line.d6Roll > 0) {
-        html += QStringLiteral(
-                    " <img src=\":/dice/d6_%1_s.png\" width=\"%2\" height=\"%2\" hspace=\"%3\">")
-                    .arg(line.d6Roll)
-                    .arg(kDice)
-                    .arg(kDiceGap);
+        html += dieImg(QStringLiteral(":/dice/d6_%1_s.png").arg(line.d6Roll));
     }
     if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {
         if (line.d6Target > 0)

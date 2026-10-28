@@ -171,16 +171,9 @@ void FieldView::resizeEvent(QResizeEvent *e)
 // The puddle layout is stable (fixed fractions of the field) so the water
 // patches do not jump around between frames/resizes.
 // ---------------------------------------------------------------------------
-namespace {
-const QVector<QPointF> kPuddleCenters = {
-    QPointF(0.155, 0.27), QPointF(0.335, 0.64), QPointF(0.465, 0.21),
-    QPointF(0.575, 0.79), QPointF(0.665, 0.36), QPointF(0.815, 0.68),
-    QPointF(0.895, 0.22), QPointF(0.275, 0.86),
-};
-const QVector<qreal> kPuddleWidths = {
-    0.055, 0.07, 0.05, 0.08, 0.06, 0.05, 0.045, 0.065,
-}; // fraction of the field width (full ellipse width)
-} // namespace
+// Round 13 (user): the FIXED puddle layout is gone — the puddles are now
+// DYNAMIC (rainConfigure / stepPuddles): they accumulate over match time,
+// are smaller, organic, and fade in as they appear.
 
 void FieldView::rainConfigure()
 {
@@ -196,21 +189,28 @@ void FieldView::rainConfigure()
     if (f.isEmpty())
         return;
 
-    // Puddles: fixed layout in field space.
+    // Round 13 (user): puddles are DYNAMIC — they accumulate over match
+    // time (stepPuddles), not all at once. Seed a couple of "pre-existing"
+    // ones (already faded in) so the field isn't bare, then let the rest
+    // grow over time.
     m_puddles.clear();
-    for (int i = 0; i < kPuddleCenters.size(); ++i) {
-        const QPointF c = kPuddleCenters[i];
-        const float rx = float(kPuddleWidths[i]) * float(f.width()) * 0.5f;
-        const float ry = rx * 0.55f;
-        m_puddles.append(QRectF(float(c.x()) * float(f.width()) - rx,
-                                float(c.y()) * float(f.height()) - ry,
-                                rx * 2.0f, ry * 2.0f));
+    m_puddleClockMs = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        Puddle pd;
+        pd.fx = 0.10 + 0.80 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.fy = 0.10 + 0.80 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.fr = 0.024 + 0.020 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.squash = 0.55 + 0.25 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.rotDeg = QRandomGenerator::global()->bounded(360);
+        pd.birthMs = -2000.0 - i * 400.0; // pre-existing: already faded in
+        m_puddles.append(pd);
     }
+    m_nextPuddleAt = 2500.0 + QRandomGenerator::global()->bounded(2500);
 
     // "Light Rain" (and friends) is sparser than a downpour.
     const int intensity =
         m_weather.toLower().contains(QLatin1String("light")) ? 45 : 85;
-    m_rain.configure(float(f.width()), float(f.height()), m_puddles);
+    m_rain.configure(f.width(), f.height(), puddleRects());
     m_rain.setIntensity(intensity);
 
     if (!m_rainTimer) {
@@ -219,7 +219,9 @@ void FieldView::rainConfigure()
         connect(m_rainTimer, &QTimer::timeout, this, [this]() {
             const float dt = float(m_rainClock.isValid() ? m_rainClock.restart()
                                                          : 33.0);
-            m_rain.step(qMin(dt, 100.0f));
+            const float dtc = qMin(dt, 100.0f);
+            m_rain.step(dtc);
+            stepPuddles(dtc);
             update();
         });
     }
@@ -227,26 +229,81 @@ void FieldView::rainConfigure()
     m_rainTimer->start();
 }
 
+QRectF FieldView::puddleRect(const Puddle &pd, const QRectF &f) const
+{
+    const QPointF c(f.x() + pd.fx * f.width(), f.y() + pd.fy * f.height());
+    const qreal rx = pd.fr * f.height();
+    const qreal ry = rx * pd.squash;
+    // Bounding box of the (rotated) ellipse ~ a square on the max axis.
+    const qreal m = qMax(rx, ry);
+    return QRectF(c.x() - m, c.y() - m, m * 2, m * 2);
+}
+
+QVector<QRectF> FieldView::puddleRects() const
+{
+    const QRectF f = fieldRect();
+    QVector<QRectF> rects;
+    rects.reserve(m_puddles.size());
+    for (const Puddle &pd : m_puddles)
+        rects.append(puddleRect(pd, f));
+    return rects;
+}
+
+void FieldView::stepPuddles(float dtMs)
+{
+    m_puddleClockMs += dtMs;
+    const int maxPuddles = 9;
+    if (m_puddles.size() < maxPuddles && m_puddleClockMs >= m_nextPuddleAt) {
+        Puddle pd;
+        pd.fx = 0.05 + 0.90 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.fy = 0.08 + 0.84 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.fr = 0.022 + 0.020 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.squash = 0.55 + 0.25 * (QRandomGenerator::global()->bounded(1000) / 1000.0);
+        pd.rotDeg = QRandomGenerator::global()->bounded(360);
+        pd.birthMs = m_puddleClockMs;
+        m_puddles.append(pd);
+        m_rain.setPuddles(puddleRects()); // bigger ripples on the new water
+        m_nextPuddleAt = m_puddleClockMs + 2500.0
+                         + QRandomGenerator::global()->bounded(2500);
+    }
+}
+
 void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
 {
-    // The puddle rects are in PITCH space (0..pitch); the painter is in
-    // scene space, so translate by the pitch origin.
+    // Round 13 (user): prettier, SMALLER, organic puddles that FADE IN as
+    // they appear (they accumulate over match time, not all at once).
     p.save();
-    p.translate(f.x(), f.y());
-    for (const QRectF &pd : m_puddles) {
-        // Glossy water on the grass.
+    p.setRenderHint(QPainter::Antialiasing, true);
+    for (const Puddle &pd : m_puddles) {
+        const qreal fadeIn =
+            qBound(0.0, (m_puddleClockMs - pd.birthMs) / 1800.0, 1.0);
+        if (fadeIn <= 0.0)
+            continue;
+        const QPointF c(f.x() + pd.fx * f.width(), f.y() + pd.fy * f.height());
+        const qreal rx = pd.fr * f.height();
+        const qreal ry = rx * pd.squash;
+        p.save();
+        p.translate(c);
+        p.rotate(pd.rotDeg);
+        p.setOpacity(fadeIn);
+        // Soft water: a radial gradient (darker heart, wet edge) — much
+        // prettier than the old flat fill + rim.
+        QRadialGradient g(QPointF(-rx * 0.25, -ry * 0.30), rx * 1.15);
+        g.setColorAt(0.0, QColor(58, 92, 120, 115));
+        g.setColorAt(0.7, QColor(38, 66, 92, 95));
+        g.setColorAt(1.0, QColor(22, 44, 66, 128));
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 58, 84, 95));
-        p.drawEllipse(pd);
-        // Darker rim.
-        p.setPen(QPen(QColor(18, 38, 58, 110), qMax(1.0, pd.height() * 0.06)));
+        p.setBrush(g);
+        p.drawEllipse(QPointF(0, 0), rx, ry);
+        // Wet rim.
+        p.setPen(QPen(QColor(18, 38, 58, 120), qMax(1.0, rx * 0.06)));
         p.setBrush(Qt::NoBrush);
-        p.drawEllipse(pd);
-        // Top-left glint.
+        p.drawEllipse(QPointF(0, 0), rx, ry);
+        // Small glint (top-left).
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(150, 190, 215, 45));
-        p.drawEllipse(pd.adjusted(pd.width() * 0.18, pd.height() * 0.22,
-                                  -pd.width() * 0.30, -pd.height() * 0.52));
+        p.setBrush(QColor(172, 206, 228, 55));
+        p.drawEllipse(QPointF(-rx * 0.30, -ry * 0.34), rx * 0.32, ry * 0.26);
+        p.restore();
     }
     p.restore();
 }
@@ -257,25 +314,30 @@ void FieldView::drawRain(QPainter &p)
     const QRectF f = fieldRect();
     p.save();
     p.translate(f.x(), f.y());
-    // Droplet streaks (slanted short lines). Bright + slightly thick so the
-    // rain reads clearly over the grass at any zoom.
-    p.setPen(QPen(QColor(224, 236, 250, 145), 1.5, Qt::SolidLine, Qt::RoundCap));
+    p.setRenderHint(QPainter::Antialiasing, true);
+    // Round 13 (user): TOP-DOWN droplets — the field is seen from ABOVE, so a
+    // falling drop reads as a small bright DOT (its cross-section), not a
+    // side-view "platform" streak. The sim spawns/lands them all over the
+    // whole field, so the rain covers it entirely.
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(226, 238, 252, 150));
     for (const RainSim::Drop &d : m_rain.drops())
-        p.drawLine(QPointF(d.x - d.slant, d.y - d.len), QPointF(d.x, d.y));
+        p.drawEllipse(QPointF(d.x, d.y), 1.5, 1.5);
 
-    // Splash ripples (flattened ellipses: water seen top-down).
+    // Splash ripples: CIRCULAR rings on the ground (top-down water), bigger
+    // and longer on the puddles.
     p.setBrush(Qt::NoBrush);
     for (const RainSim::Splash &s : m_rain.splashes()) {
-        const float maxAge = s.onPuddle ? 650.0f : 380.0f;
+        const float maxAge = s.onPuddle ? 700.0f : 420.0f;
         const float t = qMin(1.0f, s.ageMs / maxAge);
-        const float r = (s.onPuddle ? 3.0f : 2.0f) +
-                        t * (s.onPuddle ? 9.0f : 4.5f);
-        const int a = int((1.0 - t) * (s.onPuddle ? 225 : 160));
-        p.setPen(QPen(QColor(228, 240, 252, a), 1.4));
-        p.drawEllipse(QPointF(s.x, s.y), r, r * 0.62);
+        const float r = (s.onPuddle ? 2.5f : 1.8f) +
+                        t * (s.onPuddle ? 8.0f : 4.0f);
+        const int a = int((1.0 - t) * (s.onPuddle ? 200 : 150));
+        p.setPen(QPen(QColor(228, 240, 252, a), 1.3));
+        p.drawEllipse(QPointF(s.x, s.y), r, r);
         if (s.onPuddle) {
-            p.setPen(QPen(QColor(228, 240, 252, a / 2), 1.1));
-            p.drawEllipse(QPointF(s.x, s.y), r * 0.55, r * 0.55 * 0.62);
+            p.setPen(QPen(QColor(228, 240, 252, a / 2), 1.0));
+            p.drawEllipse(QPointF(s.x, s.y), r * 0.55, r * 0.55);
         }
     }
     p.restore();
@@ -314,30 +376,33 @@ void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
     p.fillRect(QRectF(f.x(), f.y(), cellW, f.height()), crimson);
     p.fillRect(QRectF(f.right() - cellW, f.y(), cellW, f.height()), crimson);
 
-    // Vector TOUCHDOWN, rotated 90 deg (reads top-to-bottom) and centered in
-    // the column. Font: the app font at Black weight (crisp at any zoom).
+    // Vector TOUCHDOWN running the FULL length of the TD zone (round 13
+    // user: "le parole corrano lungo tutta la touchdown zone", keeping the
+    // current vector sharpness). The word is long for a 1-column zone, so it
+    // is set to a size where its advance == the target run, then condensed
+    // (scaled) horizontally into the column width — a tall stretched
+    // end-zone word, still razor-sharp (pure vector transform, no raster).
     QFont tf = p.font();
     tf.setWeight(QFont::Black);
-    tf.setPointSizeF(14.0);
+    tf.setPointSizeF(20.0);
     QFontMetricsF fm(tf);
     const QString text = QStringLiteral("TOUCHDOWN");
-    const qreal maxLen = 0.94 * f.height();
-    const qreal maxCap = 0.62 * cellW; // cap height across the column width
-    while ((fm.horizontalAdvance(text) > maxLen || fm.capHeight() > maxCap) &&
-           tf.pointSizeF() > 2.0) {
-        tf.setPointSizeF(tf.pointSizeF() * 0.97);
-        fm = QFontMetricsF(tf);
-    }
+    const qreal targetLen = 0.94 * f.height(); // run the whole zone height
+    const qreal colW = cellW * 0.86;           // fit inside the 1-col zone
+    const qreal ratio = targetLen / fm.horizontalAdvance(text);
+    tf.setPointSizeF(tf.pointSizeF() * ratio);
+    fm = QFontMetricsF(tf);
+    const qreal adv = fm.horizontalAdvance(text);    // ~ targetLen (vertical)
+    const qreal scaleY = colW / qMax(1.0, fm.capHeight()); // condense width
     p.setFont(tf);
     p.setPen(QColor(255, 255, 255, 235));
-    const qreal adv = fm.horizontalAdvance(text);
     for (const qreal colCenter : { f.x() + cellW * 0.5,
                                    f.right() - cellW * 0.5 }) {
         p.save();
         p.translate(colCenter, f.center().y());
-        p.rotate(90); // local +x now points DOWN: the text reads top->bottom
-        p.drawText(QRectF(-adv / 2, -fm.ascent() / 2, adv, fm.ascent()),
-                   Qt::AlignHCenter, text);
+        p.rotate(90);         // local +x now points DOWN (reads top->bottom)
+        p.scale(1.0, scaleY); // condense the thickness into the column
+        p.drawText(QPointF(-adv / 2, fm.capHeight() / 2), text);
         p.restore();
     }
     p.restore();
@@ -430,28 +495,51 @@ QPointF FieldView::edgePanDelta(const QRect &wr, const QPoint &cursor, qreal zoo
 
 void FieldView::keyPressEvent(QKeyEvent *event)
 {
-    // WASD pan (round 13). Only meaningful while zoomed (at zoom 1 the
-    // scene is letterboxed and centered: panning would clamp right back).
-    if (m_zoom > 1.0001) {
-        const qreal step = 24.0; // widget px per key press (auto-repeat)
-        QPointF d;
-        switch (event->key()) {
-        case Qt::Key_W: d = QPointF(0.0, step); break;   // look up
-        case Qt::Key_S: d = QPointF(0.0, -step); break;  // look down
-        case Qt::Key_A: d = QPointF(step, 0.0); break;   // look left
-        case Qt::Key_D: d = QPointF(-step, 0.0); break;  // look right
-        default:
-            break;
+    // SMOOTH WASD pan (round 13, user: "lo scroll da tastiera non è fluido").
+    // Track the held keys and let a fast timer pan continuously — no more
+    // jumpy auto-repeat steps. Only meaningful while zoomed (at zoom 1 the
+    // letterboxed scene cannot pan).
+    const int key = event->key();
+    const bool wasd = key == Qt::Key_W || key == Qt::Key_A ||
+                      key == Qt::Key_S || key == Qt::Key_D;
+    if (wasd && m_zoom > 1.0001) {
+        m_panKeys.insert(key);
+        if (!m_panTimer) {
+            m_panTimer = new QTimer(this);
+            m_panTimer->setInterval(16); // ~60 fps, smooth
+            connect(m_panTimer, &QTimer::timeout, this, &FieldView::smoothPanTick);
         }
-        if (!d.isNull()) {
-            m_pan += d;
-            clampPan();
-            update();
-            event->accept();
-            return;
-        }
+        if (!m_panTimer->isActive())
+            m_panTimer->start();
+        event->accept();
+        return;
     }
     QWidget::keyPressEvent(event);
+}
+
+void FieldView::keyReleaseEvent(QKeyEvent *event)
+{
+    m_panKeys.remove(event->key());
+    if (m_panTimer && m_panKeys.isEmpty() && m_panTimer->isActive())
+        m_panTimer->stop();
+    QWidget::keyReleaseEvent(event);
+}
+
+void FieldView::smoothPanTick()
+{
+    if (m_zoom <= 1.0001 || m_panKeys.isEmpty())
+        return;
+    const qreal speed = 2.0; // widget px per 16ms frame (~125 px/s)
+    QPointF d;
+    if (m_panKeys.contains(Qt::Key_W)) d += QPointF(0.0, speed);   // look up
+    if (m_panKeys.contains(Qt::Key_S)) d += QPointF(0.0, -speed);  // look down
+    if (m_panKeys.contains(Qt::Key_A)) d += QPointF(speed, 0.0);   // look left
+    if (m_panKeys.contains(Qt::Key_D)) d += QPointF(-speed, 0.0);  // look right
+    if (d.isNull())
+        return;
+    m_pan += d;
+    clampPan();
+    update();
 }
 
 void FieldView::setMoveTrace(const QVector<QVector<QPoint>> &paths)
@@ -492,27 +580,55 @@ void FieldView::drawMoveTrail(QPainter &p)
         pts.reserve(path.size());
         for (const QPoint &c : path)
             pts << cellCenter(c.x(), c.y());
-        // Dark under-stroke + white main stroke (rounded joins: the path
-        // turns along the grid).
-        p.setPen(QPen(QColor(24, 24, 30, 200), cellW * 0.16,
-                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        p.drawPolyline(pts.constData(), pts.size());
-        p.setPen(QPen(QColor(255, 255, 255, 235), cellW * 0.075,
-                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        p.drawPolyline(pts.constData(), pts.size());
-        // Arrow at the end, pointing along the last stepped segment.
-        const QPointF a = pts[pts.size() - 2];
-        const QPointF b = pts.last();
+        const QPointF b = pts.last();          // the token's cell center
+        const QPointF a = pts[pts.size() - 2]; // previous stepped cell
         const QPointF dir(b.x() - a.x(), b.y() - a.y());
         const qreal len = std::hypot(dir.x(), dir.y());
-        if (len < 1e-6)
-            continue;
-        const QPointF u(dir.x() / len, dir.y() / len);
-        const qreal s = cellW * 0.24; // arrow size
-        const QPointF base = b - u * s;
+        const QPointF u(len > 1e-6 ? QPointF(dir.x() / len, dir.y() / len)
+                                   : QPointF(1.0, 0.0));
+        // Round 13 (user): the trail must leave a SMALL GAP before the
+        // player box, end in an ARROW, and the arrow must NOT invade the
+        // selection glow. Pull the end back from the token: just outside the
+        // glow when the trail's endpoint is the selected player, otherwise a
+        // small gap beyond the token.
+        bool endpointSelected = false;
+        {
+            const QPoint ec = path.last();
+            const auto isSel = [this, ec](const QVector<PlayerToken> &team) {
+                for (const PlayerToken &t : team)
+                    if (t.x == ec.x() && t.y == ec.y()
+                        && t.playerId == m_selectedPlayer)
+                        return true;
+                return false;
+            };
+            endpointSelected = isSel(m_homePlayers) || isSel(m_awayPlayers);
+        }
+        const qreal minDim = qMin(cellW, f.height() / kFieldHeight);
+        const qreal arrowLen = minDim * 0.28;
+        const qreal desiredPull = endpointSelected ? minDim * 1.05 : minDim * 0.60;
+        const qreal pull = qMin(desiredPull, len - arrowLen);
+        const QPointF tip = b - u * pull;      // arrow tip (in the gap)
+        const QPointF base = tip - u * arrowLen;
+        // Dark under-stroke + white main stroke (rounded joins: the path
+        // turns along the grid). The line runs through every stepped center
+        // up to the previous cell, then out to the arrow base — it stops in
+        // the gap, it does NOT reach the token.
+        QVector<QPointF> linePts;
+        linePts.reserve(pts.size());
+        for (int i = 0; i < pts.size() - 1; ++i)
+            linePts << pts[i];
+        linePts << base;
+        p.setPen(QPen(QColor(24, 24, 30, 200), cellW * 0.16,
+                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolyline(linePts.constData(), linePts.size());
+        p.setPen(QPen(QColor(255, 255, 255, 235), cellW * 0.075,
+                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolyline(linePts.constData(), linePts.size());
+        // Arrowhead at the end of the trail, pointing along the last step.
         const QPointF perp(-u.y(), u.x());
         QPolygonF tri;
-        tri << b << (base + perp * s * 0.62) << (base - perp * s * 0.62);
+        tri << tip << (base + perp * arrowLen * 0.62)
+            << (base - perp * arrowLen * 0.62);
         p.setBrush(QColor(255, 255, 255, 240));
         p.setPen(QPen(QColor(24, 24, 30, 200), qMax(1.5, cellW * 0.05)));
         p.drawPolygon(tri);
@@ -552,16 +668,22 @@ void FieldView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         // Left button = SELECT / show the info card (the round-12 behavior,
-        // kept — round 13 only retracted the DRAG-PAN, not the click). An
-        // EMPTY id (clicked an empty square) is emitted too: the caller uses
-        // it to HIDE the card. Emitted on the press, as before.
+        // kept). An EMPTY id (clicked an empty square) is emitted too: the
+        // caller uses it to HIDE the card. Emitted on the press, as before.
         const PlayerToken *t = tokenAt(event->pos());
         emit playerClicked(t ? t->playerId : QString());
         setFocus(Qt::MouseFocusReason); // WASD pan right after a click
+    } else if (event->button() == Qt::MiddleButton) {
+        // Round 13 (user): the view RESET moved to the MIDDLE click (the
+        // right click no longer resets — the right button is the drag-pan).
+        resetView();
     } else if (event->button() == Qt::RightButton) {
-        // Round 13: right button no longer pans. A right CLICK resets the
-        // view (or, in play mode on a player: the action wheel — remember
-        // who was under the button; the release decides).
+        // Round 13 (user): right button + DRAG = pan (brought back). Record
+        // the press so mouseMove can pan and mouseRelease can tell a drag
+        // from a (play-mode, on-player) action-wheel click.
+        m_rightPressPos = event->pos();
+        m_rightDragLast = event->pos();
+        m_rightDragging = false;
         const PlayerToken *t = tokenAt(event->pos());
         m_rightPressPlayerId = t ? t->playerId : QString();
     }
@@ -570,6 +692,26 @@ void FieldView::mousePressEvent(QMouseEvent *event)
 
 void FieldView::mouseMoveEvent(QMouseEvent *event)
 {
+    // Right button + DRAG = pan (round 13, user): move the view with the
+    // cursor while the right button is held. A move under the threshold is
+    // still a click (no pan) so the play-mode action wheel keeps working.
+    if (event->buttons() & Qt::RightButton) {
+        QPoint delta = event->pos() - m_rightDragLast;
+        if (!m_rightDragging) {
+            const int manhattan = qAbs(event->pos().x() - m_rightPressPos.x()) +
+                                  qAbs(event->pos().y() - m_rightPressPos.y());
+            if (manhattan > 4)
+                m_rightDragging = true; // crossed the click/drag threshold
+            else
+                delta = QPoint();       // still a click: no pan yet
+        }
+        if (m_rightDragging && delta != QPoint()) {
+            m_pan += delta;
+            clampPan();
+            update();
+        }
+        m_rightDragLast = event->pos();
+    }
     // Hover: field tokens first, then bench faces. The hover "key" (token
     // id, or the box-entry name) changes only when the target changes.
     const PlayerToken *t = tokenAt(event->pos());
@@ -602,19 +744,21 @@ void FieldView::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         // Left click already fired on the press (see mousePressEvent); the
-        // release does nothing (the round-13 drag-pan was retracted).
+        // release does nothing.
     } else if (event->button() == Qt::RightButton) {
-        const PlayerToken *tRel = tokenAt(event->pos());
-        if (m_playMode && !m_rightPressPlayerId.isEmpty()
-            && tRel && tRel->playerId == m_rightPressPlayerId) {
-            // Play mode: right-click ON A PLAYER = action wheel target
-            // (the game logic shows the wheel menu from the signal).
-            setActionWheelTarget(m_rightPressPlayerId);
-            emit actionWheelRequested(m_rightPressPlayerId);
-        } else {
-            resetView(); // plain right click = reset zoom/pan
+        // Round 13 (user): a right DRAG was a pan (nothing to do on release).
+        // A right CLICK (no drag) in play mode on a player = action wheel.
+        // The reset moved to the MIDDLE click, so a plain right click no
+        // longer resets the view.
+        if (!m_rightDragging && m_playMode && !m_rightPressPlayerId.isEmpty()) {
+            const PlayerToken *tRel = tokenAt(event->pos());
+            if (tRel && tRel->playerId == m_rightPressPlayerId) {
+                setActionWheelTarget(m_rightPressPlayerId);
+                emit actionWheelRequested(m_rightPressPlayerId);
+            }
         }
         m_rightPressPlayerId.clear();
+        m_rightDragging = false;
     }
     QWidget::mouseReleaseEvent(event);
 }
@@ -629,27 +773,49 @@ void FieldView::leaveEvent(QEvent *)
 
 void FieldView::wheelEvent(QWheelEvent *event)
 {
-    // Zoom anchored on the cursor (round 8).
-    const int dy = event->angleDelta().y();
-    if (dy == 0) {
+    const QPoint delta = event->angleDelta();
+    // Round 13 (user): a PLAIN wheel SCROLLS (pans) the view — "lo scroll
+    // con il mouse verso l'alto non funzionava" (the wheel was zoom-only).
+    // CTRL + wheel ZOOMS (anchored on the cursor, round-8 behavior kept).
+    if (event->modifiers() & Qt::ControlModifier) {
+        const int dy = delta.y();
+        if (dy == 0) {
+            event->accept();
+            return;
+        }
+        const qreal factor = dy > 0 ? 1.15 : (1.0 / 1.15);
+        const qreal newZoom = qBound(1.0, m_zoom * factor, 3.0);
+        if (qFuzzyCompare(newZoom, m_zoom)) {
+            event->accept();
+            return;
+        }
+        const QPointF cursor = event->position();
+        const QPointF world = toFieldSpace(cursor);
+        m_zoom = newZoom;
+        m_pan = cursor - world * m_zoom;
+        if (m_zoom <= 1.0001)
+            m_pan = QPointF();
+        clampPan();
+        update();
+        setFocus(Qt::OtherFocusReason);
         event->accept();
         return;
     }
-    const qreal factor = dy > 0 ? 1.15 : (1.0 / 1.15);
-    const qreal newZoom = qBound(1.0, m_zoom * factor, 3.0);
-    if (qFuzzyCompare(newZoom, m_zoom)) {
+    // Plain wheel = SCROLL (pan). Scroll up (dy>0) reveals what's above
+    // (content moves down); trackpad horizontal (dx) pans left/right. Only
+    // meaningful while zoomed (at zoom 1 the letterboxed scene has nothing
+    // to scroll and clampPan re-centers it).
+    const int dx = delta.x();
+    const int dy = delta.y();
+    if (dx == 0 && dy == 0) {
         event->accept();
         return;
     }
-    const QPointF cursor = event->position();
-    const QPointF world = toFieldSpace(cursor);
-    m_zoom = newZoom;
-    m_pan = cursor - world * m_zoom;
-    if (m_zoom <= 1.0001)
-        m_pan = QPointF();
+    const qreal k = 0.5; // widget px per angleDelta unit
+    m_pan += QPointF(-dx * k, dy * k);
     clampPan();
     update();
-    setFocus(Qt::OtherFocusReason); // round 13: WASD right after zooming
+    setFocus(Qt::OtherFocusReason);
     event->accept();
 }
 
@@ -768,8 +934,10 @@ QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
     // are BIGGER than round 12 (user: "slot più grandi, volti più
     // riconoscibili"): RESERVE 2x2 (the reserve bench is short), KO and
     // INJURED 2x4 (down players accumulate).
-    constexpr int kCols = 2;
-    const int kRows[] = { 2, 4, 4 };
+    // Round 13 (user): grid sized for up to 16 players per section (4x4),
+    // matching paintBoxStrip (keep the two in sync).
+    constexpr int kCols = 4;
+    const int kRows[] = { 4, 4, 4 };
     const qreal bandH = panel.height() / 3.0;
     for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
@@ -777,13 +945,14 @@ QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
         const int rows = kRows[sec];
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.30; // below the label
-        const qreal slotH = bandH * 0.66;
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.28; // below the label
+        const qreal slotH = bandH * 0.68;
+        const qreal colW = panel.width() / kCols;
         const qreal pitch = slotH / rows;
-        const qreal r = pitch * 0.46;
+        const qreal r = qMin(colW, pitch) * 0.46;
         for (int i = 0; i < mine.size() && i < kCols * rows; ++i) {
             const int col = i % kCols, row = i / kCols;
-            const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
+            const qreal cx = panel.x() + (col + 0.5) * colW;
             const qreal cy = slotTop + row * pitch + pitch / 2;
             filled.append({ QRectF(cx - r, cy - r, r * 2, r * 2), mine[i] });
         }
@@ -822,9 +991,11 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         return;
 
     // Round 13: same (bigger) slot grid as boxSlots — keep the two in sync.
-    constexpr int kCols = 2;
-    const int kRows[] = { 2, 4, 4 };
-    const QColor EMPTY(160, 166, 178);
+    // Round 13 (user): grid sized for up to 16 players per section (4x4),
+    // matching boxSlots. NO empty "tondini" — only the players that are
+    // actually in the section are drawn (empty slots stay empty, no rings).
+    constexpr int kCols = 4;
+    const int kRows[] = { 4, 4, 4 };
     const qreal bandH = panel.height() / 3.0;
 
     for (int sec = 0; sec < 3; ++sec) {
@@ -834,40 +1005,34 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                 mine.append(&e);
 
         const int rows = kRows[sec];
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.30; // below the label
-        const qreal slotH = bandH * 0.66;
+        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.28; // below the label
+        const qreal slotH = bandH * 0.68;
+        const qreal colW = panel.width() / kCols;
         const qreal pitch = slotH / rows;
-        const qreal r = pitch * 0.46; // = boxSlots' radius (faces/hit-test)
+        const qreal r = qMin(colW, pitch) * 0.46; // = boxSlots' radius
 
-        for (int i = 0; i < kCols * rows; ++i) {
+        for (int i = 0; i < mine.size() && i < kCols * rows; ++i) {
             const int col = i % kCols, row = i / kCols;
-            const qreal cx = panel.center().x() + (col == 0 ? -1 : 1) * panel.width() * 0.21;
+            const qreal cx = panel.x() + (col + 0.5) * colW;
             const qreal cy = slotTop + row * pitch + pitch / 2;
             const QRectF ring(cx - r, cy - r, r * 2, r * 2);
-            if (i < mine.size()) {
-                const BoxEntry *e = mine[i];
-                const QPixmap pm = assets::playerFace(e->positionName, e->race);
-                if (!pm.isNull()) {
-                    const qreal fr = r * 0.78;
-                    const QRectF faceR(cx - fr, cy - fr, fr * 2, fr * 2);
-                    p.save();
-                    QPainterPath clip;
-                    clip.addEllipse(faceR);
-                    p.setClipPath(clip);
-                    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-                    p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
-                    p.restore();
-                }
-                p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 235),
-                              qMax(1.0, r * 0.16)));
-                p.setBrush(Qt::NoBrush);
-                p.drawEllipse(ring);
-            } else {
-                p.setPen(QPen(QColor(EMPTY.red(), EMPTY.green(), EMPTY.blue(), 150),
-                              qMax(1.0, r * 0.14)));
-                p.setBrush(Qt::NoBrush);
-                p.drawEllipse(ring);
+            const BoxEntry *e = mine[i];
+            const QPixmap pm = assets::playerFace(e->positionName, e->race);
+            if (!pm.isNull()) {
+                const qreal fr = r * 0.78;
+                const QRectF faceR(cx - fr, cy - fr, fr * 2, fr * 2);
+                p.save();
+                QPainterPath clip;
+                clip.addEllipse(faceR);
+                p.setClipPath(clip);
+                p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
+                p.restore();
             }
+            p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 235),
+                          qMax(1.0, r * 0.16)));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(ring);
         }
     }
 
@@ -981,9 +1146,27 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
-    // Stadium apron (round 12): the 36x15 scene keeps SQUARE cells and is
-    // letterboxed inside the widget — everything outside it is dark stadium.
-    p.fillRect(QRectF(0, 0, width(), height()), QColor(58, 56, 54));
+    // Stadium backdrop (round 13, user): the Qwen top-down FANTASY STADIUM
+    // (packed medieval stands, inspired by Blood Bowl 3) fills the WHOLE
+    // widget — replacing the flat grey apron the user found empty. The field
+    // scene is drawn on top (it zooms/pans); the stands show around it and in
+    // the apron gaps. Cover-scaled (preserve aspect, center-crop) so the
+    // crowd is never distorted. Static backdrop: the field camera zooms over
+    // the fixed stadium, like a TV shot.
+    const QPixmap stands = assets::stadiumTexture();
+    if (!stands.isNull()) {
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        const qreal scale = qMax(qreal(width()) / stands.width(),
+                                 qreal(height()) / stands.height());
+        const QSize sz(int(stands.width() * scale) + 1, int(stands.height() * scale) + 1);
+        p.drawPixmap(QRectF(width() / 2.0 - sz.width() / 2,
+                            height() / 2.0 - sz.height() / 2,
+                            sz.width(), sz.height()),
+                     stands, QRectF(0, 0, stands.width(), stands.height()));
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    } else {
+        p.fillRect(QRectF(0, 0, width(), height()), QColor(58, 56, 54)); // fallback
+    }
 
     // Field navigation (round 8): the WHOLE scene (dugouts, texture, grid,
     // tokens, rain) lives in a zoomed/panned space. Round 12: the dugout
@@ -1069,21 +1252,31 @@ void FieldView::paintEvent(QPaintEvent *)
 
     // --- Team logos: per-match watermarks centered on each half.
     // Round 8: 25% — the user found 19% still too transparent.
+    // Round 13 (user): both logos the SAME size, and they must NOT overflow
+    // into the WIDE ZONES (the y 0..3 / y 11..14 bands). The box is fitted to
+    // the central field (y 4..10) and the logo is drawn aspect-preserved (no
+    // stretch) inside it, so both crests read the same size.
     const auto drawLogo = [&](const QPixmap &pm, qreal col) {
         if (pm.isNull())
             return;
-        const qreal s = f.height() * 0.52;
+        const qreal box = f.height() * 0.40; // fits the central field y 4..10
+        const qreal cx = f.x() + col * cellW;
+        const qreal cy = f.center().y();
+        const qreal ar = qreal(pm.width()) / pm.height();
+        qreal w = box, h = box;
+        if (ar > 1.0)
+            h = box / ar;
+        else
+            w = box * ar;
         p.save();
         p.setOpacity(0.25);
-        // Round 11: smooth scaling — the 96/240px crests were scaled to
-        // ~430px with fast scaling and came out grainy (user report).
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        p.drawPixmap(QRectF(f.x() + col * cellW - s / 2, f.center().y() - s / 2, s, s), pm,
+        p.drawPixmap(QRectF(cx - w / 2, cy - h / 2, w, h), pm,
                      QRectF(0, 0, pm.width(), pm.height()));
         p.restore();
     };
     drawLogo(m_homeLogo, 6.5);
-    drawLogo(m_awayLogo, 19.5);
+    drawLogo(m_awayLogo, 18.5);
 
     // --- Puddles (round 12): water patches on the grass, drawn UNDER the
     //     tokens/ball. Present only when it rains — the animated rain's

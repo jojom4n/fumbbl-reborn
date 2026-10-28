@@ -20,6 +20,8 @@
 
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QPoint>
+#include <QSet>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -161,6 +163,7 @@ protected:
     void leaveEvent(QEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override; // round 13: WASD pan
+    void keyReleaseEvent(QKeyEvent *event) override; // round 13: stop smooth pan
 
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
@@ -225,8 +228,23 @@ private:
     QTimer *m_rainTimer = nullptr;
     QElapsedTimer m_rainClock;
     bool m_raining = false;
-    QVector<QRectF> m_puddles; // field space; recomputed on configure/resize
+    // Round 13 (user): puddles are DYNAMIC — they accumulate over match time
+    // (stepPuddles), smaller and organic, fading in. Stored as FRACTIONS of
+    // the field so they stay put across resizes.
+    struct Puddle {
+        qreal fx = 0.5, fy = 0.5; // center, fraction of the field (0..1)
+        qreal fr = 0.03;          // radius, fraction of the field height
+        qreal squash = 0.7;       // ry/rx (0.55..0.8)
+        qreal rotDeg = 0.0;       // rotation (organic, not a perfect ellipse)
+        double birthMs = 0.0;     // when it appeared (m_puddleClockMs)
+    };
+    QVector<Puddle> m_puddles;
+    double m_puddleClockMs = 0.0;
+    double m_nextPuddleAt = 0.0;
     void rainConfigure();
+    void stepPuddles(float dtMs);
+    QRectF puddleRect(const Puddle &pd, const QRectF &f) const;
+    QVector<QRectF> puddleRects() const;
     void drawPuddles(QPainter &p, const QRectF &f) const;
     void drawRain(QPainter &p);
     void drawMowStripes(QPainter &p, const QRectF &f) const;
@@ -246,6 +264,18 @@ private:
     // nuisance).
     QTimer *m_edgePanTimer = nullptr;
     void edgePanTick();
+
+    // Round 13 (user): SMOOTH keyboard pan — the held WASD keys are tracked
+    // and a fast timer pans continuously (no more jumpy auto-repeat steps).
+    QSet<int> m_panKeys;
+    QTimer *m_panTimer = nullptr;
+    void smoothPanTick();
+    // Round 13 (user): right button + DRAG = pan (brought back). A right
+    // CLICK (no drag) in play mode on a player still sets the action wheel.
+    // The view RESET moved to the MIDDLE click (right click no longer resets).
+    QPoint m_rightPressPos;
+    QPoint m_rightDragLast;
+    bool m_rightDragging = false;
 
     // Round 13: the actor's cumulative move trail (drawn under the tokens).
     QVector<QVector<QPoint>> m_moveTrace;

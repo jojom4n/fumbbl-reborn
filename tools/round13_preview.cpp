@@ -127,15 +127,21 @@ int main(int argc, char *argv[])
         reports.append(r);
     }
     {
+        // ReportThrowIn wire fields: direction (enum) + directionRoll (int)
+        // + distanceRoll (int[]). (The old fixture used a non-existent
+        // "throwInRoll" key, so the line rendered with no dice.)
         QJsonObject r;
         r.insert("reportId", "throwIn");
         r.insert("defenderId", awayPid);
+        r.insert("direction", QJsonObject{{"name", "right"}});
+        r.insert("directionRoll", 3);
         QJsonArray tr;
         tr << 2 << 4 << 6;
-        r.insert("throwInRoll", tr);
+        r.insert("distanceRoll", tr);
         reports.append(r);
     }
     w.onModelSync(QJsonArray(), reports);
+    QApplication::processEvents();
 
     // --- Simulate a MOVE so the trail draws (round 13) --------------------------
     // The actor makes two moves from its REAL position, stepping ADJACENT
@@ -223,6 +229,21 @@ int main(int argc, char *argv[])
     {
         const int cx = pitchX + cell * (trailX - 3), cy = oy + cell * (trailY - 3);
         saveCrop(*field, QRect(cx, cy, cell * 7, cell * 6), outDir + "/round13_trail.png");
+    }
+
+    // --- Rain: switch to pouring rain, let drops + dynamic puddles build up -------
+    // (round 13: top-down rain over the WHOLE field, puddles appear over time).
+    {
+        QJsonArray ch;
+        change(ch, QStringLiteral("fieldModelSetWeather"), QString(),
+               QJsonValue(QStringLiteral("Pouring Rain")));
+        w.onModelSync(ch, QJsonArray());
+        for (int i = 0; i < 20; ++i) { // ~4s of rain
+            QThread::msleep(200);
+            QApplication::processEvents();
+        }
+        saveCrop(*field, QRect(pitchX, oy, cell * 26, cell * 15), outDir + "/round13_rain.png");
+        qInfo().noquote() << "saved" << outDir << "/round13_rain.png";
     }
 
     qInfo() << "round13 preview complete ->" << outDir;

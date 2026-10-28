@@ -37,6 +37,11 @@ void RainSim::configure(float width, float height, const QVector<QRectF> &puddle
         spawnDrop(d, /*anywhere=*/true);
 }
 
+void RainSim::setPuddles(const QVector<QRectF> &puddles)
+{
+    m_puddles = puddles;
+}
+
 void RainSim::setIntensity(int level)
 {
     m_intensity = qBound(0, level, 100);

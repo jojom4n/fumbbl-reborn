@@ -54,6 +54,11 @@ QPixmap fieldTexture();
 // (round 12). 1:2 aspect, 3 equal bands RESERVE / KO / INJURED. Null pixmap
 // when missing (FieldView falls back to a flat soil fill).
 QPixmap dugoutTexture();
+// The FANTASY STADIUM backdrop (assets/stadium/stands.png, Qwen top-down:
+// packed medieval stands, inspired by Blood Bowl 3 — round 13, user). Fills
+// the widget behind the field scene (replaces the flat grey apron). Null
+// pixmap when missing (FieldView falls back to the flat stadium fill).
+QPixmap stadiumTexture();
 
 // True when the face set is available.
 bool isAvailable();
