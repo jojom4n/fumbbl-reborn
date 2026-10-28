@@ -48,12 +48,15 @@ BLOCK_STYLE = (
     "face filling the ENTIRE frame edge to edge as a perfect square with "
     "slightly rounded corners. The die background is {die}. Flat clean 2D "
     "vector game-art style, crisp uniform edges, high contrast. "
-    "In the exact center of the die face: a WHITE badge, a spiky circular "
-    "disc about 72% of the face width. The badge rim has 11 to 12 SHORT, "
-    "ROUNDED, organic spikes with ROUNDED TIPS and VARYING length (some "
-    "longer, some shorter, uneven, like a torn paper crown or a soft "
-    "rounded sunburst) — NOT long sharp thin triangles, NOT a spiky star. "
-    "The interior of the badge is solid clean white. "
+    "In the exact center of the die face: a WHITE badge, a circular disc "
+    "about 72% of the face width, whose edge is a SPIKY BURST: 11 to 12 "
+    "SHORT, POINTED, ANGULAR triangular spikes of VARYING length (some "
+    "clearly longer, some shorter, uneven) radiating outward — each spike "
+    "is a sharp triangle with a slightly soft tip but clearly ANGULAR and "
+    "POINTED, like a comic-book explosion star or a torn-paper burst. The "
+    "edge must be SPIKY and angular, NOT a smooth scalloped/flower edge, "
+    "NOT a wavy border, NOT rounded bumps. The interior of the badge is "
+    "solid clean white. "
     "Inside the badge, perfectly centered, LARGE (filling about 75% of "
     "the badge), in solid crimson red (the die color): {symbol}. "
     "Nothing else: no text, no numbers, no letters, no watermark, no "
@@ -87,14 +90,15 @@ BLOCK_SYMBOLS = {
         "vertical bar with a separated square dot below it) surrounded by "
         "a spiky starburst ring of red spikes radiating outward that "
         "nearly reaches the badge rim, the spikes uneven in length"),
-    6: ("a SOLID 12-POINTED star in solid flat red, perfectly centered, "
-        "each of the 12 points a thin elongated DIAMOND shape (like a "
-        "compass star or a comic-book explosion burst), the whole star "
-        "SOLID flat red with sharp clean points and no hollow center, "
-        "filling about 80% of the badge"),
+    6: ("a SOLID star in solid flat red, perfectly centered, with EXACTLY "
+        "TWELVE (12) sharp points — count them, there must be 12 — each "
+        "point a thin elongated DIAMOND (like a compass star or a "
+        "comic-book explosion burst), the whole star SOLID flat red with "
+        "sharp clean points and no hollow center, filling about 80% of "
+        "the badge"),
 }
 
-DICE_SEEDS = {1: 9101, 2: 9102, 3: 9103, 4: 9104, 5: 9105, 6: 9106}
+DICE_SEEDS = {1: 9201, 2: 9202, 3: 9203, 4: 9204, 5: 9205, 6: 9206}
 
 FIELD_GRASS_POS = (
     "Spectacular AAA fantasy sports video game field texture, perfectly "
