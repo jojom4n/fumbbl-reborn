@@ -149,6 +149,15 @@ public:
     bool ballAt(int &x, int &y) const;
     QString activePlayerId() const { return m_activePlayerId; }
 
+    // --- Block target (round 13 turn 4, user: the player being BLOCKED gets
+    // a RED selection glow, like the actor's blue one) ---------------------
+    // Armed by the UI on the blockRoll/block report (the defenderId — the
+    // player being blocked); cleared when the block RESOLVES: the target's
+    // state changes (fieldModelSetPlayerState), a new turn/half starts, or
+    // another player becomes the actor.
+    QString blockTargetId() const { return m_blockTargetId; }
+    void setBlockTargetId(const QString &playerId) { m_blockTargetId = playerId; }
+
     // --- Move trail (round 13, user request) ---------------------------------
     // The CUMULATIVE movement trace of the remote acting player: each entry
     // is one MOVE ACTION, a list of field cells from the start square to the
@@ -254,6 +263,7 @@ private:
 
     // Acting player (turn holder).
     QString m_activePlayerId;
+    QString m_blockTargetId; // round 13 turn 4: the player being blocked
 
     // Move trail of the acting player (round 13 — see moveTrace()).
     QString m_traceActor;                  // player whose trace is tracked

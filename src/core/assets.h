@@ -76,6 +76,14 @@ QPixmap fieldTexture();
 // (round 12). 1:2 aspect, 3 equal bands RESERVE / KO / INJURED. Null pixmap
 // when missing (FieldView falls back to a flat soil fill).
 QPixmap dugoutTexture();
+
+// Round 13 turn 4 (user: "usare i simboli ufficiali GW 2025"): the OFFICIAL
+// tabletop section symbols of the dugout, rendered with Qwen-Image from the
+// official GW 2025 product reference (spiked red ring + reserve arrow /
+// dazed face / skull+crossbones). Transparent background; kind =
+// "reserve" | "ko" | "injured". 512px sources (4K-ready: downscaled in the
+// UI, never upscaled).
+QPixmap dugoutSymbol(const QString &kind);
 // The FANTASY STADIUM backdrop (assets/stadium/stands.png, Qwen top-down:
 // packed medieval stands, inspired by Blood Bowl 3 — round 13, user). Fills
 // the widget behind the field scene (replaces the flat grey apron). Null

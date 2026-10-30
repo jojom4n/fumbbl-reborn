@@ -523,22 +523,32 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     } else if (id == QLatin1String("turnEnd")) {
         // ReportTurnEnd (mixed): playerIdTouchdown + heatRoll + arrays.
         DiceLogLine l;
-        l.text = QStringLiteral("--- Turn ended ---");
+        l.text = QStringLiteral("Turn ended");
         if (!str(report, "playerIdTouchdown").isEmpty())
-            l.text = QStringLiteral("--- Turn ended (touchdown) ---");
+            l.text = QStringLiteral("Turn ended (touchdown)");
         l.color = kGray;
         l.actorId = str(report, "playerIdTouchdown");
+        // Round 13 turn 4 (BB3 log): turn separators are CENTERED lines.
+        l.separator = true;
+        l.actorIsPlayer = true; // a player id (touchdown scorer) or empty
         l.d6Roll = num(report, "heatRoll");
         if (l.d6Roll > 0)
             l.text += QStringLiteral("  heat");
         out.append(l);
     } else if (id == QLatin1String("startHalf")) {
-        push(QStringLiteral("--- Half %1 starts ---").arg(num(report, "half")), kGray);
+        DiceLogLine l;
+        l.text = QStringLiteral("Half %1 starts").arg(num(report, "half"));
+        l.color = kGray;
+        l.separator = true; // round 13 turn 4: centered separator
+        out.append(l);
     } else if (id == QLatin1String("coinThrow")) {
         // ReportCoinThrow: coach + coinThrowHeads + coinChoiceHeads.
-        push(QStringLiteral("Coin Toss: %1")
-                 .arg(flag(report, "coinThrowHeads") ? QStringLiteral("Heads") : QStringLiteral("Tails")),
-             kGray);
+        DiceLogLine l;
+        l.text = QStringLiteral("Coin Toss: %1")
+                     .arg(flag(report, "coinThrowHeads") ? QStringLiteral("Heads") : QStringLiteral("Tails"));
+        l.color = kGray;
+        l.separator = true; // round 13 turn 4: centered separator
+        out.append(l);
     } else if (id == QLatin1String("receiveChoice")) {
         push(QStringLiteral("Receive choice: %1")
                  .arg(humanize(enumName(report.value(QStringLiteral("receiveChoice"))))),

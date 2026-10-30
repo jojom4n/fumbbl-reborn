@@ -1,20 +1,12 @@
 // =============================================================================
-// RainSim — implementation (round 12)
+// RainSim — implementation (top-down rain, round 13 turn 4)
 // =============================================================================
 #include "ui/rainsim.h"
 
+#include <QPointF>
 #include <QRandomGenerator>
 
-void RainSim::seed(qint64 s)
-{
-    m_seed = s;
-    if (m_rng) {
-        delete m_rng;
-        m_rng = nullptr;
-    }
-    m_rng = new QRandomGenerator(s);
-    m_hasRng = true;
-}
+#include <cmath>
 
 void RainSim::configure(float width, float height, const QVector<QRectF> &puddles)
 {
@@ -25,13 +17,8 @@ void RainSim::configure(float width, float height, const QVector<QRectF> &puddle
     m_landingsPuddle = 0;
     m_splashes.clear();
 
-    if (!m_hasRng)
-        seed(m_seed ? m_seed : 1234567);
-
-    // Drop count scales with the area and the intensity.
-    const qreal area = qreal(m_w) * qreal(m_h);
-    const int base = int(area / 5200.0); // ~1 drop per 5200 px^2 at 100%
-    const int n = qMax(0, base * m_intensity / 100);
+    // Drop count scales with the intensity (light drizzle -> deluge).
+    const int n = 24 + m_intensity * 2;
     m_drops.resize(n);
     for (Drop &d : m_drops)
         spawnDrop(d, /*anywhere=*/true);
@@ -47,26 +34,36 @@ void RainSim::setIntensity(int level)
     m_intensity = qBound(0, level, 100);
 }
 
+void RainSim::seed(qint64 s)
+{
+    m_seed = s;
+    if (!m_rng)
+        m_rng = new QRandomGenerator;
+    m_rng->seed(static_cast<quint32>(s & 0xFFFFFFFF));
+    m_hasRng = true;
+}
+
 void RainSim::spawnDrop(Drop &d, bool anywhere)
 {
     QRandomGenerator *rng = m_hasRng ? m_rng : QRandomGenerator::global();
+    // TOP-DOWN: the drop appears anywhere in the WHOLE field (this is what
+    // makes the rain cover the entire pitch at all times — the old
+    // "spawn at the top and fall" left a bare upper-bands-only rain).
     d.x = float(rng->bounded(int(m_w)));
-    d.speed = 0.22f + float(rng->bounded(180)) * 0.001f; // 0.22..0.40 px/ms
-    d.len = 9.0f + float(rng->bounded(16));              // 9..24 px
-    d.slant = 1.5f + float(rng->bounded(25)) * 0.05f;   // 1.5..4 px
-
-    const float travel = 40.0f + float(rng->bounded(140)); // 40..180 px
-    if (anywhere) {
-        // Pre-populate: some drops mid-fall, some above the field.
-        d.y = float(rng->bounded(int(m_h + 40))) - 40.0f;
-    } else {
-        d.y = -40.0f;
-    }
-    // The landing point stays inside the field (the streak is drawn above
-    // the drop, so a drop near the bottom lands a bit lower but visible).
-    d.groundY = qMin(d.y + travel, float(m_h) - 2.0f);
-    if (d.groundY <= d.y)
-        d.groundY = d.y + travel; // will re-wrap immediately on the next field
+    d.y = float(rng->bounded(int(m_h)));
+    d.maxLifeMs = 90.0f + float(rng->bounded(130)); // 90..220 ms
+    d.len = 4.0f + float(rng->bounded(10));          // 4..14 px streak
+    // A consistent wind slant (slightly down-right) with per-drop jitter,
+    // so the streaks read as rain, not as scattered dots.
+    d.angle = 1.25f + float(rng->bounded(16) - 8) * 0.017f; // ~72deg +/- 0.14
+    // A tiny top-down drift while the drop "falls" (barely visible).
+    const float spd = 0.01f + float(rng->bounded(10)) * 0.002f;
+    d.driftX = float(std::cos(d.angle) * spd);
+    d.driftY = float(std::sin(d.angle) * spd);
+    if (anywhere)
+        d.lifeMs = float(rng->bounded(int(d.maxLifeMs))); // stagger the starts
+    else
+        d.lifeMs = 0.0f;
 }
 
 bool RainSim::inPuddle(const QPointF &p) const
@@ -79,34 +76,36 @@ bool RainSim::inPuddle(const QPointF &p) const
 
 void RainSim::step(float dtMs)
 {
-    if (m_drops.isEmpty())
-        return;
-
-    // Drops fall.
+    QRandomGenerator *rng = m_hasRng ? m_rng : QRandomGenerator::global();
     for (Drop &d : m_drops) {
-        d.y += d.speed * dtMs;
-        if (d.y >= d.groundY) {
-            const QPointF land(d.x, d.groundY);
+        d.lifeMs += dtMs;
+        d.x += d.driftX * dtMs;
+        d.y += d.driftY * dtMs;
+        if (d.lifeMs >= d.maxLifeMs) {
+            // LANDING: a splash ripple at the drop's spot.
             Splash s;
-            s.x = d.x;
-            s.y = d.groundY;
+            s.x = qBound(0.0f, d.x, float(m_w));
+            s.y = qBound(0.0f, d.y, float(m_h));
             s.ageMs = 0.0f;
-            s.onPuddle = inPuddle(land);
+            s.onPuddle = inPuddle(QPointF(s.x, s.y));
+            m_splashes.append(s);
             if (s.onPuddle)
                 ++m_landingsPuddle;
             else
                 ++m_landingsGrass;
-            m_splashes.append(s);
+            // Respawn immediately at a NEW random spot of the whole field
+            // (the rain is continuous everywhere).
             spawnDrop(d, /*anywhere=*/false);
         }
     }
-
-    // Splashes age and expire (puddle ripples live longer).
+    // Age the splashes; puddle ripples live longer than grass ones.
+    const float kGrassLife = 350.0f;
+    const float kPuddleLife = 700.0f;
     for (int i = m_splashes.size() - 1; i >= 0; --i) {
         Splash &s = m_splashes[i];
         s.ageMs += dtMs;
-        const float maxAge = s.onPuddle ? 650.0f : 380.0f;
-        if (s.ageMs >= maxAge)
+        const float life = s.onPuddle ? kPuddleLife : kGrassLife;
+        if (s.ageMs >= life)
             m_splashes.removeAt(i);
     }
 }

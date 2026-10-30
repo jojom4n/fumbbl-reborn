@@ -1,10 +1,17 @@
 // =============================================================================
 // RainSim — the animated rain simulation (round 12, user request)
 //
-// When the weather is rain the field shows ANIMATED rain: streaks of
-// droplets falling across the pitch, and a SPLASH where each drop lands.
-// Drops that land inside one of the puddles (the water patches drawn on the
-// field) make a bigger, longer ripple; drops on grass make a small one.
+// TOP-DOWN rain (round 13 turn 4, user): the field is seen from ABOVE. There
+// is no side-view "falling from the top" — a drop is a short bright streak
+// that appears at a random spot of the WHOLE field, grows slightly as it
+// descends (top-down pseudo-depth), and ends in a SPLASH ripple where it
+// lands. Drops landing inside a puddle (the water patches drawn on the
+// field) make a bigger, longer ripple.
+//
+// Round 13 turn 4 fix: the old sim spawned every new drop at the TOP of the
+// field and let it "fall" a short distance — after a few seconds the rain
+// only covered the upper band of the pitch. Now drops spawn/land uniformly
+// over the entire field at all times.
 //
 // Pure simulation (no painting, no widget): FieldView drives step() from a
 // QTimer and draws the state; the unit tests drive it deterministically.
@@ -22,12 +29,14 @@ class RainSim
 {
 public:
     struct Drop {
-        float x = 0.0f;       // horizontal position (px in field space)
-        float y = 0.0f;       // current vertical position
-        float groundY = 0.0f; // where this drop lands (splash point)
-        float speed = 0.0f;   // px per ms
-        float len = 0.0f;     // streak length (px)
-        float slant = 0.0f;   // horizontal slant of the streak (px)
+        float x = 0.0f;       // position (px in field space)
+        float y = 0.0f;
+        float lifeMs = 0.0f;  // age of the current fall
+        float maxLifeMs = 0.0f; // fall duration (short: 90..220 ms)
+        float len = 0.0f;     // streak length at landing (px)
+        float angle = 0.0f;   // streak direction (rad), slight wind slant
+        float driftX = 0.0f;  // tiny top-down drift (px/ms)
+        float driftY = 0.0f;
     };
     struct Splash {
         float x = 0.0f;
@@ -46,8 +55,8 @@ public:
     void setIntensity(int level); // 0..100 (more drops at higher levels)
     void seed(qint64 s);          // deterministic simulation (tests)
 
-    // Advance the simulation; drops fall, landings become splashes,
-    // splashes expire. dt in milliseconds.
+    // Advance the simulation: drops age and land (-> splash), splashes
+    // expire, landed drops respawn at a NEW random spot of the whole field.
     void step(float dtMs);
 
     const QVector<Drop> &drops() const { return m_drops; }

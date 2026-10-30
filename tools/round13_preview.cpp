@@ -143,6 +143,20 @@ int main(int argc, char *argv[])
     w.onModelSync(QJsonArray(), reports);
     QApplication::processEvents();
 
+    // --- Round 13 turn 4: the RED BLOCK GLOW. The blockRoll above armed the
+    //     glow on the DEFENDER (awayPid); capture a crop around him BEFORE the
+    //     trail simulation switches the actor (which resolves the block).
+    {
+        const FFBPlayer *victim = w.model()->findPlayerById(awayPid);
+        if (victim && victim->hasCoords) {
+            const qreal cell = field->fieldRect().width() / 26.0;
+            const QPoint c = field->cellCenterPx(victim->fieldX, victim->fieldY);
+            const int pad = int(cell * 3.5);
+            QRect r(c.x() - pad, c.y() - pad, pad * 2, pad * 2);
+            saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_blockglow.png");
+        }
+    }
+
     // --- Simulate a MOVE so the trail draws (round 13) --------------------------
     // The actor makes two moves from its REAL position, stepping ADJACENT
     // squares (like the server does): the trace must ACCUMULATE (one arrow

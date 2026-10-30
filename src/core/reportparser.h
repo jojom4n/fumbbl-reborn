@@ -64,6 +64,10 @@ struct DiceLogLine {
     QStringList d6Rolls;
     // Block roll: the six faces ("1".."6"), rendered as block die images.
     QStringList blockFaces;
+    // Round 13 turn 4 (BB3-like log): structural hints for the UI.
+    bool separator = false;     // a turn/half/coin separator line (centered)
+    bool actorIsPlayer = true;   // actorId is a PLAYER id (hover -> card)
+    bool defenderIsPlayer = true; // defenderId is a PLAYER id
 };
 
 // Parses one report object into zero or more dice log lines.

@@ -12,18 +12,33 @@
 //   * player/team NAMES (resolved against the model by the caller), not
 //     raw numeric ids
 //
-// Round 13 (user): the dice were "piccoli, senza spacing, simboli non
-// leggibili" — rows are now 48px, dice 44px with real spacing (hspace 8)
-// between consecutive dice, and HOVERING A PLAYER'S NAME shows that
-// player's info card (like the field hover/click).
+// Round 13 TURN 4 (user): the log must be ORDERED AND READABLE LIKE
+// BLOODBOWL 3 (ref faces-work bb3 log): player names in TEAM COLOR +
+// ":", action text, DICE that are extremely readable and COHERENT WITH
+// THE TEXT (sized to the text, crisp), SUCCESS/FAILURE emphasized in
+// green/red, comfortable row spacing, and turn separators.
+//
+// Hover (round 13): hovering a player NAME shows that player's info card.
+// Round 13 turn 4: the hover handlers are an EVENT FILTER on the log
+// (never a std::function captured by the row widget): deleting rows while
+// the mouse is over them (log re-sync / clear) used to fire enter/leave on
+// freed NameLabels -> crash. The filter is owned by the (long-lived) log
+// and auto-removed with the row.
+//
+// Scroll (round 13 turn 4): STICK-TO-BOTTOM — a new entry scrolls the log
+// to the newest line ONLY if the user is already at the bottom; if the
+// user scrolled up to read older entries, new entries do NOT yank the view
+// down.
 // =============================================================================
 #pragma once
 
+#include <QColor>
 #include <QWidget>
 
 #include "core/reportparser.h"
 
 class QMouseEvent;
+class QEvent;
 
 class QScrollArea;
 class QVBoxLayout;
@@ -38,13 +53,16 @@ public:
 
     // Append one parsed report line. `actorName` / `defenderName` are the
     // already-resolved display names (empty = no participant on that role);
-    // `actorId` / `defenderId` are the raw ids (round 13: hover on a name
-    // shows that player's card — never shown as text, only used to resolve
-    // the card).
+    // `actorId` / `defenderId` are the raw ids (hover on a name shows that
+    // player's card — never shown as text, only used to resolve the card);
+    // `actorColor` / `defenderColor` tint the names (TEAM color, BB3 style;
+    // empty color = neutral ink).
     void appendLine(const DiceLogLine &line, const QString &actorName = QString(),
                     const QString &defenderName = QString(),
                     const QString &actorId = QString(),
-                    const QString &defenderId = QString());
+                    const QString &defenderId = QString(),
+                    const QColor &actorColor = QColor(),
+                    const QColor &defenderColor = QColor());
     void clearLog();
 
     // Plain-text dump of all entries (tests / debugging).
@@ -63,13 +81,20 @@ signals:
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    // Round 13 turn 4: the name-label hover lives HERE (owned by the log,
+    // safe against row deletion under the mouse).
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     // The middle part of a row: action text + dice + vs/result (rich text).
     QString renderMiddle(const DiceLogLine &line) const;
     void addEntry(const DiceLogLine &line, const QString &actorName,
                   const QString &defenderName, const QString &actorId,
-                  const QString &defenderId);
+                  const QString &defenderId, const QColor &actorColor,
+                  const QColor &defenderColor);
+    // True if the user is at (or near) the BOTTOM of the scroll: only then
+    // does the next append auto-scroll (stick-to-bottom, round 13 turn 4).
+    bool atBottom() const;
 
     QScrollArea *m_scroll = nullptr;
     QWidget *m_stack = nullptr;

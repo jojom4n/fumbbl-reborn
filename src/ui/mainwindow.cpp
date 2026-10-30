@@ -24,6 +24,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QCryptographicHash>
 #include <QEvent>
 #include <QImage>
 #include <QJsonArray>
@@ -38,6 +39,8 @@
 #include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QToolBar>
+
+#include <iterator>
 #include <QSettings>
 #include <QStatusBar>
 
@@ -68,6 +71,12 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Core (spectator) wiring --------------------------------------------
     m_model = new GameModel(this);
     m_session = new SpectatorSession(this);
+
+    // Round 13 turn 4 (test-caught bug): QElapsedTimer::elapsed() on a timer
+    // that was NEVER started returns a huge NEGATIVE value in Qt 6 — the
+    // report-dedup window test (now - last < window) was then true for every
+    // report and the action log stayed empty. Start the clock up front.
+    m_clock.start();
 
     // Team logo downloads (field watermarks + header crests).
     m_logoNam = new QNetworkAccessManager(this);
@@ -462,9 +471,30 @@ void MainWindow::appendDiceLog(const DiceLogLine &line)
     // Round 13 (user): the 4th/5th args are the RAW ids — the log's name
     // labels are HOVERABLE and need the id to open the player's card.
     // (The old call left them empty, so hovering a name did nothing.)
-    m_actionLog->appendLine(line, resolveId(line.actorId),
+    //
+    // Round 13 turn 4 (BB3-like log): names are tinted with the TEAM color
+    // (like Blood Bowl 3's log), and the is-player flags tell the log which
+    // names are hoverable (a TEAM id has no card — its name stays plain).
+    DiceLogLine l = line; // the model is authoritative: recompute the flags
+    l.actorIsPlayer = l.actorId.isEmpty() || m_model->findPlayerById(l.actorId);
+    l.defenderIsPlayer = l.defenderId.isEmpty() || m_model->findPlayerById(l.defenderId);
+
+    const auto teamColorOf = [this](const QString &id) -> QColor {
+        if (const FFBPlayer *p = m_model ? m_model->findPlayerById(id) : nullptr)
+            return PlayerInfoWidget::teamColor(
+                p->sideHome ? m_model->teamHomeName() : m_model->teamAwayName(),
+                p->sideHome);
+        if (id == m_model->teamHomeId())
+            return PlayerInfoWidget::teamColor(m_model->teamHomeName(), true);
+        if (id == m_model->teamAwayId())
+            return PlayerInfoWidget::teamColor(m_model->teamAwayName(), false);
+        return QColor(); // not a player nor a team: neutral ink
+    };
+    m_actionLog->appendLine(l, resolveId(line.actorId),
                             resolveId(line.defenderId),
-                            line.actorId, line.defenderId);
+                            line.actorId, line.defenderId,
+                            teamColorOf(line.actorId),
+                            teamColorOf(line.defenderId));
 }
 
 void MainWindow::appendChat(const QString &sender, const QString &text)
@@ -565,6 +595,11 @@ void MainWindow::applyModelToUi()
     else
         m_field->setSelectedPlayer(QString());
 
+    // Round 13 turn 4 (user): the RED glow on the player being blocked
+    // (armed by the blockRoll/block report, cleared by the model when the
+    // block resolves).
+    m_field->setBlockTarget(m_model->blockTargetId());
+
     // The info card tracks the player it currently shows: a model sync
     // refreshes its content (state changes to box, injuries, ...) and a
     // player removed from the game hides the card (round 12: the card is
@@ -590,20 +625,79 @@ void MainWindow::applyModelToUi()
     // field's box strips (setBoxes above).
 }
 
+static QString reportFingerprint(const QJsonObject &report)
+{
+    // Canonical compact JSON -> short hash. Two identical reports (the same
+    // event re-sent) share a fingerprint; two genuinely different events
+    // almost never do (different dice / players / ids).
+    const QByteArray canonical = QJsonDocument(report).toJson(QJsonDocument::Compact);
+    const QByteArray md5 = QCryptographicHash::hash(canonical, QCryptographicHash::Md5);
+    return QString::fromLatin1(md5.constData(), 8);
+}
+
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
 {
     if (changes.isEmpty() && reports.isEmpty())
         return;
     if (!changes.isEmpty())
         m_model->applyModelChanges(changes); // emits stateUpdated -> applyModelToUi
+
+    // ROUND 13 TURN 4 (user: "Armor broken e Injury vengono ripetuti") — the
+    // FUMBBL server re-sends reports (a failed step is retried and its
+    // reports flow again; re-joins re-sync). The official client does not
+    // dedupe; we do, three ways:
+    //  1. A batch of >= kResyncBatch reports while the log is already
+    //     populated is a FULL re-sync: rebuild the log from it (no dupes).
+    //  2. A single report whose fingerprint arrived within the last
+    //     kDedupWindowMs is a re-send: drop it (a real repeat of an
+    //     identical event is minutes apart — different turns — never within
+    //     the window).
+    //  3. (UI-level) a line identical to the previous one is skipped by the
+    //     widget (last resort, catches whatever the above let through).
+    if (reports.size() >= kResyncBatch && m_loggedReportCount > 0) {
+        m_actionLog->clearLog();
+        m_reportFpTimes.clear();
+        m_loggedReportCount = 0;
+    }
+    const qint64 now = m_clock.elapsed();
     for (const QJsonValue &rv : reports) {
         const QJsonObject report = rv.toObject();
         if (report.isEmpty())
             continue;
+        const QString fp = reportFingerprint(report);
+        const qint64 last = m_reportFpTimes.value(fp, -kDedupWindowMs - 1);
+        if (now - last < kDedupWindowMs)
+            continue; // the server re-sent this exact report: drop it
+        m_reportFpTimes.insert(fp, now);
+        ++m_loggedReportCount;
+
+        // Round 13 turn 4 (user: "il giocatore BLOCCATO deve avere il
+        // highlight+glow rosso"): the blockRoll/block reports carry
+        // defenderId = the player being blocked. Arm the model's block
+        // target (red glow on the field); it self-clears when the block
+        // resolves (state change / new turn / new actor).
+        const QString rid = report.value(QStringLiteral("reportId")).toString();
+        if (rid == QLatin1String("blockRoll") || rid == QLatin1String("block")) {
+            const QString victim = report.value(QStringLiteral("defenderId")).toString();
+            if (!victim.isEmpty()) {
+                m_model->setBlockTargetId(victim);
+                // Reports-only syncs do NOT emit stateUpdated (no model
+                // changes): push the glow straight to the field.
+                if (m_field)
+                    m_field->setBlockTarget(victim);
+            }
+        }
+
         // Structured dice: the action log renders the die faces (round 8:
         // "non ci mettere i numeri: metti i dadi") and resolved names.
         for (const DiceLogLine &line : parseReport(report))
             appendDiceLog(line);
+    }
+    // Keep the fingerprint table bounded (a full game has a few hundred).
+    if (m_reportFpTimes.size() > 2000) {
+        const qint64 cutoff = now - kDedupWindowMs;
+        for (auto it = m_reportFpTimes.begin(); it != m_reportFpTimes.end(); )
+            it = (it.value() < cutoff) ? m_reportFpTimes.erase(it) : std::next(it);
     }
 }
 
@@ -861,6 +955,10 @@ void MainWindow::clearMatchUi()
     m_field->setAwayTeamName(QString());
     m_actionLog->clearLog();
     m_chat->clearChat();
+    // Round 13 turn 4: a new match = a fresh dedup universe (report
+    // fingerprints from the old game must not suppress this game's reports).
+    m_reportFpTimes.clear();
+    m_loggedReportCount = 0;
     hidePlayerCard();
     setTeams(QString(), QString());
     setScore(0, 0);

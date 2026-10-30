@@ -1455,9 +1455,10 @@ void UiWiringTest::downedFaceNotSquashed()
              "downed token must keep the FULL round circle (face not squashed)");
 }
 
-// Round 11: the dice in the log use pre-scaled 28px assets rendered 1:1 (the
-// 256px originals were fast-scaled by the rich text layout — grainy d6, square
-// pips, unreadable skulls). Verify the assets exist in the resource at 28px.
+// Round 11: the dice in the log use pre-scaled assets rendered small (the
+// 256px originals were fast-scaled by the rich text layout — grainy d6,
+// square pips, unreadable skulls). Verify the assets exist in the resource
+// at the pre-scaled size.
 void UiWiringTest::diceAssetsPreScaled()
 {
     for (int n = 1; n <= 6; ++n) {
@@ -1465,10 +1466,11 @@ void UiWiringTest::diceAssetsPreScaled()
         const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
         QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
         QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
-        // Round 13: 20px — proportional to the 10pt log text (the 44/32px
-        // were far too big: "proporzionati al testo").
-        QCOMPARE(QImage(d6).size(), QSize(20, 20));
-        QCOMPARE(QImage(bl).size(), QSize(20, 20));
+        // Round 13 turn 4: 96px sources rendered at 24px in the BB3-like log
+        // (downscaling stays crisp at any DPI / 4K; the old 20px sources had
+        // to be UPscaled at 24px -> grainy, "troppo piccoli").
+        QCOMPARE(QImage(d6).size(), QSize(96, 96));
+        QCOMPARE(QImage(bl).size(), QSize(96, 96));
     }
 }
 

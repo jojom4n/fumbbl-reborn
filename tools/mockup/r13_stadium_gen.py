@@ -24,41 +24,49 @@ import urllib.request
 
 API = "http://127.0.0.1:8188"
 
-# The IMAGE is LANDSCAPE (1920x1088, aspect ~1.765 ~= the field's 1.733) so
-# the central FIELD PIT that fills most of it comes out LANDSCAPE (the real
-# 26x15 field, square cells, fits it with no big margins). Top band holds the
-# two DUGOUT pavilions (home LEFT, away RIGHT) close to the pit; bottom band +
-# side strips = packed stands.
+# Round 13 turn 4 (user): the dark-fantasy arena was REJECTED — the new style
+# is LIGHT and CLEAN, inspired by the user's reference (a bright, modern,
+# flat game-art top-down stadium): wood + warm harmonious tones, beautiful
+# realistic spectators, no dark fantasy, no torches. The image stays
+# LANDSCAPE (1920x1088, aspect ~1.765 ~= the field's 1.733) so the central
+# FIELD PIT comes out landscape (the real 26x15 field fits it); top band
+# holds the two DUGOUT pavilions (home LEFT, away RIGHT); all other bands
+# = packed beautiful stands.
 STADIUM_POS = (
-    "Exquisite AAA fantasy video-game STADIUM seen from DIRECTLY ABOVE "
-    "(perfectly flat top-down 2D, zero perspective, no horizon, straight "
-    "bird's-eye view). This is a WIDE landscape image (much wider than tall).\n"
-    "LAYOUT, strictly followed (sizes are % of the image):\n"
+    "Beautiful modern video-game STADIUM seen from DIRECTLY ABOVE (perfectly "
+    "flat top-down 2D, zero perspective, no horizon, straight bird's-eye "
+    "view). This is a WIDE landscape image (much wider than tall).\n"
+    "LAYOUT, strictly followed (sizes are % of the image, the image is 5:3):\n"
     "- CENTER FIELD PIT: one large, perfectly RECTANGULAR, completely EMPTY "
-    "dark stone floor — uniform matte charcoal flagstone, NO grass, NO field, "
-    "NO lines, NO markings, NO objects, clean straight edges. It is a WIDE "
-    "LANDSCAPE rectangle (about 1.7 times WIDER than tall). It spans from ~6% "
-    "to ~94% of the image WIDTH and from ~22% to ~86% of the image HEIGHT, "
-    "leaving only a thin strip of stands on the far left and far right.\n"
-    "- TOP BAND (the top ~20% of the height, directly above the pit): two "
-    "SYMMETRIC medieval DUGOUT pavilions of dark oak and grey stone — the LEFT "
-    "pavilion spans ~6%..46% of the width, the RIGHT pavilion spans ~54%..94% "
-    "of the width — each a long horizontal row of a few rows of EMPTY wooden "
-    "bench seats (team benches) facing the pit, a small stone gap in the "
-    "middle, the pavilions sitting CLOSE to the pit. Absolutely NO text, NO "
-    "numbers, NO symbols, NO letters.\n"
-    "- BOTTOM band and the thin left/right strips: tiered stadium STANDS "
-    "rising away from the field, PACKED with a dense, beautiful medieval "
-    "crowd seen from above — a rich, cohesive, painterly mosaic of thousands "
-    "of tiny fans in tunics and cloaks, warm HARMONIOUS palette (deep reds, "
-    "ochres, browns, forest greens, muted blues), elegant and dense, NOT a "
-    "chaotic mess of colors; stone aisles divide the blocks; a few team "
-    "banners and pennants.\n"
-    "STYLE: dark-fantasy medieval arena, warm torchlight, weathered stone + "
-    "oak + iron, a few corner watchtowers with blue slate roofs, rich fine "
-    "detail, crisp clean 2D top-down game art, soft even lighting.\n"
+    "floor — uniform matte warm DARK-TAN packed-dirt/stone, one single flat "
+    "color, NO grass, NO field, NO lines, NO markings, NO objects, clean "
+    "straight edges, bordered by a thin light-wood frame. CRITICAL: the pit "
+    "must be EXACTLY 1.73 times WIDER than tall (the ratio of a Blood Bowl "
+    "field). It spans from 12% to 88% of the image WIDTH (76% of the width) "
+    "and from 12% to 84% of the image HEIGHT (72% of the height) — measure "
+    "this ratio carefully, it must be about 1.73:1.\n"
+    "- TOP BAND (the top ~11% of the height, directly above the pit): two "
+    "SYMMETRIC DUGOUT pavilions of LIGHT warm wood (oak/beech) — the LEFT "
+    "pavilion spans ~12%..48% of the width, the RIGHT pavilion spans "
+    "~52%..88% of the width — each a long, clean horizontal pavilion with "
+    "EMPTY wooden bench seats (team benches) facing the pit, neat plank "
+    "floor, a small light gap in the middle, the pavilions sitting CLOSE to "
+    "the pit (their bottom edge almost touches the pit frame). Absolutely NO "
+    "text, NO numbers, NO symbols, NO letters.\n"
+    "- BOTTOM band (the bottom ~16% of the height) and the left/right strips "
+    "(the ~12% on each side of the pit): tiered stadium STANDS rising away "
+    "from the field, PACKED with a DENSE, BEAUTIFUL, REALISTIC crowd seen "
+    "from above — thousands of tiny heads in a cohesive, harmonious, "
+    "painterly mosaic (warm earthy tones: rust, ochre, cream, forest green, "
+    "navy, soft red — like a real packed stadium), elegant and dense, NOT a "
+    "chaotic mess; light-wood aisle dividers and low walls separate the "
+    "blocks; the whole thing reads as a GORGEOUS aerial crowd.\n"
+    "STYLE: LIGHT, CLEAN, bright modern flat game-art (like a premium sports "
+    "video game), warm daylight, wood + cream + soft harmonious colors, "
+    "crisp clean 2D top-down art, soft even lighting, NO dark fantasy, NO "
+    "medieval, NO stone, NO torches, NO lanterns.\n"
     "STRICT: no text, no logos, no watermark, no camera, no letters, no "
-    "numbers, no symbols, no grass, no pitch, no players."
+    "numbers, no symbols, no grass, no pitch, no players, no torches."
 )
 
 
@@ -105,11 +113,14 @@ def queue(wf):
 def main():
     job = sys.argv[1] if len(sys.argv) > 1 else "status"
     if job == "queue":
-        # 1920x1088 = 1.765 aspect ~= the field's 1.733, so the pit that fills
-        # the image comes out landscape. A few seeds to pick the best.
-        for seed in (41001, 41002, 41003):
-            queue(build(1920, 1088, STADIUM_POS, "r13/stadium", seed))
-            print(f"  stadium 1920x1088 seed={seed}", flush=True)
+        # 1920x1152 (5:3): tall enough that the pit can be 1.73:1 (the
+        # field's ratio) — pit 76%w x 72%h = 1459x830 = 1.758 ~= 1.733 —
+        # while still leaving the top dugout band + bottom stands. A few
+        # seeds to pick the best. (stadium3 = turn-4 light/clean style,
+        # corrected pit ratio.)
+        for seed in (43001, 43002, 43003):
+            queue(build(1920, 1152, STADIUM_POS, "r13/stadium3", seed))
+            print(f"  stadium 1920x1152 seed={seed}", flush=True)
     else:
         import urllib.error
         try:

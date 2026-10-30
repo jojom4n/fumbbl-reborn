@@ -459,6 +459,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         FFBPlayer *player = findPlayer(key);
         if (player)
             player->state = readInt(value);
+        // Round 13 turn 4: the block RESOLVED for its target (knocked down,
+        // prone, banned, ...): the red block glow dies with the new state.
+        if (key == m_blockTargetId)
+            m_blockTargetId.clear();
         return;
     }
 
@@ -486,6 +490,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     if (id == QLatin1String("gameSetHalf")) {
         m_half = readInt(value);
         clearMoveTrace(); // a new half: the trace dies with the old turn
+        m_blockTargetId.clear(); // round 13 turn 4: a new half kills the glow
         return;
     }
 
@@ -518,8 +523,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             QStringLiteral("halftime"),   QStringLiteral("overtime"),
             QStringLiteral("ended"),
         };
-        if (kTurnStartModes.contains(m_turnMode))
+        if (kTurnStartModes.contains(m_turnMode)) {
             clearMoveTrace();
+            m_blockTargetId.clear(); // round 13 turn 4: new turn = no block
+        }
         return;
     }
 
@@ -550,7 +557,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     }
 
     if (id == QLatin1String("actingPlayerSetPlayerId")) {
-        m_activePlayerId = playerIdKey(value);
+        const QString newActor = playerIdKey(value);
+        const QString oldActor = m_activePlayerId;
+        m_activePlayerId = newActor;
         // Round 13 trace semantics: the value is null BETWEEN actions of
         // the same player (the trace must survive — a new move of the same
         // player appends, it does not replace), so only a DIFFERENT non-
@@ -560,6 +569,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             m_tracePaths.clear();
             m_movePending = false;
         }
+        // Round 13 turn 4: a DIFFERENT non-null actor means the previous
+        // action (and its block, if any) is over — the red glow dies.
+        if (!m_activePlayerId.isEmpty() && m_activePlayerId != oldActor)
+            m_blockTargetId.clear();
         return;
     }
 

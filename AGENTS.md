@@ -64,6 +64,27 @@ in `memory-bank/` (soprattutto `activeContext.md`).
 - Le osservazioni visive dell'utente sulle screenshot (`faces-work/*.png`)
   sono ground truth: riprodotte e corrette nel codice.
 
+## 5bis. ASSET GRAFICI E FONTI UFFICIALI (PERMANENTI, richieste esplicitamente)
+- **Tutti gli asset grafici si fanno SEMPRE con Qwen-Image** (ComfyUI, CPU),
+  MAI disegnati a mano in QPainter/codice (niente simboli/icone vettoriali
+  "fatti a mano" in codice). Il codice (QPainter) serve solo per la struttura
+  vettoriale del CAMPO (griglia, linee, testo) e per il layout; ogni elemento
+  grafico (simboli, icone, texture, sfondi) è un asset Qwen.
+- **I simboli ufficiali (dugout Reserves/KO/Injured, ecc.) devono essere
+  PERFETTI e PRESSOCHÉ IDENTICI a quelli ufficiali della GW**: si parte
+  SEMPRE dall'immagine ufficiale di riferimento e si replica con Qwen-Image
+  (text2image o image2image sul riferimento), non approssimazioni.
+- **SOLO EDIZIONE 2025 (BB2025 / Third Season, Games Workshop)**: il client è
+  per BB2025. **Scartare TUTTE le informazioni dell'edizione 2020** e non
+  cercare MAI nulla dell'edizione 2020 (rulebook 2020, asset 2020, ecc.):
+  le uniche fonti affidabili sono quelle dell'edizione 2025.
+- Fonti ufficiali GW per BB2025: warhammer-community.com (articoli,
+  download, digi-rulebook su assets.warhammer-community.com), foto ufficiali
+  dei prodotti (box/pitch/dugout 2025), bbtactics.com.
+- **4K-READY**: tutti gli asset (stadio, pubblico, texture, dadi, volti)
+  devono essere pronti per 4K e belli su monitor 4K (generare ad alta
+  risoluzione e/o upscalare; niente asset pixelati/soft a 4K).
+
 ## 6. BUILD / TEST / TOOLS
 - Build: `cmake -S . -B build -G Ninja && cmake --build build`
 - Test: `ctest --test-dir build --output-on-failure` (3 suite, tutte verdi)

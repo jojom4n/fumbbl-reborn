@@ -19,6 +19,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -143,6 +144,17 @@ private:
     void onWsClosed(int code, const QString &reason);
     void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
+    // Round 13 turn 4 (user: "Armor broken e Injury vengono ripetuti"): the
+    // server re-sends reports (step retries / re-syncs) and the official
+    // client does NOT dedupe. We do: a report whose canonical fingerprint
+    // arrived within the last kDedupWindowMs is dropped; a batch large
+    // enough to be a FULL re-sync (>= kResyncBatch reports while the log is
+    // already populated) rebuilds the log from the batch.
+    static constexpr int kDedupWindowMs = 120000;
+    static constexpr int kResyncBatch = 10;
+    QHash<QString, qint64> m_reportFpTimes; // fingerprint -> last-seen ms
+    QElapsedTimer m_clock;
+    int m_loggedReportCount = 0;
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
     // Hover card (round 8): show/hide the player info on the opposite side

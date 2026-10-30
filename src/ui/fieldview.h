@@ -92,6 +92,9 @@ public:
     // at zoom 1) space.
     QRectF fieldRect() const;
     QRectF dugoutRect(bool home) const;
+    // The stadium image rect in scene (widget, zoom 1) space — public for
+    // the preview tool / tests (the navigation clamp target).
+    QRectF sceneRect() const;
     // Visual render position (cell coords) of a token: the animated position
     // while a move is in flight, else its cell center (public for tests).
     QPointF tokenVisualPos(const PlayerToken &t) const;
@@ -105,6 +108,13 @@ public:
     // wheel must not follow the click selection).
     void setSelectedPlayer(const QString &playerId);
     QString selectedPlayer() const { return m_selectedPlayer; }
+
+    // Round 13 turn 4 (user): the player being BLOCKED — a RED glowing rim
+    // (like the selection's blue glow, reserved red = injury/failure/block).
+    // Empty id = no block glow. Drawn in field space, follows zoom/pan and
+    // the token's animated glide.
+    void setBlockTarget(const QString &playerId);
+    QString blockTarget() const { return m_blockTarget; }
 
     // Action wheel (Mockup F play mode — kept for the future game client,
     // round 9): the wheel + target brackets are drawn ONLY for an explicit
@@ -192,7 +202,6 @@ private:
     // manifest's FIELD PIT; the dugout faces go into the manifest's DUGOUT
     // rects (top band: home LEFT, away RIGHT). The mapping is data-driven so
     // any stadium aligns (no hard-coded scene grid anymore).
-    QRectF sceneRect() const;                 // the stadium image rect (zoom target)
     QRectF mapNormRect(const QRectF &norm) const; // image-space 0..1 -> scene px
     QRectF cellRect(int x, int y) const;
     QPointF cellCenter(int x, int y) const;
@@ -222,6 +231,7 @@ private:
     bool m_ballInPlay = false;
     int m_turn = 1;
     QString m_selectedPlayer; // playerId highlighted with a ring
+    QString m_blockTarget; // round 13 turn 4: red glow (player being blocked)
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => ANIMATED rain

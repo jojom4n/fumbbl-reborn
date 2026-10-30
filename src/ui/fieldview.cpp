@@ -27,7 +27,12 @@ FieldView::FieldView(QWidget *parent)
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
     setMouseTracking(true); // hover cards (Mockup F round 8)
     setCursor(Qt::OpenHandCursor);
-    setStadium(QStringLiteral("medieval_arena")); // round 13: default stadium
+    // Round 13 turn 4c: the user rejected the beige "light/clean" stadiums
+    // and approved the dark-fantasy style of their reference — the dark
+    // arena (Qwen i2i from the reference, see tools/mockup/r13_arena_gen.py
+    // + stadium_cleanup.py) is now the default. medieval_arena stays
+    // installed: stadiums are INTERCHANGEABLE (setStadium(name)).
+    setStadium(QStringLiteral("dark_arena"));
     // Round 13: WASD pan — the field can take keyboard focus (clicking it or
     // zooming with the wheel grabs it; typing in the chat input still works
     // because that widget has the focus then).
@@ -50,8 +55,15 @@ FieldView::FieldView(QWidget *parent)
         m_pulsePhase += 2.0 * M_PI * 1.2 * 0.033;
         if (m_pulsePhase > 2.0 * M_PI)
             m_pulsePhase -= 2.0 * M_PI;
-        if (m_selectedPlayer.isEmpty())
+        if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty())
             return;
+        // Round 13 turn 4: while a BLOCK glow is on, a full field update is
+        // cheap enough (the glow is short-lived); the selection alone keeps
+        // the efficient token-rect repaint.
+        if (!m_blockTarget.isEmpty()) {
+            update();
+            return;
+        }
         const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
             for (const PlayerToken &t : team)
                 if (t.playerId == m_selectedPlayer)
@@ -384,14 +396,25 @@ void FieldView::drawRain(QPainter &p)
     p.save();
     p.translate(f.x(), f.y());
     p.setRenderHint(QPainter::Antialiasing, true);
-    // Round 13 (user): TOP-DOWN droplets — the field is seen from ABOVE, so a
-    // falling drop reads as a small bright DOT (its cross-section), not a
-    // side-view "platform" streak. The sim spawns/lands them all over the
-    // whole field, so the rain covers it entirely.
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(226, 238, 252, 150));
-    for (const RainSim::Drop &d : m_rain.drops())
-        p.drawEllipse(QPointF(d.x, d.y), 1.5, 1.5);
+    // Round 13 turn 4 (user): TOP-DOWN droplets — the field is seen from
+    // ABOVE. Each drop is a SHORT bright streak that GROWS as it descends
+    // (top-down pseudo-depth: small/high -> big/low), with a consistent
+    // wind slant. The sim spawns/lands them uniformly over the WHOLE field
+    // (the old "fall from the top" left rain only on the upper band and the
+    // dots read as a flat platform layer).
+    p.setPen(QPen(QColor(226, 238, 252, 190), 1.4, Qt::SolidLine,
+                  Qt::RoundCap));
+    for (const RainSim::Drop &d : m_rain.drops()) {
+        const float t = qMax(0.0f, qMin(1.0f, d.lifeMs / d.maxLifeMs));
+        const float grow = 0.35f + 0.65f * t;      // descends = grows
+        const float len = d.len * grow;
+        const QPointF head(d.x, d.y);
+        const QPointF tail(d.x - std::cos(d.angle) * len,
+                           d.y - std::sin(d.angle) * len);
+        p.setPen(QPen(QColor(226, 238, 252, int(120 + 90 * t)), 1.4,
+                      Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(tail, head);
+    }
 
     // Splash ripples: CIRCULAR rings on the ground (top-down water), bigger
     // and longer on the puddles.
@@ -485,6 +508,20 @@ void FieldView::setSelectedPlayer(const QString &playerId)
     // The pulse timer runs only while a selection is visible (round 9:
     // no idle repaints on the field).
     if (playerId.isEmpty())
+        m_pulseTimer->stop();
+    else
+        m_pulseTimer->start();
+    update();
+}
+
+void FieldView::setBlockTarget(const QString &playerId)
+{
+    if (m_blockTarget == playerId)
+        return;
+    m_blockTarget = playerId;
+    // Round 13 turn 4: the red block glow breathes with the same pulse
+    // timer as the selection glow.
+    if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty())
         m_pulseTimer->stop();
     else
         m_pulseTimer->start();
@@ -1026,10 +1063,17 @@ QRectF FieldView::sceneRect() const
     // always visible — never cropped, so the dugout and the field are always
     // on screen at any window size. The leftover (the widget's wider
     // dimension) is the dark stadium apron (filled in paintEvent).
+    //
+    // ROUND 13 TURN 4 FIX ("stadium shifted right + small", "cannot pan to
+    // the right side when zoomed"): the rect is anchored at the ORIGIN
+    // (0,0) — the centering is clampPan()'s job. Centering it HERE too
+    // double-applied the letterbox offset: at zoom 1 the stadium was drawn
+    // shifted right by the whole left margin, and the zoom-clamp range was
+    // computed as if the scene started at 0, so the stadium's right side
+    // could never be panned to the screen edge.
     const qreal scale = qMin(qreal(width()) / st.width(),
                              qreal(height()) / st.height());
-    const qreal w = st.width() * scale, h = st.height() * scale;
-    return QRectF((width() - w) / 2.0, (height() - h) / 2.0, w, h);
+    return QRectF(0.0, 0.0, st.width() * scale, st.height() * scale);
 }
 
 QRectF FieldView::mapNormRect(const QRectF &norm) const
@@ -1139,31 +1183,6 @@ QRectF dugoutSymbolRect(const QRectF &R, int sec)
     const qreal cy = R.y() + sec * rowH + rowH / 2.0;
     return QRectF(cx - bd / 2, cy - bd / 2, bd, bd);
 }
-// GW-style section symbol: Reserve = green badge + dot, KO = red badge + X,
-// Injured = blue badge + medical cross (vector, crisp at any zoom).
-void drawDugoutSymbolIcon(QPainter &p, int sec, const QRectF &b)
-{
-    const QPointF c = b.center();
-    const qreal m = b.width() * 0.26;
-    p.setRenderHint(QPainter::Antialiasing, true);
-    if (sec <= 2) {
-        QPen pen(QColor(255, 255, 255, 245), qMax(1.5, b.width() * 0.14));
-        pen.setCapStyle(Qt::RoundCap);
-        p.setPen(pen);
-        if (sec == 1) { // KO: X
-            p.drawLine(c.x() - m, c.y() - m, c.x() + m, c.y() + m);
-            p.drawLine(c.x() + m, c.y() - m, c.x() - m, c.y() + m);
-        } else if (sec == 2) { // Injured: medical +
-            p.drawLine(c.x() - m, c.y(), c.x() + m, c.y());
-            p.drawLine(c.x(), c.y() - m, c.x(), c.y() + m);
-        }
-    }
-    if (sec == 0) { // Reserve: dot
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(255, 255, 255, 245));
-        p.drawEllipse(c, b.width() * 0.17, b.width() * 0.17);
-    }
-}
 } // namespace
 
 // Round 12: the bench slots live on the DUGOUT PANEL (outside the TD
@@ -1225,23 +1244,26 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
     if (R.isEmpty())
         return;
     const qreal faceD = dugoutFaceD(R);
-    const QColor symColors[3] = {
-        QColor(0x4c, 0x9a, 0x52), // Reserve: green
-        QColor(0xc0, 0x3a, 0x3a), // KO: red
-        QColor(0x3f, 0x6f, 0xc0)  // Injured: blue
-    };
+    // Round 13 turn 4 (user): ONLY the symbols, overlaid on the zone — no
+    // stone niche, no words. The official GW 2025 tabletop symbols (Qwen-
+    // Image renders of the official product reference: spiked red ring +
+    // reserve arrow / dazed face with stars / skull + crossbones).
+    static const char *kSymFiles[3] = { "reserve", "ko", "injured" };
     for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
 
-        // Section symbol badge (left gutter) + icon.
+        // Official GW section symbol (left gutter of the zone).
         const QRectF b = dugoutSymbolRect(R, sec);
-        p.setPen(Qt::NoPen);
-        p.setBrush(symColors[sec]);
-        p.drawRoundedRect(b, b.width() * 0.2, b.width() * 0.2);
-        drawDugoutSymbolIcon(p, sec, b);
+        const QPixmap sym = assets::dugoutSymbol(QString::fromLatin1(kSymFiles[sec]));
+        if (!sym.isNull()) {
+            p.save();
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            p.drawPixmap(b, sym, QRectF(0, 0, sym.width(), sym.height()));
+            p.restore();
+        }
 
         // Faces (team-ringed, only the present players).
         const int n = qMin(mine.size(), kDugoutMaxPerRow);
@@ -1420,7 +1442,11 @@ void FieldView::paintEvent(QPaintEvent *)
     //     and text stay razor-sharp at any zoom/HiDPI (user point 15).
     const QPixmap tex = assets::fieldTexture();
     if (!tex.isNull()) {
-        // Cover scaling (preserve aspect, center-crop to the pitch).
+        // ROUND 13 TURN 4 (user): NO empty grass apron — the 26x15 pitch is
+        // drawn over its rect ONLY. The "no black band" rule is satisfied by
+        // the STADIUM itself: each stadium's field pit is designed at the
+        // field's aspect (26:15), so the pitch fills the pit exactly (see
+        // the stadium generator prompts). Grass = the pitch, nothing else.
         const qreal scale = qMax(f.width() / tex.width(), f.height() / tex.height());
         const QSize sz(int(tex.width() * scale) + 1, int(tex.height() * scale) + 1);
         p.drawPixmap(QRectF(f.center().x() - sz.width() / 2, f.center().y() - sz.height() / 2,
@@ -1442,18 +1468,26 @@ void FieldView::paintEvent(QPaintEvent *)
     // missing "side zone" lines). Ground truth (ffb-common
     // FieldCoordinateBounds): UPPER wide zone = y 0..3, LOWER = y 11..14,
     // centre field = y 4..10 — so the emphasized lines run at y=4 and y=11,
-    // full pitch length (end zone to end zone), plus a slightly stronger
-    // sideline at y=0 / y=14 (the pitch edges).
+    // plus a slightly stronger sideline at y=0 / y=14 (the pitch edges).
+    // ROUND 13 TURN 4 (user): the wide-zone lines must NOT continue into the
+    // TOUCHDOWN zones — they start/stop at the TD line (x=1 / x=25), not at
+    // the end of the pitch.
     QPen wzPen(QColor(255, 255, 255, 210), qMax(2.0, cellW * 0.08));
     QPen sidePen(QColor(255, 255, 255, 160), qMax(1.5, cellW * 0.055));
     for (int y = 0; y <= kFieldHeight; ++y) {
-        if (y == 4 || y == 11)
+        const qreal yPx = f.y() + y * cellH;
+        if (y == 4 || y == 11) {
             p.setPen(wzPen);
-        else if (y == 0 || y == kFieldHeight)
+            // From the home TD line to the away TD line (never across the
+            // crimson TD columns).
+            p.drawLine(QPointF(f.x() + cellW, yPx), QPointF(f.right() - cellW, yPx));
+        } else if (y == 0 || y == kFieldHeight) {
             p.setPen(sidePen);
-        else
+            p.drawLine(QPointF(f.x(), yPx), QPointF(f.right(), yPx));
+        } else {
             p.setPen(linePen);
-        p.drawLine(QPointF(f.x(), f.y() + y * cellH), QPointF(f.right(), f.y() + y * cellH));
+            p.drawLine(QPointF(f.x(), yPx), QPointF(f.right(), yPx));
+        }
     }
 
     // --- Center line: SINGLE, emphasized (between columns 12 and 13) ------
@@ -1725,6 +1759,42 @@ void FieldView::paintEvent(QPaintEvent *)
             p.drawEllipse(ctr, glowR, glowR);
             // Crisp bright ring around the token (full alpha, thicker).
             QPen ringPen(QColor(140, 200, 255, 255), qMax(2.5, minDim * 0.075));
+            p.setPen(ringPen);
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(ctr, ringR, ringR);
+        }
+    }
+
+    // --- Round 13 turn 4 (user): RED GLOW on the player being BLOCKED —
+    //     same shape as the selection's blue rim glow, in the reserved red
+    //     (injury/failure/block). Armed by the model on the block report,
+    //     cleared when the block resolves (state change / new turn / new
+    //     actor). Follows the token's animated glide.
+    if (!m_blockTarget.isEmpty()) {
+        const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
+            for (const PlayerToken &t : team)
+                if (t.playerId == m_blockTarget)
+                    return &t;
+            return nullptr;
+        };
+        const PlayerToken *blk = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
+        if (blk) {
+            const QPointF vpos = tokenVisualPos(*blk);
+            const QPointF ctr(f.x() + vpos.x() * cellW, f.y() + vpos.y() * cellH);
+            const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+            const qreal minDim = qMin(cellW, cellH);
+            const qreal ringR = minDim * (0.58 + 0.025 * breath);
+            const qreal glowR = minDim * (0.95 + 0.08 * breath);
+            QRadialGradient halo(ctr, glowR);
+            const int rimA = int(150 + 90 * breath); // 150..240
+            halo.setColorAt(0.0, QColor(225, 64, 54, 0));
+            halo.setColorAt((minDim * 0.5) / glowR, QColor(225, 64, 54, 0));
+            halo.setColorAt(ringR / glowR, QColor(225, 64, 54, rimA));
+            halo.setColorAt(1.0, QColor(225, 64, 54, 0));
+            p.setPen(Qt::NoPen);
+            p.setBrush(halo);
+            p.drawEllipse(ctr, glowR, glowR);
+            QPen ringPen(QColor(255, 110, 100, 255), qMax(2.5, minDim * 0.075));
             p.setPen(ringPen);
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(ctr, ringR, ringR);

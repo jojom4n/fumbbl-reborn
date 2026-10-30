@@ -1,11 +1,10 @@
 // =============================================================================
-// ActionLogWidget — implementation (see actionlog.h for the design rules)
+// ActionLogWidget — implementation (BB3-like readability, round 13 turn 4)
 // =============================================================================
 #include "ui/actionlog.h"
 
 #include <QEnterEvent>
 #include <QEvent>
-#include <QFunctionPointer>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -15,59 +14,30 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
-#include <functional>
-
 namespace {
 
-// Round 13: 40px rows and 32px dice (the 48/44 were "eccessivamente
-// grandi" — the log looked big and confusing, user). Spacing between
-// consecutive dice is done with explicit &nbsp; (Qt's rich-text <img> does
-// NOT honor `hspace`, which is why the block dice used to touch).
-// Round 13 (user): dice must be PROPORTIONAL to the text ("sempre troppo
-// grandi... proporzionati al testo"). The log font is 10pt (~16px line), so
-// the dice sit at 20px — clearly a die, but inline with the text, not a big
-// red block. Row height matches.
-const int kRowH = 28;
-const int kDice = 20;
+// Round 13 turn 4 (user): BB3-like readability. The dice must be
+// "estremamente leggibili e coerenti col testo" — 24px dice against a
+// 10.5pt line (the 20px/10pt of round 13 turn 3 read as "tiny, not
+// coherent"). Rows get real height and the dice sit at ~1.5x the text cap
+// height, like Blood Bowl 3's log.
+const int kRowH = 30;
+const int kDice = 24;
 const int kHeaderH = 26;   // title + chevron strip
 const int kPad = 8;
 const int kMaxEntries = 300;
 
-// The parser's palette was tuned for the dark theme; on the light Mockup-F
-// card every accent is darkened so it stays readable.
-QColor inkColor(const QColor &c)
-{
-    if (c.alpha() < 10)
-        return QColor(34, 40, 50);
-    QColor d = c;
-    d.setAlpha(255);
-    return d.darker(185);
-}
+const QColor kInk(34, 40, 50);
+const QColor kOkGreen(46, 125, 50);
+const QColor kFailRed(198, 40, 40);
+const QColor kMuted(110, 116, 128);
 
-// Round 13: a player NAME in the log — hover shows that player's info card
-// (user: "hover sui nomi dei giocatori nell'action log → mostra la relativa
-// scheda, come il click sul campo"). Plain QLabel + enter/leave events (no
-// Q_OBJECT needed: we override virtuals on an existing QObject base).
-class NameLabel : public QLabel
-{
-public:
-    NameLabel(const QString &playerId, const QString &html,
-              const std::function<void(const QString &)> &hoverCb,
-              QWidget *parent)
-        : QLabel(html, parent), m_id(playerId), m_cb(hoverCb)
-    {
-        setCursor(Qt::PointingHandCursor);
-    }
-    QString playerId() const { return m_id; }
-
-protected:
-    void enterEvent(QEnterEvent *) override { m_cb(m_id); }
-    void leaveEvent(QEvent *) override { m_cb(QString()); }
-
-private:
-    QString m_id;
-    std::function<void(const QString &)> m_cb;
-};
+// A player/team NAME in the log — the hover is handled by the LOG's event
+// filter (round 13 turn 4: the old std::function captured the row widget;
+// clearing the log with the mouse on a name ran enter/leave on freed
+// memory -> crash). The label only carries its id in a dynamic property.
+const char kNameIdProp[] = "logNameId";
+const char kNameIsPlayerProp[] = "logNameIsPlayer";
 
 } // namespace
 
@@ -114,7 +84,7 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_stack->setStyleSheet(QStringLiteral("background: transparent;"));
     m_stackLayout = new QVBoxLayout(m_stack);
     m_stackLayout->setContentsMargins(kPad, 2, kPad, 2);
-    m_stackLayout->setSpacing(2);
+    m_stackLayout->setSpacing(3);
     m_stackLayout->addStretch(1);
     m_scroll->setWidget(m_stack);
     outer->addWidget(m_scroll, 1);
@@ -137,7 +107,7 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
     const QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
     // Very translucent paper (mockup: the field shows right through).
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(252, 252, 254, 150));
+    p.setBrush(QColor(252, 252, 254, 165));
     p.drawRoundedRect(r, 10, 10);
     QPen border(QColor(0, 0, 0, 90));
     border.setWidthF(1.2);
@@ -146,24 +116,50 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
     p.drawRoundedRect(r, 10, 10);
 }
 
+bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
+{
+    // Round 13 turn 4: the NAME hover. `watched` is a name label (the id is
+    // in a dynamic property); entering emits the id, leaving emits empty.
+    // This filter is owned by the LOG (which outlives its rows) and Qt
+    // removes it automatically when the row is deleted — no freed-memory
+    // callbacks, ever.
+    if (watched->property(kNameIdProp).isValid()) {
+        if (event->type() == QEvent::Enter) {
+            emit playerHoveredId(watched->property(kNameIdProp).toString());
+            return false;
+        }
+        if (event->type() == QEvent::Leave) {
+            emit playerHoveredId(QString());
+            return false;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+bool ActionLogWidget::atBottom() const
+{
+    // Stick-to-bottom (round 13 turn 4): true when the user is already at
+    // (or within a hair of) the newest line. New entries only auto-scroll
+    // in that case; a user reading the history is never yanked down.
+    const QScrollBar *sb = m_scroll ? m_scroll->verticalScrollBar() : nullptr;
+    if (!sb)
+        return true;
+    return sb->maximum() - sb->value() <= 8;
+}
+
 QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
 {
     // NOTE (round 9, user rule): a participant the UI could not resolve is
-    // DROPPED, never shown as a raw id — "MAI id numerici a schermo".
+    // DROPPED, never shown as raw ids — "MAI id numerici a schermo".
     QString html = line.text.toHtmlEscaped();
 
-    // Round 11: the dice use the PRE-SCALED assets (*_s.png) rendered 1:1 —
-    // the 256px originals were re-scaled by the rich-text layout with fast
-    // scaling (grainy d6, square pips, unreadable skulls).
-    // Round 13 (user): 32px dice with RELIABLE spacing. The block dice used
-    // to touch because `hspace` is NOT honored by Qt's rich-text <img>; use
-    // an explicit non-breaking space before every die so consecutive dice are
-    // always separated (block AND d6, the same way).
-    // NOTE: `src` already carries the leading ':' (":/dice/..."), so the
-    // format string must NOT add another one (that produced "::/dice/...",
-    // an unresolvable resource path -> broken-image icons in the log).
+    // Dice: the PRE-SCALED assets (*_s.png, 96px) rendered at kDice —
+    // downscaling stays crisp at any DPI (4K-ready). Spacing between
+    // consecutive dice is an explicit thin gap element (Qt rich text does
+    // NOT honor `hspace` on <img>).
     const auto dieImg = [](const QString &src) {
-        return QStringLiteral(" &nbsp;<img src=\"%1\" width=\"%2\" height=\"%2\">")
+        return QStringLiteral(" <img src=\"%1\" width=\"%2\" height=\"%2\">"
+                              "<span style=\"color:#ffffff\">&nbsp;</span>")
             .arg(src)
             .arg(kDice)
             .arg(kDice);
@@ -193,15 +189,17 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
     }
     if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {
         if (line.d6Target > 0)
-            html += QStringLiteral(" <span>vs %1</span>").arg(line.d6Target);
-        // The check/cross only when the report carries a real result
-        // (`successful` field) — throw-ins & co. roll dice without one.
+            html += QStringLiteral(" <span style=\"color:%1\">vs %2</span>")
+                        .arg(kMuted.name())
+                        .arg(line.d6Target);
+        // Round 13 turn 4 (BB3): the RESULT is emphasized — green SUCCESS /
+        // red Failure, bold, like Blood Bowl 3's log.
         if (line.d6ShowResult)
             html += line.d6Ok
-                        ? QStringLiteral(" <b><span style=\"color:#2e7d32\">\u2713</span></b>")
-                        : QStringLiteral(" <b><span style=\"color:#c62828\">\u2717</span></b>");
+                        ? QStringLiteral(" <b style=\"color:%1\">SUCCESS</b>").arg(kOkGreen.name())
+                        : QStringLiteral(" <b style=\"color:%1\">Failure</b>").arg(kFailRed.name());
         if (line.d6ReRolled)
-            html += QStringLiteral(" <span style=\"color:#5f6368\">[RR]</span>");
+            html += QStringLiteral(" <span style=\"color:%1\">[RR]</span>").arg(kMuted.name());
     }
 
     return html;
@@ -209,32 +207,96 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
 
 void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName,
                                const QString &defenderName, const QString &actorId,
-                               const QString &defenderId)
+                               const QString &defenderId, const QColor &actorColor,
+                               const QColor &defenderColor)
 {
-    // Round 13: the row is [actor name | action text + dice | defender
-    // name] — the two names are HOVERABLE (they show the player's card);
-    // the middle is plain rich text.
+    // BB3-like row (round 13 turn 4):
+    //   ActorName (TEAM color, bold, hoverable): action + dice + result  →
+    //   DefenderName (TEAM color, bold, hoverable)
+    // Separator lines (turn/half/coin): centered, muted, hairline above.
+    const bool separator = line.separator;
+
     auto *row = new QWidget(m_stack);
     auto *rl = new QHBoxLayout(row);
     rl->setContentsMargins(0, 0, 0, 0);
-    rl->setSpacing(3);
+    rl->setSpacing(4);
 
-    const auto style = QStringLiteral("background: transparent; color: #222832;");
+    const QString style = QStringLiteral("background: transparent; color: #222832;");
     QFont f = font();
-    f.setBold(true);
-    f.setPointSizeF(10);
+    f.setPointSizeF(10.5);
 
-    const auto hover = [this](const QString &id) { emit playerHoveredId(id); };
+    if (separator) {
+        // A quiet centered separator ("--- Turn ended ---" etc.): hairline
+        // on top, muted small-caps text, hairline below.
+        auto *sep = new QLabel(QStringLiteral("\u2014  %1  \u2014")
+                                   .arg(line.text.toHtmlEscaped()), row);
+        QFont sf = font();
+        sf.setPointSizeF(8.5);
+        sf.setBold(true);
+        sep->setFont(sf);
+        sep->setStyleSheet(QStringLiteral("background: transparent; color: #6a707c;"
+                                          "border-top: 1px solid rgba(0,0,0,60);"));
+        sep->setAlignment(Qt::AlignCenter);
+        rl->addWidget(sep, 1);
+        row->setFixedHeight(kRowH - 4);
+        m_stackLayout->insertWidget(m_stackLayout->count() - 1, row); // before stretch
+        m_plain << line.text;
+        ++m_entryCount;
+        while (m_plain.size() > kMaxEntries)
+            m_plain.removeFirst();
+        if (atBottom()) {
+            const auto sb = m_scroll->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
+        return;
+    }
 
-    if (!actorName.isEmpty()) {
-        auto *nl = new NameLabel(
-            actorId, QStringLiteral(
-                         "<b><span style=\"color:#8a6d1f\">%1</span></b>")
-                         .arg(actorName.toHtmlEscaped()),
-            hover, row);
+    const auto makeName = [this, row, f, style](const QString &id, const QString &name,
+                                                const QColor &color, bool isPlayer) -> QLabel * {
+        if (name.isEmpty() || id.isEmpty() || !isPlayer)
+            return nullptr; // only PLAYER names are hoverable (team names
+                            // have no card — keep them plain, not clickable)
+        auto *nl = new QLabel(row);
+        nl->setText(QStringLiteral("<b style=\"color:%1\">%2</b>")
+                        .arg(color.isValid() ? color.name() : kInk.name())
+                        .arg(name.toHtmlEscaped()));
+        nl->setTextFormat(Qt::RichText);
         nl->setStyleSheet(style);
         nl->setFont(f);
-        rl->addWidget(nl, 0, Qt::AlignVCenter);
+        nl->setCursor(Qt::PointingHandCursor);
+        nl->setProperty(kNameIdProp, id);
+        nl->setProperty(kNameIsPlayerProp, true);
+        nl->installEventFilter(this); // hover via the LOG (deletion-safe)
+        return nl;
+    };
+
+    const bool actorPlayer = !actorName.isEmpty() && !actorId.isEmpty()
+                             && actorColor.isValid() && line.actorIsPlayer;
+    const bool defPlayer = !defenderName.isEmpty() && !defenderId.isEmpty()
+                           && defenderColor.isValid() && line.defenderIsPlayer;
+
+    if (!actorName.isEmpty()) {
+        auto *nl = makeName(actorId, actorName, actorColor, line.actorIsPlayer);
+        if (nl) {
+            rl->addWidget(nl, 0, Qt::AlignVCenter);
+        } else {
+            auto *pl = new QLabel(QStringLiteral("<b style=\"color:%1\">%2</b>")
+                                       .arg(actorColor.isValid() ? actorColor.name() : kInk.name())
+                                       .arg(actorName.toHtmlEscaped()), row);
+            pl->setTextFormat(Qt::RichText);
+            pl->setStyleSheet(style);
+            QFont bf = f;
+            bf.setBold(true);
+            pl->setFont(bf);
+            rl->addWidget(pl, 0, Qt::AlignVCenter);
+        }
+        // BB3: "Name:" — the colon sticks to the name.
+        auto *colon = new QLabel(QStringLiteral(":"), row);
+        colon->setStyleSheet(style);
+        QFont cf = f;
+        cf.setBold(true);
+        colon->setFont(cf);
+        rl->addWidget(colon, 0, Qt::AlignVCenter);
     }
 
     auto *mid = new QLabel(renderMiddle(line), row);
@@ -244,15 +306,24 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     rl->addWidget(mid, 1, Qt::AlignVCenter);
 
     if (!defenderName.isEmpty()) {
-        auto *dl = new NameLabel(
-            defenderId, QStringLiteral(
-                            "<b><span style=\"color:%1\">%2</span></b>")
-                            .arg(inkColor(line.color).name())
-                            .arg(defenderName.toHtmlEscaped()),
-            hover, row);
-        dl->setStyleSheet(style);
-        dl->setFont(f);
-        rl->addWidget(dl, 0, Qt::AlignVCenter);
+        auto *nl = makeName(defenderId, defenderName, defenderColor, line.defenderIsPlayer);
+        if (nl) {
+            auto *arrow = new QLabel(QString::fromUtf8("\u2192"), row);
+            arrow->setStyleSheet(QStringLiteral("background: transparent; color: #6a707c;"));
+            rl->addWidget(arrow, 0, Qt::AlignVCenter);
+            rl->addWidget(nl, 0, Qt::AlignVCenter);
+        } else {
+            auto *pl = new QLabel(
+                QStringLiteral(" \u2192 <b style=\"color:%1\">%2</b>")
+                    .arg(defenderColor.isValid() ? defenderColor.name() : kInk.name())
+                    .arg(defenderName.toHtmlEscaped()), row);
+            pl->setTextFormat(Qt::RichText);
+            pl->setStyleSheet(style);
+            QFont bf = f;
+            bf.setBold(true);
+            pl->setFont(bf);
+            rl->addWidget(pl, 0, Qt::AlignVCenter);
+        }
     }
 
     row->setFixedHeight(kRowH);
@@ -268,17 +339,21 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     while (m_plain.size() > kMaxEntries)
         m_plain.removeFirst();
 
-    // Keep the newest entry visible.
-    m_scroll->ensureWidgetVisible(row);
-    const auto sb = m_scroll->verticalScrollBar();
-    sb->setValue(sb->maximum());
+    // STICK-TO-BOTTOM (round 13 turn 4): only auto-scroll when the user is
+    // already at the bottom — otherwise the user is reading history and the
+    // view must stay put.
+    if (atBottom()) {
+        const auto sb = m_scroll->verticalScrollBar();
+        sb->setValue(sb->maximum());
+    }
 }
 
 void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
                                  const QString &defenderName, const QString &actorId,
-                                 const QString &defenderId)
+                                 const QString &defenderId, const QColor &actorColor,
+                                 const QColor &defenderColor)
 {
-    addEntry(line, actorName, defenderName, actorId, defenderId);
+    addEntry(line, actorName, defenderName, actorId, defenderId, actorColor, defenderColor);
 }
 
 void ActionLogWidget::mousePressEvent(QMouseEvent *event)
@@ -296,8 +371,9 @@ void ActionLogWidget::mousePressEvent(QMouseEvent *event)
 
 void ActionLogWidget::clearLog()
 {
-    // Round 13: entries are ROW WIDGETS now (name labels inside) — delete
-    // the direct children (the rows), not just top-level labels.
+    // Entries are ROW WIDGETS (name labels inside) — delete the direct
+    // children (the rows), not just top-level labels. (Safe to do under the
+    // mouse: the hover filter is removed with each row.)
     for (auto *w : m_stack->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly))
         w->deleteLater();
     m_plain.clear();

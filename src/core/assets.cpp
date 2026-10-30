@@ -261,6 +261,11 @@ QPixmap dugoutTexture()
     return loadPixmap(QStringLiteral("dugout/dugout.png"));
 }
 
+QPixmap dugoutSymbol(const QString &kind)
+{
+    return loadPixmap(QStringLiteral("dugout/sym_%1.png").arg(kind));
+}
+
 QPixmap stadiumTexture()
 {
     return loadPixmap(QStringLiteral("stadium/stands.png"));
