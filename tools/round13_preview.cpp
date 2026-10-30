@@ -183,28 +183,21 @@ int main(int argc, char *argv[])
     w.grab().save(outDir + "/round13_window.png");
     qInfo().noquote() << "saved" << outDir << "/round13_window.png";
 
-    // Round 13 letterbox geometry (38x15 scene, square cells, centered).
-    const int W = field->width(), H = field->height();
-    const int cell = qMin(W / 38, H / 15);
-    const int ox = (W - 38 * cell) / 2, oy = (H - 15 * cell) / 2;
-    const int pitchX = ox + cell * 6; // 5 dugout + 1 gap
-
-    // --- Field (pitch): grass + vector grid/TD/TOUCHDOWN -------------------------
-    saveCrop(*field, QRect(pitchX, oy, cell * 26, cell * 15), outDir + "/round13_field.png");
-
-    // --- Dugouts + gap: left [panel+gap], right [gap+panel] ----------------------
+    // --- New stadium geometry (round 13): the scene is the STADIUM (cover);
+    //     the field is fitted into the manifest pit; the dugouts are the top
+    //     band. Crop using the widget-space geometry (zoom 1 / pan 0).
     {
-        // Left: dugout columns 0..4 + gap column 5 (panel + the apron gap).
-        const QImage left = field->grab(QRect(ox, oy, cell * 6, cell * 15)).toImage();
-        // Right: gap column 32 + dugout columns 33..37.
-        const QImage right = field->grab(QRect(ox + cell * 32, oy, cell * 6, cell * 15)).toImage();
-        QImage sheet(cell * 12 + 20, cell * 15, QImage::Format_RGB32);
-        sheet.fill(QColor(58, 56, 54));
-        QPainter sp(&sheet);
-        sp.drawImage(0, 0, left);
-        sp.drawImage(cell * 6 + 20, 0, right);
-        sp.end();
-        sheet.save(outDir + "/round13_dugouts.png");
+        const QRect fr = field->fieldRect().toAlignedRect();
+        saveCrop(*field, fr, outDir + "/round13_field.png");
+        const QRect hr = field->dugoutRect(true).toAlignedRect();
+        const QRect ar = field->dugoutRect(false).toAlignedRect();
+        const int topX = qMax(0, qMin(hr.left(), ar.left()));
+        const int topY = qMax(0, qMin(hr.top(), ar.top()));
+        const int topW = qMin(field->width() - topX,
+                              qMax(hr.right(), ar.right()) - topX + 8);
+        const int topH = qMin(field->height() - topY,
+                              qMax(hr.bottom(), ar.bottom()) - topY + 10);
+        saveCrop(*field, QRect(topX, topY, topW, topH), outDir + "/round13_dugouts.png");
         qInfo().noquote() << "saved" << outDir << "/round13_dugouts.png";
     }
 
@@ -227,8 +220,14 @@ int main(int argc, char *argv[])
     // --- Move trail crop: the area the actor moved through ------------------------
     // The actor moved from (trailX,trailY) left 2 and down 2: cover that box.
     {
-        const int cx = pitchX + cell * (trailX - 3), cy = oy + cell * (trailY - 3);
-        saveCrop(*field, QRect(cx, cy, cell * 7, cell * 6), outDir + "/round13_trail.png");
+        const qreal cell = field->fieldRect().width() / 26.0;
+        const QPoint a = field->cellCenterPx(trailX, trailY);
+        const QPoint b = field->cellCenterPx(trailX - 2, trailY - 2);
+        QRect r(qMin(a.x(), b.x()), qMin(a.y(), b.y()),
+                qAbs(a.x() - b.x()), qAbs(a.y() - b.y()));
+        const int pad = int(cell * 3);
+        r.adjust(-pad, -pad, pad, pad);
+        saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_trail.png");
     }
 
     // --- Rain: switch to pouring rain, let drops + dynamic puddles build up -------
@@ -242,7 +241,7 @@ int main(int argc, char *argv[])
             QThread::msleep(200);
             QApplication::processEvents();
         }
-        saveCrop(*field, QRect(pitchX, oy, cell * 26, cell * 15), outDir + "/round13_rain.png");
+        saveCrop(*field, field->fieldRect().toAlignedRect(), outDir + "/round13_rain.png");
         qInfo().noquote() << "saved" << outDir << "/round13_rain.png";
     }
 

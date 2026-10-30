@@ -26,6 +26,7 @@
 #include <QVector>
 #include <QWidget>
 
+#include "core/assets.h"
 #include "ui/rainsim.h"
 
 class FieldView : public QWidget
@@ -77,6 +78,23 @@ public:
     // ...). When it contains "rain" a top-down droplet overlay is drawn.
     void setWeather(const QString &weather);
     bool isRaining() const { return m_raining; } // round 12: animated rain on
+    // Round 13 (user): the STADIUM (an interchangeable top-down backdrop, its
+    // own asset + manifest). The field is fitted into the manifest's pit and
+    // the dugout faces into the manifest's dugout rects — data-driven, so any
+    // stadium aligns. `name` defaults to "medieval_arena".
+    void setStadium(const QString &name = QStringLiteral("medieval_arena"));
+    // The widget-space center of field cell (x,y) under the CURRENT
+    // zoom/pan (zoom 1 / pan 0 = the fitted scene). Used by the tests so the
+    // click points never hard-code the scene geometry.
+    QPoint cellCenterPx(int x, int y) const;
+    // Geometry (public for the preview tool + tests): the PITCH (field fitted
+    // into the manifest pit) and a team's dugout (top band) in scene (widget
+    // at zoom 1) space.
+    QRectF fieldRect() const;
+    QRectF dugoutRect(bool home) const;
+    // Visual render position (cell coords) of a token: the animated position
+    // while a move is in flight, else its cell center (public for tests).
+    QPointF tokenVisualPos(const PlayerToken &t) const;
 
     // Selected player. Rendered (round 9, user decision) as a BLUE GLOWING
     // RADIAL circle: a soft radial halo (QRadialGradient, alpha fading out)
@@ -168,26 +186,14 @@ protected:
 private:
     static constexpr int kFieldWidth = 26;   // X: 0..25
     static constexpr int kFieldHeight = 15;  // Y: 0..14
-    // Round 13: the widget scene is [dugout | gap | pitch | gap | dugout].
-    // The dugout panels are a SEPARATE asset (earthy theme, identical for
-    // every field type) standing outside the TD columns — and round 13 adds
-    // a visible GAP between each dugout and the pitch (user: the baked wood
-    // frame used to run "under" the field; the dugout must be separated
-    // horizontally from it).
-    static constexpr int kDugoutCells = 5;   // dugout panel width (cells)
-    static constexpr int kSceneGapCells = 1; // apron gap between dugout and pitch
-    static constexpr int kSceneWidth =
-        kFieldWidth + 2 * (kDugoutCells + kSceneGapCells); // 38
 
-    // The DUGOUT PANEL (the Qwen soil image): kDugoutCells wide x the FULL
-    // scene height (round 13: 15 rows — user: "dugout a tutta altezza
-    // verticale, slot più grandi, volti più riconoscibili"). The asset is
-    // regenerated 1:3 (5:15) so it fits with zero crop/stretch.
-    static constexpr int kDugoutPanelRows = kFieldHeight; // 15
-
-    QRectF sceneRect() const;        // the whole scene (zoom target)
-    QRectF dugoutPanelRect(bool leftSide) const;
-    QRectF fieldRect() const;        // the PITCH (middle 26 columns)
+    // Round 13 (user): the SCENE is the STADIUM (an interchangeable top-down
+    // backdrop + manifest). The 26x15 field is fitted (square cells) into the
+    // manifest's FIELD PIT; the dugout faces go into the manifest's DUGOUT
+    // rects (top band: home LEFT, away RIGHT). The mapping is data-driven so
+    // any stadium aligns (no hard-coded scene grid anymore).
+    QRectF sceneRect() const;                 // the stadium image rect (zoom target)
+    QRectF mapNormRect(const QRectF &norm) const; // image-space 0..1 -> scene px
     QRectF cellRect(int x, int y) const;
     QPointF cellCenter(int x, int y) const;
     // Paint one dugout's bench slots (round 12: on the dugout panel image).
@@ -219,6 +225,12 @@ private:
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => ANIMATED rain
+
+    // Round 13 (user): the STADIUM (interchangeable backdrop + manifest).
+    // m_stadium carries the normalized fieldPit / dugoutHome / dugoutAway
+    // rects that drive the alignment. The art is loaded on demand (assets).
+    QString m_stadiumName = QStringLiteral("medieval_arena");
+    assets::StadiumManifest m_stadium;
 
     // Round 12: animated rain (user request) — falling droplet streaks +
     // splash ripples where they land; ripples inside the puddles are bigger
@@ -279,6 +291,31 @@ private:
 
     // Round 13: the actor's cumulative move trail (drawn under the tokens).
     QVector<QVector<QPoint>> m_moveTrace;
+
+    // Round 13 (user): per-square MOVEMENT ANIMATION. Tokens do not jump to
+    // the new cell — they glide through the grid, square by square, like the
+    // official client (fast + pleasant). The MODEL stays authoritative (the
+    // visual position is a pure render detail): on each setPlayers a player
+    // that moved gets a waypoint path (old cell -> new cell, grid steps) and
+    // a fast timer interpolates the VISUAL position through it. m_prevModel
+    // is the last model layout (to detect movers); m_visualPos is the current
+    // render position in cell coordinates (x+0.5 = cell center).
+    struct TokenAnim {
+        QVector<QPointF> waypoints; // cell coords, walked in order
+        int leg = 0;                // current leg: waypoints[leg] -> [leg+1]
+        qreal t = 0.0;              // 0..1 progress on the current leg
+        bool active = false;
+    };
+    QHash<QString, TokenAnim> m_tokenAnim;
+    QHash<QString, QPointF> m_visualPos;
+    QHash<QString, QPoint> m_prevModel;
+    QPoint m_prevBall;
+    bool m_havePrevBall = false;
+    QTimer *m_animTimer = nullptr;
+    void startTokenAnim(const QString &id, const QPoint &to);
+    void animTick();
+    void ensureAnimTimer();
+    bool anyTokenAnimActive() const;
 
     // Round 9: selection glow pulse + explicit action-wheel target.
     QTimer *m_pulseTimer = nullptr; // breathes the selection halo

@@ -8,6 +8,8 @@
 #include <QFile>
 #include <QHash>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPixmap>
 
 #include <algorithm>
@@ -262,6 +264,36 @@ QPixmap dugoutTexture()
 QPixmap stadiumTexture()
 {
     return loadPixmap(QStringLiteral("stadium/stands.png"));
+}
+
+QPixmap stadiumImage(const QString &name)
+{
+    return loadPixmap(QStringLiteral("stadiums/%1/stadium.png").arg(name));
+}
+
+StadiumManifest stadiumManifest(const QString &name)
+{
+    StadiumManifest m;
+    const QString path = dir() + QStringLiteral("/stadiums/%1/stadium.json").arg(name);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return m;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (!doc.isObject())
+        return m;
+    const QJsonObject o = doc.object();
+    const auto readRect = [](const QJsonObject &o, const QString &key) -> QRectF {
+        const QJsonObject r = o.value(key).toObject();
+        return QRectF(r.value(QStringLiteral("x")).toDouble(),
+                      r.value(QStringLiteral("y")).toDouble(),
+                      r.value(QStringLiteral("w")).toDouble(),
+                      r.value(QStringLiteral("h")).toDouble());
+    };
+    m.fieldPit = readRect(o, QStringLiteral("fieldPit"));
+    m.dugoutHome = readRect(o, QStringLiteral("dugoutHome"));
+    m.dugoutAway = readRect(o, QStringLiteral("dugoutAway"));
+    m.valid = !m.fieldPit.isNull();
+    return m;
 }
 
 QPixmap skillPixmap(const QString &skillName)

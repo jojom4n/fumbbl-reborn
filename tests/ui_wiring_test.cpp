@@ -20,6 +20,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QBuffer>
+#include <QEvent> // QEnterEvent / QLeaveEvent
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
@@ -117,21 +118,19 @@ private slots:
     // ---- Round 12 (remote glow, animated rain) ----
     void rainSimulationDropsAndSplashes();
     void fieldRainAnimationActive();
+    // ---- Round 13 (log-name hover, spectator-first interactions) ----
+    void actionLogNameHoverOpensCard();
+    // ---- Round 13 (per-square movement animation) ----
+    void movementAnimationGlidesThroughGrid();
 };
 
 namespace {
-// Deterministic click point: compute the center of a cell with the SAME math
-// as FieldView (the field now fills the whole widget, 26x15 cells, phase 10).
+// Deterministic click point: the widget-space center of cell (x,y), using
+// the FieldView's OWN geometry (round 13 stadium layout: the field is fitted
+// into the manifest pit, so the test must ask the view, not re-derive it).
 QPoint cellCenter(const FieldView *field, int x, int y)
 {
-    // Round 13 scene: [dugout 5 | gap 1 | pitch 26 | gap 1 | dugout 5] =
-    // 38x15 cells, SQUARE (the scene is fitted into the widget and centered
-    // — letterbox). The pitch starts at column 6 (dugout 5 + gap 1).
-    const qreal W = field->width(), H = field->height();
-    const qreal cell = qMin(W / 38.0, H / 15.0);
-    const qreal ox = (W - 38.0 * cell) / 2.0;
-    const qreal oy = (H - 15.0 * cell) / 2.0;
-    return QPoint(int(ox + (6 + x + 0.5) * cell), int(oy + (y + 0.5) * cell));
+    return field->cellCenterPx(x, y);
 }
 
 // The FloatingPanel that wraps `content` (the HUD overlay of phase 10).
@@ -1318,9 +1317,10 @@ void UiWiringTest::matchListLogoFallbackUsedWhenGameStateNull()
 // than a standing token.
 void UiWiringTest::proneAndStunnedMarksRendered()
 {
-    const auto renderState = [](int state) -> QImage {
+    struct Shot { QImage img; QPoint c; qreal cell; };
+    const auto renderState = [](int state) -> Shot {
         FieldView field;
-        field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
+        field.resize(1440, 600); // round 13: stadium scene, field in the pit
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1330,7 +1330,8 @@ void UiWiringTest::proneAndStunnedMarksRendered()
         field.setPlayers({ t }, {});
         field.show();
         QApplication::processEvents();
-        return field.grab().toImage();
+        return { field.grab().toImage(), field.cellCenterPx(13, 7),
+                 field.fieldRect().width() / 26.0 };
     };
     const auto nearWhite = [](const QImage &img, const QRect &r) {
         int n = 0;
@@ -1343,21 +1344,25 @@ void UiWiringTest::proneAndStunnedMarksRendered()
         return n;
     };
 
-    // Cell (13,7) center = ((5+13.5)*40, (7.5)*40) = (740, 300) (round 12:
-// +5 dugout columns).
-    const QRect patch(740 - 12, 300 - 12, 24, 24);
-    const QImage clean = renderState(1);  // standing
-    const QImage prone = renderState(3);  // prone  -> "/"
-    const QImage stunned = renderState(4); // stunned -> "X"
+    // Probe a patch around the token center (the state mark is drawn over the
+    // face at the cell center); the patch scales with the actual cell size.
+    const Shot clean = renderState(1);  // standing
+    const Shot prone = renderState(3);  // prone  -> "/"
+    const Shot stunned = renderState(4); // stunned -> "X"
+    const int rad = qMax(8, int(clean.cell * 0.42));
+    const QRect patch(clean.c.x() - rad, clean.c.y() - rad, rad * 2, rad * 2);
 
-    const int wClean = nearWhite(clean, patch);
-    const int wProne = nearWhite(prone, patch);
-    const int wStunned = nearWhite(stunned, patch);
-    QVERIFY2(wProne > wClean + 15,
+    const int wClean = nearWhite(clean.img, patch);
+    const int wProne = nearWhite(prone.img, patch);
+    const int wStunned = nearWhite(stunned.img, patch);
+    // The mark is a thin white stroke over the face (few pure-white px); the
+    // contained field is small, so the delta is modest — assert a clear,
+    // positive difference plus an absolute floor.
+    QVERIFY2(wProne >= 6 && wProne > wClean + 5,
              qPrintable(QStringLiteral("prone '/' mark not visible (clean=%1 prone=%2)")
                             .arg(wClean)
                             .arg(wProne)));
-    QVERIFY2(wStunned > wClean + 15,
+    QVERIFY2(wStunned >= 6 && wStunned > wClean + 5,
              qPrintable(QStringLiteral("stunned 'X' mark not visible (clean=%1 stunned=%2)")
                             .arg(wClean)
                             .arg(wStunned)));
@@ -1377,10 +1382,12 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 void UiWiringTest::wideZoneLinesDrawn()
 {
     FieldView field;
-    field.resize(1520, 600); // round 13: 38x15 scene of 40px cells
+    field.resize(1520, 600); // round 13: stadium scene, field in the pit
     field.show();
     QApplication::processEvents();
     const QImage img = field.grab().toImage();
+    const QRectF f = field.fieldRect();
+    const qreal cellH = f.height() / 15.0;
     const auto lum = [&](int x, int y) {
         const QRgb c = img.pixel(x, y);
         return qRed(c) + qGreen(c) + qBlue(c);
@@ -1388,16 +1395,15 @@ void UiWiringTest::wideZoneLinesDrawn()
     // Brightness the line adds over the 8px-below pixel (same grass stripe).
     const auto lineBoost = [&](int row) {
         int sum = 0, n = 0;
-        // The pitch spans x 240..1280 (round 13: 5 dugout + 1 gap on each
-        // side) — sample the interior only.
-        for (int x = 280; x < 1240; x += 10) {
-            sum += qMax(0, lum(x, row * 40) - lum(x, row * 40 + 8));
+        const int y = int(f.y() + row * cellH);
+        for (int x = int(f.x()) + 40; x < int(f.right()) - 40; x += 10) {
+            sum += qMax(0, lum(x, y) - lum(x, y + 8));
             ++n;
         }
         return sum / n;
     };
-    const int grid = lineBoost(2);     // plain grid row
-    const int wzTop = lineBoost(4);    // wide-zone boundary (upper)
+    const int grid = lineBoost(2);      // plain grid row
+    const int wzTop = lineBoost(4);     // wide-zone boundary (upper)
     const int wzBottom = lineBoost(11); // wide-zone boundary (lower)
     QVERIFY2(wzTop > grid + 25,
              qPrintable(QStringLiteral("y=4 wide-zone line not emphasized (grid=%1 wz=%2)")
@@ -1416,9 +1422,10 @@ void UiWiringTest::wideZoneLinesDrawn()
 // a full circle puts team color there, a squashed ellipse puts grass.
 void UiWiringTest::downedFaceNotSquashed()
 {
-    const auto render = [](int state) -> QImage {
+    struct Shot { QImage img; QPoint c; qreal cell; };
+    const auto render = [](int state) -> Shot {
         FieldView field;
-        field.resize(1440, 600); // round 12: 36x15 scene of 40px cells
+        field.resize(1440, 600); // round 13: stadium scene, field in the pit
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1427,19 +1434,24 @@ void UiWiringTest::downedFaceNotSquashed()
         field.setPlayers({ t }, {});
         field.show();
         QApplication::processEvents();
-        return field.grab().toImage();
+        return { field.grab().toImage(), field.cellCenterPx(13, 7),
+                 field.fieldRect().width() / 26.0 };
     };
     const auto goldish = [](const QImage &im, int x, int y) {
         const QRgb c = im.pixel(x, y);
         return qRed(c) > 120 && qRed(c) >= qGreen(c) && qGreen(c) > qBlue(c);
     };
 
-    const QImage standing = render(1);
-    const QImage prone = render(3);
-    // Token center (740, 300) (round 12: +5 dugout columns); the 12-o'clock
-    // ring pixel is (740, 283).
-    QVERIFY2(goldish(standing, 740, 283), "geometry sanity: standing token ring is gold");
-    QVERIFY2(goldish(prone, 740, 283),
+    const Shot standing = render(1);
+    const Shot prone = render(3);
+    // 12 o'clock of the team ring (between the face clip and the circle
+    // edge): a full round circle puts team color there, a squashed ellipse
+    // puts grass. The radius scales with the actual cell size.
+    const int ringY1 = standing.c.y() - int(standing.cell * 0.42);
+    const int ringY2 = prone.c.y() - int(prone.cell * 0.42);
+    QVERIFY2(goldish(standing.img, standing.c.x(), ringY1),
+             "geometry sanity: standing token ring is gold");
+    QVERIFY2(goldish(prone.img, prone.c.x(), ringY2),
              "downed token must keep the FULL round circle (face not squashed)");
 }
 
@@ -1453,10 +1465,111 @@ void UiWiringTest::diceAssetsPreScaled()
         const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
         QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
         QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
-        // Round 13: 32px (the 44px were too big / the log too confusing).
-        QCOMPARE(QImage(d6).size(), QSize(32, 32));
-        QCOMPARE(QImage(bl).size(), QSize(32, 32));
+        // Round 13: 20px — proportional to the 10pt log text (the 44/32px
+        // were far too big: "proporzionati al testo").
+        QCOMPARE(QImage(d6).size(), QSize(20, 20));
+        QCOMPARE(QImage(bl).size(), QSize(20, 20));
     }
+}
+
+// Round 13 (user): hovering a player's NAME in the action log opens that
+// player's card (like the field hover). The name label is a hoverable
+// widget; entering it emits playerHoveredId(id) -> MainWindow opens the
+// card, leaving it hides it. (Regression: the log used to pass empty ids,
+// so hovering did nothing.)
+void UiWiringTest::actionLogNameHoverOpensCard()
+{
+    MainWindow w;
+    w.show();
+    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(log && info);
+    w.onGameState(fixtureGame());
+
+    // The fixture acting player (on field) is the report's actor.
+    const QString acting = QStringLiteral("18109690");
+    const FFBPlayer *p = w.model()->findPlayerById(acting);
+    QVERIFY(p);
+
+    QJsonObject dodge;
+    dodge.insert(QStringLiteral("reportId"), QStringLiteral("dodgeRoll"));
+    dodge.insert(QStringLiteral("playerId"), acting);
+    dodge.insert(QStringLiteral("roll"), 3);
+    dodge.insert(QStringLiteral("minimumRoll"), 4);
+    dodge.insert(QStringLiteral("successful"), false);
+    QJsonArray reports;
+    reports.append(dodge);
+    w.onModelSync(QJsonArray(), reports);
+
+    // Find the actor's hoverable name label by its displayed name.
+    const QString nameText = p->number > 0
+        ? QStringLiteral("%1 (%2)").arg(p->name).arg(p->number)
+        : p->name;
+    QLabel *nameLbl = nullptr;
+    for (QLabel *l : log->findChildren<QLabel *>())
+        if (l->text().contains(nameText)) {
+            nameLbl = l;
+            break;
+        }
+    QVERIFY2(nameLbl, "actor name label not found in the action log");
+
+    // Hover the name (real enter path) -> the card opens on that player.
+    QEnterEvent enter(QPointF(0, 0), QPointF(0, 0), QPointF(0, 0));
+    QApplication::sendEvent(nameLbl, &enter);
+    QApplication::processEvents();
+    QCOMPARE(info->shownPlayerId(), acting);
+
+    // Leave the name -> the card is hidden again. (QLeaveEvent has no public
+    // ctor in this Qt; a plain QEvent of type Leave routes to leaveEvent().)
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(nameLbl, &leave);
+    QApplication::processEvents();
+    QVERIFY2(info->shownPlayerId().isEmpty(), "card should hide on leave");
+}
+
+// Round 13 (user): a moved token does NOT jump to the new cell — it glides
+// through the grid, square by square. Verify: at rest the visual position is
+// the cell center; right after a move it is mid-glide (between old and new);
+// after enough time it converges exactly to the destination.
+void UiWiringTest::movementAnimationGlidesThroughGrid()
+{
+    FieldView field;
+    field.resize(1200, 600);
+    field.show();
+    QApplication::processEvents();
+
+    FieldView::PlayerToken t;
+    t.x = 5;
+    t.y = 5;
+    t.playerId = QStringLiteral("p1");
+    t.number = 1;
+    field.setPlayers({ t }, {});
+    QApplication::processEvents();
+    QCOMPARE(field.tokenVisualPos(t), QPointF(5.5, 5.5)); // at rest
+
+    // Move 4 squares to the right. Spin until we catch it MID-GLIDE (the full
+    // run is 4x85ms, so a position strictly between the ends is the glide).
+    t.x = 9;
+    field.setPlayers({ t }, {});
+    QPointF mid(5.5, 5.5);
+    for (int i = 0; i < 20; ++i) {
+        QThread::msleep(10);
+        QApplication::processEvents();
+        mid = field.tokenVisualPos(t);
+        if (mid.x() > 5.55 && mid.x() < 9.45)
+            break; // caught the glide in flight
+    }
+    QVERIFY2(mid.x() > 5.5 && mid.x() < 9.5,
+             qPrintable(QStringLiteral("mid-glide x=%1 (want between 5.5 and 9.5)")
+                            .arg(mid.x())));
+    QCOMPARE(mid.y(), 5.5); // straight run: y stays on the row
+
+    // After enough time the glide finishes exactly on the destination.
+    for (int i = 0; i < 80; ++i) {
+        QThread::msleep(16);
+        QApplication::processEvents();
+    }
+    QCOMPARE(field.tokenVisualPos(t), QPointF(9.5, 5.5));
 }
 
 // Round 11: cards with many skills must not clip — the panel is sized to the

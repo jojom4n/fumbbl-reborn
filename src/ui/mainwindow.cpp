@@ -459,7 +459,12 @@ void MainWindow::setConnectionStatus(const QString &status, bool connected)
 
 void MainWindow::appendDiceLog(const DiceLogLine &line)
 {
-    m_actionLog->appendLine(line, resolveId(line.actorId), resolveId(line.defenderId));
+    // Round 13 (user): the 4th/5th args are the RAW ids — the log's name
+    // labels are HOVERABLE and need the id to open the player's card.
+    // (The old call left them empty, so hovering a name did nothing.)
+    m_actionLog->appendLine(line, resolveId(line.actorId),
+                            resolveId(line.defenderId),
+                            line.actorId, line.defenderId);
 }
 
 void MainWindow::appendChat(const QString &sender, const QString &text)

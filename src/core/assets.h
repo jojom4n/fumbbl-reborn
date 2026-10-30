@@ -18,9 +18,31 @@
 
 #include <QImage>
 #include <QPixmap>
+#include <QRectF>
 #include <QString>
 
 namespace assets {
+
+// A STADIUM (round 13, user): a top-down stadium backdrop that is a
+// SEPARATE, interchangeable asset from the field (the user can pick any
+// stadium + any field in the future). Each stadium ships:
+//   assets/stadiums/<name>/stadium.png   the top-down art (NO field in it)
+//   assets/stadiums/<name>/stadium.json  a MANIFEST of normalized (0..1,
+//                                         image-space) rects so the client can
+//                                         align the field to the pit and the
+//                                         player faces to the dugouts of ANY
+//                                         stadium — the alignment is
+//                                         data-driven, never hard-coded.
+struct StadiumManifest {
+    bool valid = false;
+    QRectF fieldPit;   // the empty pit the 26x15 field is fitted into
+    QRectF dugoutHome; // team 1 (home) dugout — top-left pavilion
+    QRectF dugoutAway; // team 2 (away) dugout — top-right pavilion
+};
+// The stadium art for `name`. Null pixmap when missing.
+QPixmap stadiumImage(const QString &name = QStringLiteral("medieval_arena"));
+// The stadium manifest for `name` (valid=false when missing/malformed).
+StadiumManifest stadiumManifest(const QString &name = QStringLiteral("medieval_arena"));
 
 // Resolved assets directory (empty string when not found).
 QString assetsDir();

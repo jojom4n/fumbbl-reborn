@@ -23,8 +23,12 @@ namespace {
 // grandi" — the log looked big and confusing, user). Spacing between
 // consecutive dice is done with explicit &nbsp; (Qt's rich-text <img> does
 // NOT honor `hspace`, which is why the block dice used to touch).
-const int kRowH = 40;
-const int kDice = 32;
+// Round 13 (user): dice must be PROPORTIONAL to the text ("sempre troppo
+// grandi... proporzionati al testo"). The log font is 10pt (~16px line), so
+// the dice sit at 20px — clearly a die, but inline with the text, not a big
+// red block. Row height matches.
+const int kRowH = 28;
+const int kDice = 20;
 const int kHeaderH = 26;   // title + chevron strip
 const int kPad = 8;
 const int kMaxEntries = 300;

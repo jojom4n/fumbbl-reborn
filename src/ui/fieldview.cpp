@@ -27,6 +27,7 @@ FieldView::FieldView(QWidget *parent)
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
     setMouseTracking(true); // hover cards (Mockup F round 8)
     setCursor(Qt::OpenHandCursor);
+    setStadium(QStringLiteral("medieval_arena")); // round 13: default stadium
     // Round 13: WASD pan — the field can take keyboard focus (clicking it or
     // zooming with the wheel grabs it; typing in the chat input still works
     // because that widget has the focus then).
@@ -116,6 +117,42 @@ void FieldView::setPlayers(const QVector<PlayerToken> &home,
 {
     m_homePlayers = home;
     m_awayPlayers = away;
+
+    // Round 13 (user): per-square MOVEMENT ANIMATION. Build the new on-field
+    // model layout; every player that MOVED gets a glide through the grid
+    // (old cell -> new cell, one square per leg), like the official client.
+    // New arrivals snap in; players that left the field (to the box) drop.
+    QHash<QString, QPoint> newModel;
+    const auto record = [&](const PlayerToken &t) {
+        if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
+            return; // box / off-field: not drawn on the pitch
+        newModel.insert(t.playerId, QPoint(t.x, t.y));
+    };
+    for (const PlayerToken &t : home) record(t);
+    for (const PlayerToken &t : away) record(t);
+
+    for (auto it = newModel.constBegin(); it != newModel.constEnd(); ++it) {
+        const QString &id = it.key();
+        const QPoint np = it.value();
+        auto pit = m_prevModel.constFind(id);
+        if (pit == m_prevModel.constEnd()) {
+            m_visualPos.insert(id, QPointF(np.x() + 0.5, np.y() + 0.5)); // snap in
+            m_tokenAnim.remove(id);
+        } else if (pit.value() != np) {
+            startTokenAnim(id, np);
+        } else if (!m_tokenAnim.value(id).active) {
+            m_visualPos.insert(id, QPointF(np.x() + 0.5, np.y() + 0.5)); // rest
+        }
+    }
+    for (auto it = m_prevModel.constBegin(); it != m_prevModel.constEnd(); ++it)
+        if (!newModel.contains(it.key())) {
+            m_visualPos.remove(it.key());
+            m_tokenAnim.remove(it.key());
+        }
+    m_prevModel = newModel;
+
+    if (anyTokenAnimActive())
+        ensureAnimTimer();
     update();
 }
 
@@ -131,6 +168,29 @@ void FieldView::setBall(int x, int y, bool inPlay)
     m_ballX = x;
     m_ballY = y;
     m_ballInPlay = inPlay;
+    // The ball glides too (same mechanism, reserved id, separate prev so the
+    // player cleanup in setPlayers never touches it).
+    const QString id = QLatin1String("__ball__");
+    const bool onField = (x >= 0 && x < kFieldWidth && y >= 0 && y < kFieldHeight);
+    if (onField) {
+        const QPoint np(x, y);
+        if (!m_havePrevBall) {
+            m_visualPos.insert(id, QPointF(x + 0.5, y + 0.5));
+            m_tokenAnim.remove(id);
+        } else if (m_prevBall != np) {
+            startTokenAnim(id, np);
+        } else if (!m_tokenAnim.value(id).active) {
+            m_visualPos.insert(id, QPointF(x + 0.5, y + 0.5));
+        }
+        m_prevBall = np;
+        m_havePrevBall = true;
+    } else {
+        m_visualPos.remove(id);
+        m_tokenAnim.remove(id);
+        m_havePrevBall = false;
+    }
+    if (anyTokenAnimActive())
+        ensureAnimTimer();
     update();
 }
 
@@ -153,6 +213,15 @@ void FieldView::setWeather(const QString &weather)
         return;
     m_weather = weather;
     rainConfigure(); // round 12: rain on/off starts/stops the animation
+    update();
+}
+
+void FieldView::setStadium(const QString &name)
+{
+    if (m_stadiumName == name && m_stadium.valid)
+        return;
+    m_stadiumName = name;
+    m_stadium = assets::stadiumManifest(name); // data-driven alignment
     update();
 }
 
@@ -550,6 +619,101 @@ void FieldView::setMoveTrace(const QVector<QVector<QPoint>> &paths)
     update();
 }
 
+// ---------------------------------------------------------------------------
+// Round 13 (user): per-square movement animation. A moved token glides
+// through the grid (old cell -> new cell, one square per leg) instead of
+// jumping — fast and pleasant, like the official client. The model is
+// authoritative; this is pure render state.
+// ---------------------------------------------------------------------------
+void FieldView::startTokenAnim(const QString &id, const QPoint &to)
+{
+    const QPoint from = m_prevModel.value(id,
+                       id == QLatin1String("__ball__") ? m_prevBall : to);
+    if (from == to)
+        return;
+    TokenAnim a;
+    a.active = true;
+    a.leg = 0;
+    a.t = 0.0;
+    a.waypoints.append(QPointF(from.x() + 0.5, from.y() + 0.5));
+    // Grid path from `from` to `to`: step one square at a time, preferring the
+    // axis with the larger remaining distance (axis-aligned moves come out as
+    // a clean straight run of squares).
+    int cx = from.x(), cy = from.y();
+    while (cx != to.x() || cy != to.y()) {
+        const bool doX = (cx != to.x())
+            && (cy == to.y() || qAbs(to.x() - cx) >= qAbs(to.y() - cy));
+        if (doX) cx += (to.x() > cx ? 1 : -1);
+        else     cy += (to.y() > cy ? 1 : -1);
+        a.waypoints.append(QPointF(cx + 0.5, cy + 0.5));
+    }
+    m_tokenAnim.insert(id, a);
+    m_visualPos.insert(id, a.waypoints.first());
+    ensureAnimTimer();
+}
+
+void FieldView::ensureAnimTimer()
+{
+    if (!m_animTimer) {
+        m_animTimer = new QTimer(this);
+        m_animTimer->setInterval(16); // ~60 fps
+        connect(m_animTimer, &QTimer::timeout, this, &FieldView::animTick);
+    }
+    if (!m_animTimer->isActive())
+        m_animTimer->start();
+}
+
+bool FieldView::anyTokenAnimActive() const
+{
+    for (const TokenAnim &a : m_tokenAnim)
+        if (a.active)
+            return true;
+    return false;
+}
+
+void FieldView::animTick()
+{
+    static const qreal kLegDur = 0.085; // 85 ms per square (fast + pleasant)
+    const qreal dt = 0.016;             // 16 ms frame
+    bool any = false;
+    for (auto it = m_tokenAnim.begin(); it != m_tokenAnim.end(); ++it) {
+        TokenAnim &a = it.value();
+        if (!a.active)
+            continue;
+        any = true;
+        a.t += dt / kLegDur;
+        while (a.t >= 1.0) {
+            if (a.leg + 1 < a.waypoints.size()) {
+                a.t -= 1.0;
+                ++a.leg;
+            } else {
+                a.t = 1.0;
+                break;
+            }
+        }
+        if (a.leg + 1 >= a.waypoints.size()) {
+            m_visualPos.insert(it.key(), a.waypoints.last());
+            a.active = false;
+        } else {
+            const QPointF &p0 = a.waypoints[a.leg];
+            const QPointF &p1 = a.waypoints[a.leg + 1];
+            m_visualPos.insert(it.key(), p0 + (p1 - p0) * a.t);
+        }
+    }
+    if (any)
+        update();
+    else if (m_animTimer)
+        m_animTimer->stop();
+}
+
+QPointF FieldView::tokenVisualPos(const PlayerToken &t) const
+{
+    auto it = m_visualPos.constFind(t.playerId);
+    if (it != m_visualPos.constEnd())
+        return it.value();
+    return QPointF(t.x + 0.5, t.y + 0.5);
+}
+
 QPointF FieldView::cellCenter(int x, int y) const
 {
     const QRectF c = cellRect(x, y);
@@ -576,6 +740,17 @@ void FieldView::drawMoveTrail(QPainter &p)
     for (const QVector<QPoint> &path : m_moveTrace) {
         if (path.size() < 2)
             continue; // a single square: nothing to trace yet
+        // Defensive (round 13): a path with NO real movement (every cell
+        // identical, e.g. a server re-placement) would draw a degenerate
+        // zero-length arrow. Skip it.
+        bool anyMove = false;
+        for (int i = 1; i < path.size(); ++i)
+            if (path[i] != path[i - 1]) {
+                anyMove = true;
+                break;
+            }
+        if (!anyMove)
+            continue;
         QVector<QPointF> pts;
         pts.reserve(path.size());
         for (const QPoint &c : path)
@@ -773,46 +948,28 @@ void FieldView::leaveEvent(QEvent *)
 
 void FieldView::wheelEvent(QWheelEvent *event)
 {
+    // Round 13 (user, FINAL mapping): WHEEL = ZOOM (anchored on the cursor).
+    // Panning is right-button+DRAG or WASD (smooth). MIDDLE click resets.
+    // A plain wheel used to PAN, which at zoom=1 did nothing visible — hence
+    // "non funziona più lo zoom". Now the wheel always zooms in/out.
     const QPoint delta = event->angleDelta();
-    // Round 13 (user): a PLAIN wheel SCROLLS (pans) the view — "lo scroll
-    // con il mouse verso l'alto non funzionava" (the wheel was zoom-only).
-    // CTRL + wheel ZOOMS (anchored on the cursor, round-8 behavior kept).
-    if (event->modifiers() & Qt::ControlModifier) {
-        const int dy = delta.y();
-        if (dy == 0) {
-            event->accept();
-            return;
-        }
-        const qreal factor = dy > 0 ? 1.15 : (1.0 / 1.15);
-        const qreal newZoom = qBound(1.0, m_zoom * factor, 3.0);
-        if (qFuzzyCompare(newZoom, m_zoom)) {
-            event->accept();
-            return;
-        }
-        const QPointF cursor = event->position();
-        const QPointF world = toFieldSpace(cursor);
-        m_zoom = newZoom;
-        m_pan = cursor - world * m_zoom;
-        if (m_zoom <= 1.0001)
-            m_pan = QPointF();
-        clampPan();
-        update();
-        setFocus(Qt::OtherFocusReason);
-        event->accept();
-        return;
-    }
-    // Plain wheel = SCROLL (pan). Scroll up (dy>0) reveals what's above
-    // (content moves down); trackpad horizontal (dx) pans left/right. Only
-    // meaningful while zoomed (at zoom 1 the letterboxed scene has nothing
-    // to scroll and clampPan re-centers it).
-    const int dx = delta.x();
     const int dy = delta.y();
-    if (dx == 0 && dy == 0) {
+    if (dy == 0) {
         event->accept();
         return;
     }
-    const qreal k = 0.5; // widget px per angleDelta unit
-    m_pan += QPointF(-dx * k, dy * k);
+    const qreal factor = dy > 0 ? 1.15 : (1.0 / 1.15);
+    const qreal newZoom = qBound(1.0, m_zoom * factor, 3.0);
+    if (qFuzzyCompare(newZoom, m_zoom)) {
+        event->accept();
+        return;
+    }
+    const QPointF cursor = event->position();
+    const QPointF world = toFieldSpace(cursor);
+    m_zoom = newZoom;
+    m_pan = cursor - world * m_zoom;
+    if (m_zoom <= 1.0001)
+        m_pan = QPointF();
     clampPan();
     update();
     setFocus(Qt::OtherFocusReason);
@@ -852,43 +1009,76 @@ void FieldView::clampPan()
 
 QRectF FieldView::sceneRect() const
 {
-    // The scene (round 13): [dugout | gap | pitch | gap | dugout] = 38x15
-    // cells. The cells stay SQUARE (a Blood Bowl grid is square): the scene
-    // is fitted into the widget and centered; the leftover is the dark
-    // stadium apron (paintEvent fills the widget with it first). ORIGIN at
-    // (0,0) — the m_pan transform (centering at zoom=1, user pan when
-    // zoomed) places it on screen.
+    // Round 13 (user): the SCENE is the STADIUM image, COVER-fitted to the
+    // widget (fill it, preserve aspect). The anchor is the FIELD PIT CENTER
+    // (not the image center): the field is the visual centerpiece, so it sits
+    // in the middle of the widget and the stands + top-band dugout sit at a
+    // predictable offset around it (data-driven, per the manifest). Returns
+    // the stadium's drawn rect in WIDGET space (zoom 1); it may be LARGER
+    // than the widget on one axis (the overflow is the crop). No stadium art
+    // -> the widget rect (fallback, so the field still renders).
     if (width() <= 0 || height() <= 0)
         return QRectF();
-    const qreal cell = qMin(width() / qreal(kSceneWidth), height() / qreal(kFieldHeight));
-    return QRectF(0, 0, kSceneWidth * cell, kFieldHeight * cell);
+    const QPixmap st = assets::stadiumImage(m_stadiumName);
+    if (st.isNull())
+        return QRectF(0, 0, width(), height());
+    // CONTAIN fit: the WHOLE stadium (stands + top-band dugout + pit) is
+    // always visible — never cropped, so the dugout and the field are always
+    // on screen at any window size. The leftover (the widget's wider
+    // dimension) is the dark stadium apron (filled in paintEvent).
+    const qreal scale = qMin(qreal(width()) / st.width(),
+                             qreal(height()) / st.height());
+    const qreal w = st.width() * scale, h = st.height() * scale;
+    return QRectF((width() - w) / 2.0, (height() - h) / 2.0, w, h);
 }
 
-QRectF FieldView::dugoutPanelRect(bool leftSide) const
+QRectF FieldView::mapNormRect(const QRectF &norm) const
 {
-    // Round 13: the panel is the FULL scene height (15 rows — the asset is
-    // regenerated 1:3) — bigger slots, more recognizable faces (user).
+    // Map a normalized (0..1, image-space) rect into scene (widget) space
+    // using the cover transform. This is the heart of the data-driven
+    // alignment: every stadium's manifest rects map through its own cover
+    // rect, so the field + dugouts land correctly on ANY stadium.
     const QRectF s = sceneRect();
     if (s.isEmpty())
         return QRectF();
-    const qreal cw = s.width() / kSceneWidth;
-    const qreal x = leftSide ? s.x() : s.right() - kDugoutCells * cw;
-    return QRectF(x, s.y(), kDugoutCells * cw, s.height());
+    return QRectF(s.x() + norm.x() * s.width(),
+                  s.y() + norm.y() * s.height(),
+                  norm.width() * s.width(),
+                  norm.height() * s.height());
 }
 
 QRectF FieldView::fieldRect() const
 {
-    // The PITCH (round 13): the middle 26 columns of the scene. The dugout
-    // panels occupy the outer kDugoutCells columns; between each panel and
-    // the pitch there is a visible GAP (kSceneGapCells) of dark stadium
-    // apron — user round 13: the dugout must be separated HORIZONTALLY from
-    // the field (the old baked wood frame ran "under" the field).
-    const QRectF s = sceneRect();
-    if (s.isEmpty())
+    // The PITCH: the 26x15 field fitted into the stadium's FIELD PIT with
+    // SQUARE cells (a Blood Bowl grid is square), centered in the pit. If
+    // the pit's aspect differs from 26:15 the field is centered and the
+    // leftover pit reads as the dark floor (the apron).
+    const QRectF pit = m_stadium.valid
+        ? mapNormRect(m_stadium.fieldPit)
+        : QRectF(0, 0, width(), height()); // fallback: the whole widget
+    if (pit.isEmpty())
         return QRectF();
-    const qreal cw = s.width() / kSceneWidth;
-    return QRectF(s.x() + (kDugoutCells + kSceneGapCells) * cw, s.y(),
-                  kFieldWidth * cw, s.height());
+    const qreal cell = qMin(pit.width() / kFieldWidth,
+                            pit.height() / kFieldHeight);
+    const qreal fw = cell * kFieldWidth, fh = cell * kFieldHeight;
+    return QRectF(pit.center().x() - fw / 2, pit.center().y() - fh / 2,
+                  fw, fh);
+}
+
+QRectF FieldView::dugoutRect(bool home) const
+{
+    if (!m_stadium.valid)
+        return QRectF();
+    return mapNormRect(home ? m_stadium.dugoutHome : m_stadium.dugoutAway);
+}
+
+QPoint FieldView::cellCenterPx(int x, int y) const
+{
+    // Widget-space center of cell (x,y) under the current zoom/pan (zoom 1 /
+    // pan 0 = the fitted scene). Tests use this instead of hard-coding the
+    // scene geometry.
+    const QPointF c = m_pan + cellCenter(x, y) * m_zoom;
+    return QPoint(int(c.x()), int(c.y()));
 }
 
 QRectF FieldView::cellRect(int x, int y) const
@@ -916,6 +1106,64 @@ bool dugoutInSection(int st, const QVector<int> &codes)
     st &= 0xFF;
     return codes.contains(st);
 }
+
+// Round 13 (user): the DUGOUT is a horizontal pavilion in the stadium's TOP
+// band (home LEFT, away RIGHT). It holds 3 horizontal SECTION rows (RESERVE
+// / KO / INJURED, top to bottom); each row has a GW-style SYMBOL badge in the
+// left gutter, then a horizontal run of up to 16 faces (only the players that
+// are actually present are drawn — no empty rings). These helpers are shared
+// by boxSlots (hit-test) and paintBoxStrip (painter) so the two never drift.
+constexpr int kDugoutMaxPerRow = 16;
+qreal dugoutFaceD(const QRectF &R)
+{
+    const qreal rowH = R.height() / 3.0;
+    const qreal symbolW = rowH * 0.92;
+    const qreal faceAvailW = R.width() - symbolW - R.width() * 0.03;
+    return qMin(rowH * 0.82, faceAvailW / kDugoutMaxPerRow * 0.92);
+}
+QPointF dugoutFaceCenter(const QRectF &R, int sec, int i, int count)
+{
+    const qreal rowH = R.height() / 3.0;
+    const qreal symbolW = rowH * 0.92;
+    const qreal faceAvailW = R.width() - symbolW - R.width() * 0.03;
+    const qreal faceD = qMin(rowH * 0.82, faceAvailW / kDugoutMaxPerRow * 0.92);
+    const qreal cy = R.y() + sec * rowH + rowH / 2.0;
+    const qreal x0 = R.x() + symbolW + (faceAvailW - count * faceD) / 2.0;
+    return QPointF(x0 + i * faceD + faceD / 2.0, cy);
+}
+QRectF dugoutSymbolRect(const QRectF &R, int sec)
+{
+    const qreal rowH = R.height() / 3.0;
+    const qreal bd = rowH * 0.66;
+    const qreal cx = R.x() + rowH * 0.5;
+    const qreal cy = R.y() + sec * rowH + rowH / 2.0;
+    return QRectF(cx - bd / 2, cy - bd / 2, bd, bd);
+}
+// GW-style section symbol: Reserve = green badge + dot, KO = red badge + X,
+// Injured = blue badge + medical cross (vector, crisp at any zoom).
+void drawDugoutSymbolIcon(QPainter &p, int sec, const QRectF &b)
+{
+    const QPointF c = b.center();
+    const qreal m = b.width() * 0.26;
+    p.setRenderHint(QPainter::Antialiasing, true);
+    if (sec <= 2) {
+        QPen pen(QColor(255, 255, 255, 245), qMax(1.5, b.width() * 0.14));
+        pen.setCapStyle(Qt::RoundCap);
+        p.setPen(pen);
+        if (sec == 1) { // KO: X
+            p.drawLine(c.x() - m, c.y() - m, c.x() + m, c.y() + m);
+            p.drawLine(c.x() + m, c.y() - m, c.x() - m, c.y() + m);
+        } else if (sec == 2) { // Injured: medical +
+            p.drawLine(c.x() - m, c.y(), c.x() + m, c.y());
+            p.drawLine(c.x(), c.y() - m, c.x(), c.y() + m);
+        }
+    }
+    if (sec == 0) { // Reserve: dot
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(255, 255, 255, 245));
+        p.drawEllipse(c, b.width() * 0.17, b.width() * 0.17);
+    }
+}
 } // namespace
 
 // Round 12: the bench slots live on the DUGOUT PANEL (outside the TD
@@ -926,35 +1174,21 @@ QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
     const QVector<BoxEntry> &entries, bool leftSide) const
 {
     QVector<QPair<QRectF, const FieldView::BoxEntry*>> filled;
-    const QRectF panel = dugoutPanelRect(leftSide);
-    if (panel.isEmpty())
+    const QRectF R = dugoutRect(leftSide); // the team's top-band pavilion
+    if (R.isEmpty())
         return filled;
-
-    // Round 13: full-height panel (15 rows -> 3 bands of 5 rows). The slots
-    // are BIGGER than round 12 (user: "slot più grandi, volti più
-    // riconoscibili"): RESERVE 2x2 (the reserve bench is short), KO and
-    // INJURED 2x4 (down players accumulate).
-    // Round 13 (user): grid sized for up to 16 players per section (4x4),
-    // matching paintBoxStrip (keep the two in sync).
-    constexpr int kCols = 4;
-    const int kRows[] = { 4, 4, 4 };
-    const qreal bandH = panel.height() / 3.0;
+    const qreal faceD = dugoutFaceD(R);
     for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
-        const int rows = kRows[sec];
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.28; // below the label
-        const qreal slotH = bandH * 0.68;
-        const qreal colW = panel.width() / kCols;
-        const qreal pitch = slotH / rows;
-        const qreal r = qMin(colW, pitch) * 0.46;
-        for (int i = 0; i < mine.size() && i < kCols * rows; ++i) {
-            const int col = i % kCols, row = i / kCols;
-            const qreal cx = panel.x() + (col + 0.5) * colW;
-            const qreal cy = slotTop + row * pitch + pitch / 2;
-            filled.append({ QRectF(cx - r, cy - r, r * 2, r * 2), mine[i] });
+        const int n = qMin(mine.size(), kDugoutMaxPerRow);
+        for (int i = 0; i < n; ++i) {
+            const QPointF c = dugoutFaceCenter(R, sec, i, n);
+            filled.append({ QRectF(c.x() - faceD / 2, c.y() - faceD / 2,
+                                   faceD, faceD),
+                            mine[i] });
         }
     }
     return filled;
@@ -979,48 +1213,46 @@ const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHo
     return hit(m_awayBox, false);
 }
 
-// Dugout bench slots (round 12): faces in team-colored rings on the DUGOUT
-// panel image (the soil art provides the RESERVE / KO / INJURED labels and
-// the band structure). Empty slots are plain gray rings. A team-color bar on
-// the panel edge facing the pitch says whose dugout it is.
+// Dugout bench (round 13): the team's top-band pavilion. Three horizontal
+// section rows (RESERVE / KO / INJURED), each with a GW-style symbol badge
+// (left gutter) + a run of team-ringed faces (only the players actually
+// present — no empty rings). A thin team-color bar under the pavilion says
+// whose dugout it is.
 void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                               const QVector<BoxEntry> &entries, bool leftSide) const
 {
-    const QRectF panel = dugoutPanelRect(leftSide);
-    if (panel.isEmpty())
+    const QRectF R = dugoutRect(leftSide); // the team's top-band pavilion
+    if (R.isEmpty())
         return;
-
-    // Round 13: same (bigger) slot grid as boxSlots — keep the two in sync.
-    // Round 13 (user): grid sized for up to 16 players per section (4x4),
-    // matching boxSlots. NO empty "tondini" — only the players that are
-    // actually in the section are drawn (empty slots stay empty, no rings).
-    constexpr int kCols = 4;
-    const int kRows[] = { 4, 4, 4 };
-    const qreal bandH = panel.height() / 3.0;
-
+    const qreal faceD = dugoutFaceD(R);
+    const QColor symColors[3] = {
+        QColor(0x4c, 0x9a, 0x52), // Reserve: green
+        QColor(0xc0, 0x3a, 0x3a), // KO: red
+        QColor(0x3f, 0x6f, 0xc0)  // Injured: blue
+    };
     for (int sec = 0; sec < 3; ++sec) {
         QVector<const BoxEntry *> mine;
         for (const BoxEntry &e : entries)
             if (dugoutInSection(e.state, kDugoutSections[sec].codes))
                 mine.append(&e);
 
-        const int rows = kRows[sec];
-        const qreal slotTop = panel.y() + sec * bandH + bandH * 0.28; // below the label
-        const qreal slotH = bandH * 0.68;
-        const qreal colW = panel.width() / kCols;
-        const qreal pitch = slotH / rows;
-        const qreal r = qMin(colW, pitch) * 0.46; // = boxSlots' radius
+        // Section symbol badge (left gutter) + icon.
+        const QRectF b = dugoutSymbolRect(R, sec);
+        p.setPen(Qt::NoPen);
+        p.setBrush(symColors[sec]);
+        p.drawRoundedRect(b, b.width() * 0.2, b.width() * 0.2);
+        drawDugoutSymbolIcon(p, sec, b);
 
-        for (int i = 0; i < mine.size() && i < kCols * rows; ++i) {
-            const int col = i % kCols, row = i / kCols;
-            const qreal cx = panel.x() + (col + 0.5) * colW;
-            const qreal cy = slotTop + row * pitch + pitch / 2;
-            const QRectF ring(cx - r, cy - r, r * 2, r * 2);
+        // Faces (team-ringed, only the present players).
+        const int n = qMin(mine.size(), kDugoutMaxPerRow);
+        for (int i = 0; i < n; ++i) {
+            const QPointF c = dugoutFaceCenter(R, sec, i, n);
+            const QRectF ring(c.x() - faceD / 2, c.y() - faceD / 2, faceD, faceD);
             const BoxEntry *e = mine[i];
             const QPixmap pm = assets::playerFace(e->positionName, e->race);
             if (!pm.isNull()) {
-                const qreal fr = r * 0.78;
-                const QRectF faceR(cx - fr, cy - fr, fr * 2, fr * 2);
+                const qreal fr = faceD * 0.44;
+                const QRectF faceR(c.x() - fr, c.y() - fr, fr * 2, fr * 2);
                 p.save();
                 QPainterPath clip;
                 clip.addEllipse(faceR);
@@ -1030,20 +1262,16 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                 p.restore();
             }
             p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 235),
-                          qMax(1.0, r * 0.16)));
+                          qMax(1.0, faceD * 0.09)));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(ring);
         }
     }
 
-    // Whose dugout: a team-color bar on the panel edge facing the pitch.
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 215));
-    const qreal barW = qMax(2.0, panel.width() * 0.035);
-    const qreal barX = leftSide ? panel.right() - barW : panel.x();
-    p.fillRect(QRectF(barX, panel.y() + panel.height() * 0.04,
-                      barW, panel.height() * 0.92),
-               QColor(accent.red(), accent.green(), accent.blue(), 215));
+    // Round 13 (user): NO colored border on the dugout edge facing the field
+    // — the pavilion's own WOOD/STONE frame (from the stadium image) is the
+    // border, like the rest of the structure. Whose dugout it is is carried by
+    // the team-colored face rings (and the fixed home-left / away-right slot).
 }
 
 
@@ -1146,27 +1374,10 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
-    // Stadium backdrop (round 13, user): the Qwen top-down FANTASY STADIUM
-    // (packed medieval stands, inspired by Blood Bowl 3) fills the WHOLE
-    // widget — replacing the flat grey apron the user found empty. The field
-    // scene is drawn on top (it zooms/pans); the stands show around it and in
-    // the apron gaps. Cover-scaled (preserve aspect, center-crop) so the
-    // crowd is never distorted. Static backdrop: the field camera zooms over
-    // the fixed stadium, like a TV shot.
-    const QPixmap stands = assets::stadiumTexture();
-    if (!stands.isNull()) {
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        const qreal scale = qMax(qreal(width()) / stands.width(),
-                                 qreal(height()) / stands.height());
-        const QSize sz(int(stands.width() * scale) + 1, int(stands.height() * scale) + 1);
-        p.drawPixmap(QRectF(width() / 2.0 - sz.width() / 2,
-                            height() / 2.0 - sz.height() / 2,
-                            sz.width(), sz.height()),
-                     stands, QRectF(0, 0, stands.width(), stands.height()));
-        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
-    } else {
-        p.fillRect(QRectF(0, 0, width(), height()), QColor(58, 56, 54)); // fallback
-    }
+    // Dark apron behind the scene (round 13): the stadium scene is drawn in
+    // the zoomed/panned space below; this only shows if the scene ever fails
+    // to cover (no stadium art) — a dark stadium floor.
+    p.fillRect(QRectF(0, 0, width(), height()), QColor(40, 38, 36));
 
     // Field navigation (round 8): the WHOLE scene (dugouts, texture, grid,
     // tokens, rain) lives in a zoomed/panned space. Round 12: the dugout
@@ -1179,25 +1390,26 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
 
-    // --- Dugouts (round 13): team 1 left of the left TD column, team 2
-    //     right of the right one. The panel is a SEPARATE soil-themed asset
-    //     (identical for every field type), now FULL HEIGHT (the 1:3 art
-    //     fits the 5x15 panel exactly). The kSceneGapCells column between
-    //     panel and pitch stays dark stadium apron — the visible gap the
-    //     user asked for (no more baked frame "under" the field).
-    const auto drawDugout = [&](bool leftSide) {
-        const QRectF panel = dugoutPanelRect(leftSide);
-        const QPixmap dg = assets::dugoutTexture();
-        if (!dg.isNull()) {
+    // --- Stadium (round 13, user): the SCENE is the STADIUM image (an
+    //     interchangeable top-down backdrop + manifest). Drawn COVER (fills
+    //     the widget at zoom 1, center-cropped) in scene space. The field is
+    //     fitted into the manifest's pit (below); the dugout faces go into
+    //     the manifest's dugout rects (TOP band: home LEFT, away RIGHT) —
+    //     data-driven alignment, so any stadium aligns correctly.
+    {
+        const QPixmap st = assets::stadiumImage(m_stadiumName);
+        if (!st.isNull()) {
             p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-            p.drawPixmap(panel, dg, QRectF(0, 0, dg.width(), dg.height()));
+            p.drawPixmap(s, st, QRectF(0, 0, st.width(), st.height()));
             p.setRenderHint(QPainter::SmoothPixmapTransform, false);
         } else {
-            p.fillRect(panel, QColor(122, 88, 52)); // fallback soil
+            p.fillRect(s, QColor(58, 56, 54)); // fallback apron
         }
-    };
-    drawDugout(true);
-    drawDugout(false);
+        // Dugout benches (team-ringed faces + GW section symbols) on the
+        // stadium's top-band pavilions.
+        paintBoxStrip(p, m_homeColor, m_homeBox, true);
+        paintBoxStrip(p, m_awayColor, m_awayBox, false);
+    }
 
     // --- Field texture (round 13): the Qwen art is PURE GRASS now (the
     //     baked grid/TD/TOUCHDOWN came out blurred and duplicated at zoom —
@@ -1297,8 +1509,12 @@ void FieldView::paintEvent(QPaintEvent *)
     };
     const bool ballOccupied = atBall(m_homePlayers) || atBall(m_awayPlayers);
     if (m_ballInPlay && !ballOccupied) {
-        const QRectF bc = cellRect(m_ballX, m_ballY);
-        const QRectF ballRect(bc.center().x() - cellW * 0.22, bc.center().y() - cellH * 0.16,
+        // Round 13 (user): the ball glides through the grid too — draw it at
+        // its animated VISUAL position (cell coords), not the model cell.
+        const QPointF bvc = m_visualPos.value(QLatin1String("__ball__"),
+                                              QPointF(m_ballX + 0.5, m_ballY + 0.5));
+        const QPointF bctr(f.x() + bvc.x() * cellW, f.y() + bvc.y() * cellH);
+        const QRectF ballRect(bctr.x() - cellW * 0.22, bctr.y() - cellH * 0.16,
                               cellW * 0.44, cellH * 0.32);
         p.setPen(QPen(QColor(0x40, 0x26, 0x12), 1));
         p.setBrush(QColor(0x8b, 0x5a, 0x2b));
@@ -1377,7 +1593,7 @@ void FieldView::paintEvent(QPaintEvent *)
     // Team-colored circle (runtime, per home/away) + the piece's cartoon
     // face on top, with a number badge. A plain circle is the fallback when
     // the face assets are missing.
-    const auto drawTeam = [this, &p, cellW, cellH](const QVector<PlayerToken> &players,
+    const auto drawTeam = [this, &p, &f, cellW, cellH](const QVector<PlayerToken> &players,
                                                    bool sideHome) {
         const QColor team = sideHome ? m_homeColor : m_awayColor;
         const QColor teamDark = team.darker(150);
@@ -1385,8 +1601,11 @@ void FieldView::paintEvent(QPaintEvent *)
         for (const PlayerToken &t : players) {
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
                 continue; // box coordinate / off field
-            const QRectF c = cellRect(t.x, t.y);
-            const QPointF ctr = c.center();
+            // Round 13 (user): the token is drawn at its ANIMATED visual
+            // position (cell coords) so it glides square-by-square while
+            // moving; at rest it sits exactly on the model cell center.
+            const QPointF vpos = tokenVisualPos(t);
+            const QPointF ctr(f.x() + vpos.x() * cellW, f.y() + vpos.y() * cellH);
 
             // Team-colored circle behind the face. Round 11: DOWN players
             // keep the FULL round token — round 8 stretched the face into a
@@ -1438,9 +1657,10 @@ void FieldView::paintEvent(QPaintEvent *)
                 }
             }
 
-            // Number badge (bottom-right corner)
+            // Number badge (bottom-right of the token — follows it while it
+            // glides, not the model cell).
             const qreal br = qMin(cellW, cellH) * 0.24;
-            const QPointF bc(c.right() - cellW * 0.22, c.bottom() - cellH * 0.2);
+            const QPointF bc(ctr.x() + s * 0.28, ctr.y() + s * 0.30);
             p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.2));
             p.setBrush(QColor(0x1e, 0x1e, 0x26));
             p.drawEllipse(bc, br, br);
@@ -1452,9 +1672,9 @@ void FieldView::paintEvent(QPaintEvent *)
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
-            // Ball carrier indicator (small football, top-left corner)
+            // Ball carrier indicator (small football, top-left of the token)
             if (t.hasBall) {
-                const QRectF br2(c.left() + cellW * 0.06, c.top() + cellH * 0.04,
+                const QRectF br2(ctr.x() - s * 0.5, ctr.y() - s * 0.44,
                                  cellW * 0.34, cellH * 0.22);
                 p.setPen(QPen(QColor(0x40, 0x26, 0x12), 1));
                 p.setBrush(QColor(0xc7, 0x83, 0x3b));
@@ -1481,8 +1701,9 @@ void FieldView::paintEvent(QPaintEvent *)
         };
         const PlayerToken *sel = find(m_homePlayers) ? find(m_homePlayers) : find(m_awayPlayers);
         if (sel) {
-            const QRectF c = cellRect(sel->x, sel->y);
-            const QPointF ctr = c.center();
+            // Follows the token's ANIMATED visual position (glides with it).
+            const QPointF vpos = tokenVisualPos(*sel);
+            const QPointF ctr(f.x() + vpos.x() * cellW, f.y() + vpos.y() * cellH);
             // Breathing factor 0..1 (sinusoid over the pulse phase).
             const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
             const qreal minDim = qMin(cellW, cellH);

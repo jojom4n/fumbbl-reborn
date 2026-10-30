@@ -415,18 +415,40 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                 m_movePending = false;
             }
             if (readCoords(value, nx, ny) && isOnField(nx, ny) && key == m_traceActor) {
-                const bool cont = !m_tracePaths.isEmpty()
-                    && m_tracePaths.last().last() == QPoint(player->fieldX, player->fieldY);
-                if (m_movePending || !cont) {
-                    QVector<QPoint> path;
-                    if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
-                        path << QPoint(player->fieldX, player->fieldY);
-                    path << QPoint(nx, ny);
-                    m_tracePaths.append(path);
-                } else {
-                    m_tracePaths.last().append(QPoint(nx, ny));
+                // Round 13 (user): the arrow must NOT appear before the
+                // player actually MOVES. The server re-sends the actor's
+                // coordinate at selection / turn setup (a same-cell no-op
+                // re-write, or a placement right after fieldModelRemovePlayer,
+                // with NO pending move action). Those are NOT move steps and
+                // used to create a degenerate 1-point (or A,A) path -> a
+                // premature arrow next to the just-selected player. Now only
+                // REAL move steps are traced: a step that continues the
+                // current route, or the first step after a moving action.
+                const bool sameCell = player->hasCoords
+                    && isOnField(player->fieldX, player->fieldY)
+                    && player->fieldX == nx && player->fieldY == ny;
+                if (!sameCell) {
+                    if (m_movePending) {
+                        // First step of a NEW move (a moving action was just
+                        // set): start a fresh route from the old cell.
+                        QVector<QPoint> path;
+                        if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
+                            path << QPoint(player->fieldX, player->fieldY);
+                        path << QPoint(nx, ny);
+                        m_tracePaths.append(path);
+                        m_movePending = false;
+                    } else {
+                        const bool cont = !m_tracePaths.isEmpty()
+                            && m_tracePaths.last().last()
+                                   == QPoint(player->fieldX, player->fieldY);
+                        if (cont)
+                            // Next step of the ongoing route.
+                            m_tracePaths.last().append(QPoint(nx, ny));
+                        // else: a coordinate change with no move action and
+                        // no active route (turn-setup placement, a push) —
+                        // it starts no route.
+                    }
                 }
-                m_movePending = false;
             }
             setPlayerCoords(player, value);
         }
