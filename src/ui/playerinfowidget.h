@@ -102,6 +102,8 @@ public:
 
     // Id of the player currently shown ("" when showing the placeholder).
     QString shownPlayerId() const { return m_shownPlayerId; }
+    // Displayed name (for tests; upper-case as shown on the card).
+    QString shownName() const;
 
 private:
     void setAccentColor(const QColor &color);

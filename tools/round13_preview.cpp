@@ -140,12 +140,36 @@ int main(int argc, char *argv[])
         r.insert("distanceRoll", tr);
         reports.append(r);
     }
+    // The actor IS the attacker (real game: block reports arrive while the
+    // attacker acts) — the turn-11 marker pair needs it. The defender is
+    // parked ADJACENT to the attacker (a real block: the two touch), so the
+    // between-the-two marker sits on their shared edge.
+    {
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerId"), homePid,
+               QJsonValue(homePid));
+        const FFBPlayer *att0 = w.model()->findPlayerById(homePid);
+        const FFBPlayer *def0 = w.model()->findPlayerById(awayPid);
+        if (att0 && att0->hasCoords && def0 && def0->hasCoords) {
+            const int nx = def0->fieldX == att0->fieldX ? def0->fieldX
+                                                       : att0->fieldX + 1;
+            const int ny = (def0->fieldY == att0->fieldY)
+                ? (att0->fieldY == 0 ? 1 : att0->fieldY - 1)
+                : def0->fieldY;
+            // put the defender right below the attacker (adjacent row)
+            change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"),
+                   awayPid, QJsonArray() << att0->fieldX << (att0->fieldY - 1));
+            Q_UNUSED(nx); Q_UNUSED(ny);
+        }
+        w.onModelSync(ch, QJsonArray());
+    }
     w.onModelSync(QJsonArray(), reports);
     QApplication::processEvents();
 
     // --- Round 13 turn 4: the RED BLOCK GLOW. The blockRoll above armed the
     //     glow on the DEFENDER (awayPid); capture a crop around him BEFORE the
     //     trail simulation switches the actor (which resolves the block).
+    //     Turn 11: the crop also shows the HELMET marker between the pair.
     {
         const FFBPlayer *victim = w.model()->findPlayerById(awayPid);
         if (victim && victim->hasCoords) {
@@ -187,6 +211,22 @@ int main(int argc, char *argv[])
         w.onModelSync(ch, QJsonArray());
     }
 
+    // --- Turn 11: the block CHOICE -> the between-the-two marker switches
+    //     helmet -> the chosen die's SYMBOL (transparent). Face 2 = skull+arrow.
+    {
+        QJsonArray rep;
+        QJsonObject r;
+        r.insert("reportId", "blockChoice");
+        r.insert("defenderId", awayPid);
+        QJsonArray fr;
+        fr << 6 << 2;
+        r.insert("blockRoll", fr);
+        r.insert("diceIndex", 1);
+        rep.append(r);
+        w.onModelSync(QJsonArray(), rep);
+        QApplication::processEvents();
+    }
+
     // Let the logos land.
     for (int i = 0; i < 10; ++i) {
         QThread::msleep(300);
@@ -194,6 +234,9 @@ int main(int argc, char *argv[])
     }
 
     // --- Whole HUD -----------------------------------------------------------------
+    fprintf(stderr, "DBG field geom in window: %d,%d %dx%d\n",
+            field->mapTo(&w, QPoint(0, 0)).x(), field->mapTo(&w, QPoint(0, 0)).y(),
+            field->width(), field->height());
     w.grab().save(outDir + "/round13_window.png");
     qInfo().noquote() << "saved" << outDir << "/round13_window.png";
 

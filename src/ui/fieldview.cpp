@@ -32,13 +32,16 @@ inline QColor teamRingColor(bool home)
 }
 inline void drawTeamRing(QPainter &p, const QPointF &c, qreal d, bool home)
 {
-    const qreal w = d * 0.17;             // thick ring
+    // Round 13 turn 9 (user: "i ring ancora meno cicciotti, così come sono
+    // rendono la grafica dei token troppo piccola"): 0.17 -> 0.14 -> 0.10.
+    // The ring must stay a clear team marker without eating the face.
+    const qreal w = d * 0.10;
     const qreal rr = d * 0.5 - w / 2;     // outer edge = token edge (no overflow)
     QPen rp(teamRingColor(home), w);
     p.setPen(rp);
     p.setBrush(Qt::NoBrush);
     p.drawEllipse(c, rr, rr);
-    QPen edge(QColor(18, 18, 24, 220), qMax(1.0, w * 0.28));
+    QPen edge(QColor(18, 18, 24, 220), qMax(1.0, w * 0.30));
     p.setPen(edge);
     const qreal eo = rr + w / 2 - edge.widthF() / 2;
     p.drawEllipse(c, eo, eo);
@@ -542,11 +545,15 @@ void FieldView::setSelectedPlayer(const QString &playerId)
     update();
 }
 
-void FieldView::setBlockTarget(const QString &playerId)
+void FieldView::setBlockMarker(const QString &attackerId, const QString &defenderId,
+                               int dieFace)
 {
-    if (m_blockTarget == playerId)
+    if (m_blockTarget == defenderId && m_blockAttacker == attackerId
+        && m_blockDieFace == dieFace)
         return;
-    m_blockTarget = playerId;
+    m_blockTarget = defenderId;
+    m_blockAttacker = attackerId;
+    m_blockDieFace = dieFace;
     // Round 13 turn 4: the red block glow breathes with the same pulse
     // timer as the selection glow.
     if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty())
@@ -1085,6 +1092,24 @@ QRectF FieldView::dugoutRect(bool home) const
     return mapNormRect(home ? m_stadium.dugoutHome : m_stadium.dugoutAway);
 }
 
+QRectF FieldView::fieldRectPx() const
+{
+    const QRectF r = fieldRect();
+    if (r.isEmpty())
+        return QRectF();
+    return QRectF(m_pan + r.topLeft() * m_zoom,
+                  m_pan + r.bottomRight() * m_zoom);
+}
+
+QRectF FieldView::dugoutRectPx(bool home) const
+{
+    const QRectF r = dugoutRect(home);
+    if (r.isEmpty())
+        return QRectF();
+    return QRectF(m_pan + r.topLeft() * m_zoom,
+                  m_pan + r.bottomRight() * m_zoom);
+}
+
 QPoint FieldView::cellCenterPx(int x, int y) const
 {
     // Widget-space center of cell (x,y) under the current zoom/pan (zoom 1 /
@@ -1177,6 +1202,31 @@ void drawStar(QPainter &p, const QPointF &c, qreal r, qreal rot,
 // gold rim) but SLIGHTLY MORE INTERNAL and SMALLER ("falli come sono i
 // numeri, ma tienili leggermente più interni e piccoli"). Vector —
 // QPainter is the right tool for small crisp badges (turn-5 rule).
+// Comic-style bandage (the KO badge, round 13 turn 10): a capsule rotated
+// ~35°, tan body, lighter center pad with tiny dots, bold dark outline
+// (cartoon look — the stars were rejected: "un cerotto in stile comics").
+void drawComicBandage(QPainter &p, const QPointF &c, qreal br)
+{
+    p.save();
+    p.translate(c);
+    p.rotate(-35);
+    const qreal w = br * 1.72, h = br * 0.88, r = h / 2;
+    // Body (tan) with a bold comic outline.
+    p.setPen(QPen(QColor(58, 40, 24, 255), qMax(1.0, br * 0.10)));
+    p.setBrush(QColor(233, 197, 148, 255));
+    p.drawRoundedRect(QRectF(-w / 2, -h / 2, w, h), r, r);
+    // Center pad (lighter) + the little ventilation dots.
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(248, 228, 199, 255));
+    const qreal pw = w * 0.42, ph = h * 0.62;
+    p.drawRoundedRect(QRectF(-pw / 2, -ph / 2, pw, ph), ph * 0.25, ph * 0.25);
+    p.setBrush(QColor(196, 158, 112, 255));
+    for (int i = 0; i < 4; ++i)
+        p.drawEllipse(QPointF((i % 2 ? 0.22 : -0.22) * pw, (i < 2 ? -0.25 : 0.25) * ph),
+                      br * 0.05, br * 0.05);
+    p.restore();
+}
+
 void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
 {
     const int st = state & 0xFF;
@@ -1189,38 +1239,225 @@ void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
     // from center) and smaller (0.21 vs 0.26 faceD).
     const qreal br = faceD * 0.21;
     const QPointF bc = c + QPointF(faceD * 0.22, -faceD * 0.24);
+    // Round 13 turn 10 (user): ALL state badges sit on a WHITE disc — "come
+    // quelle delle ambulanze/servizi sanitari... croce rossa su sfondo
+    // bianco" and, in the follow-up, bandage + skull on white too. The gold
+    // rim keeps the badge family look (number-badge style).
     p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.0));
-    p.setBrush(QColor(0x1e, 0x1e, 0x26));
+    p.setBrush(QColor(255, 255, 255, 255));
     p.drawEllipse(bc, br, br);
-    if (st == 5) { // KO: cartoon dizzy stars (inside the disc)
-        const QColor gold(255, 214, 64, 255);
-        drawStar(p, bc + QPointF(-br * 0.36, -br * 0.28), br * 0.34, 0.3, gold);
-        drawStar(p, bc + QPointF(br * 0.38, -br * 0.34), br * 0.24, -0.2, gold);
-        drawStar(p, bc + QPointF(br * 0.05, br * 0.36), br * 0.28, 0.8, gold);
-    } else if (st == 8) { // dead: small skull (inside the disc)
-        const qreal k = br * 0.62;
-        p.setPen(QPen(QColor(25, 25, 30, 210), 0.7));
-        p.setBrush(QColor(236, 233, 226, 255));
-        p.drawEllipse(QRectF(bc.x() - k * 0.72, bc.y() - k * 0.85,
-                             k * 1.44, k * 1.44));
-        p.drawRoundedRect(QRectF(bc.x() - k * 0.38, bc.y() + k * 0.35,
-                                 k * 0.76, k * 0.42), 1, 1); // jaw
+    if (st == 5) {
+        // KO: comic bandage on the white disc.
+        drawComicBandage(p, bc, br);
+    } else if (st == 8) {
+        // Dead: skull on white — DARK skull, eyes/nose cut out as white.
+        const qreal k = br * 0.72;
+        p.setPen(QPen(QColor(25, 25, 30, 230), 0.8));
+        p.setBrush(QColor(42, 42, 48, 255));
+        p.drawEllipse(QRectF(bc.x() - k * 0.70, bc.y() - k * 0.88,
+                             k * 1.40, k * 1.40));
+        p.drawRoundedRect(QRectF(bc.x() - k * 0.36, bc.y() + k * 0.38,
+                                 k * 0.72, k * 0.40), 1, 1); // jaw
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(28, 28, 33, 255));
-        p.drawEllipse(bc + QPointF(-k * 0.30, -k * 0.15), k * 0.19, k * 0.21);
-        p.drawEllipse(bc + QPointF(k * 0.30, -k * 0.15), k * 0.19, k * 0.21);
+        p.setBrush(QColor(255, 255, 255, 255)); // white eye sockets
+        p.drawEllipse(bc + QPointF(-k * 0.29, -k * 0.16), k * 0.19, k * 0.21);
+        p.drawEllipse(bc + QPointF(k * 0.29, -k * 0.16), k * 0.19, k * 0.21);
         QPolygonF nose;
-        nose << bc + QPointF(0, k * 0.03) << bc + QPointF(-k * 0.11, k * 0.28)
-             << bc + QPointF(k * 0.11, k * 0.28);
+        nose << bc + QPointF(0, k * 0.02) << bc + QPointF(-k * 0.10, k * 0.26)
+             << bc + QPointF(k * 0.10, k * 0.26);
         p.drawPolygon(nose);
-    } else { // injured (6,7) / missing (10) / banned (13): red medical cross
-        const qreal t = br * 0.24; // half-thickness
-        const qreal L = br * 0.60; // half-length
-        p.setPen(QPen(QColor(255, 255, 255, 255), qMax(1.0, br * 0.16)));
-        p.setBrush(QColor(204, 34, 30, 255));
-        p.drawRoundedRect(QRectF(bc.x() - t, bc.y() - L, t * 2, L * 2), 1, 1);
-        p.drawRoundedRect(QRectF(bc.x() - L, bc.y() - t, L * 2, t * 2), 1, 1);
+    } else {
+        // Injured (6,7) / missing (10) / banned (13): the RED CROSS on
+        // white — ambulance / medical-service style. Geneva cross
+        // proportions: arm thickness = 1/6 of the full length (the old
+        // chunky cross "non sembra una croce rossa").
+        const qreal L = br * 0.62;  // half-length
+        const qreal t = L / 3.0;    // half-thickness (= 1/6 of 2L)
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(206, 24, 28, 255));
+        p.drawRoundedRect(QRectF(bc.x() - t, bc.y() - L, t * 2, L * 2), t * 0.4, t * 0.4);
+        p.drawRoundedRect(QRectF(bc.x() - L, bc.y() - t, L * 2, t * 2), t * 0.4, t * 0.4);
     }
+    p.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Round 13 turn 11 (user): the BLOCK MARKER — drawn between attacker and
+// defender. While the die is not chosen yet: an AMERICAN FOOTBALL HELMET
+// ("il simbolo di un casco da football americano... per rendere ancora più
+// chiaro il blocco"); after the choice: the CHOSEN DICE'S SYMBOL ONLY, on
+// transparent ("solo il simbolo su sfondo trasparente"). Both are vector
+// (QPainter is the right tool for crisp 4K glyphs) and carry a white halo
+// so they read on any grass.
+// ---------------------------------------------------------------------------
+const QColor kMarkRed(198, 20, 32, 255);
+
+// One pass: draw `path` as a white halo stroke, then the red fill/stroke.
+inline void haloStroke(QPainter &p, const QPolygonF &path, qreal width, bool closed)
+{
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(Qt::NoBrush);
+    p.setPen(Qt::SolidLine);
+    p.setPen(QPen(QColor(255, 255, 255, 235), width * 2.4, Qt::SolidLine,
+                  Qt::RoundCap, Qt::RoundJoin));
+    if (closed) p.drawPolygon(path);
+    else p.drawPolyline(path);
+    p.setPen(QPen(kMarkRed, width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    if (closed) p.drawPolygon(path);
+    else p.drawPolyline(path);
+}
+
+// Face 3/4 arrows: a bent two-segment arrow. `dir` 1 = up-right (face 3),
+// -1 = down-right (face 4). Local coords in a 1x1 box centered at (0,0).
+void drawBentArrow(QPainter &p, const QPointF &c, qreal k, int dir)
+{
+    p.save();
+    p.translate(c);
+    const qreal s = k * dir; // flip vertically
+    QPolygonF shaft;
+    shaft << QPointF(-0.42 * k, -0.28 * s) << QPointF(0.05 * k, -0.28 * s)
+          << QPointF(0.05 * k, 0.22 * s);
+    haloStroke(p, shaft, k * 0.16, false);
+    // Arrowhead at the end of the shaft.
+    QPolygonF head;
+    head << QPointF(0.05 * k - 0.20 * k, 0.22 * s + 0.22 * s * (dir > 0 ? 1 : 1) * 0 - 0.20 * s * 0 + 0.22 * s)
+         << QPointF(0.05 * k, 0.22 * s + 0.26 * s)
+         << QPointF(0.05 * k + 0.20 * k, 0.22 * s);
+    p.setBrush(kMarkRed);
+    p.setPen(Qt::NoPen);
+    // white halo behind the head
+    p.setBrush(QColor(255, 255, 255, 235));
+    QPolygonF headHalo = head;
+    p.drawPolygon(head);
+    p.setBrush(kMarkRed);
+    p.drawPolygon(head);
+    (void)headHalo;
+    p.restore();
+}
+
+void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
+{
+    // k = marker radius. Symbol only, transparent background, die-red with
+    // a white halo (readable on dark or light grass).
+    p.save();
+    p.translate(c);
+    switch (face) {
+    case 5: { // exclamation mark
+        QPolygonF bar;
+        bar << QPointF(-0.10 * k, -0.52 * k) << QPointF(0.10 * k, -0.52 * k)
+            << QPointF(0.08 * k, 0.10 * k) << QPointF(-0.08 * k, 0.10 * k);
+        QPolygonF barHalo;
+        for (const QPointF &pt : bar)
+            barHalo << QPointF(0, 0) + (pt - QPointF(0, 0)) * 1.30;
+        p.setBrush(QColor(190, 244, 255, 235));
+        p.setPen(Qt::NoPen);
+        p.drawPolygon(barHalo);
+        p.setBrush(kMarkRed);
+        p.drawPolygon(bar);
+        p.setBrush(QColor(190, 244, 255, 235));
+        p.drawEllipse(QPointF(0, 0.38 * k), 0.15 * k, 0.15 * k);
+        p.setBrush(kMarkRed);
+        p.drawEllipse(QPointF(0, 0.38 * k), 0.12 * k, 0.12 * k);
+        break;
+    }
+    case 6: { // starburst (the "explosion" face)
+        auto burstOf = [k](qreal scale) {
+            QPolygonF burst;
+            const int n = 12;
+            for (int i = 0; i < n * 2; ++i) {
+                const qreal rr = (i % 2 == 0 ? 0.55 * k : 0.24 * k) * scale;
+                const qreal a = M_PI * i / n - M_PI / 2;
+                burst << QPointF(std::cos(a) * rr, std::sin(a) * rr);
+            }
+            return burst;
+        };
+        p.setBrush(QColor(190, 244, 255, 235));
+        p.setPen(Qt::NoPen);
+        p.drawPolygon(burstOf(1.18));
+        p.setBrush(kMarkRed);
+        p.drawPolygon(burstOf(1.0));
+        break;
+    }
+    case 3: // curved up-right arrow (simplified bent arrow, comic style)
+    case 4: // down arrow
+        drawBentArrow(p, QPointF(0, 0), k, face == 3 ? 1 : -1);
+        break;
+    case 1: // skull
+    case 2: { // skull + arrow
+        const qreal s2 = face == 2 ? 0.62 : 0.80; // smaller when the arrow sits beside
+        // SMALL white backing (a big disc would erase tokens under the marker)
+        p.setBrush(QColor(190, 244, 255, 235));
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(-0.08 * k, -0.06 * k), 0.62 * k, 0.62 * k);
+        p.setBrush(kMarkRed);
+        p.drawEllipse(QRectF(-0.08 * k - 0.46 * k * s2, -0.06 * k - 0.50 * k * s2,
+                             0.92 * k * s2, 0.92 * k * s2));
+        p.drawRoundedRect(QRectF(-0.08 * k - 0.26 * k * s2, 0.30 * k * s2,
+                                 0.52 * k * s2, 0.30 * k * s2), 1, 1);
+        p.setBrush(QColor(255, 255, 255, 255));
+        p.drawEllipse(QPointF(-0.08 * k - 0.20 * k * s2, -0.10 * k * s2),
+                      0.14 * k * s2, 0.15 * k * s2);
+        p.drawEllipse(QPointF(-0.08 * k + 0.20 * k * s2, -0.10 * k * s2),
+                      0.14 * k * s2, 0.15 * k * s2);
+        QPolygonF nose;
+        nose << QPointF(-0.08 * k, 0.08 * k * s2)
+             << QPointF(-0.08 * k - 0.08 * k * s2, 0.26 * k * s2)
+             << QPointF(-0.08 * k + 0.08 * k * s2, 0.26 * k * s2);
+        p.drawPolygon(nose);
+        if (face == 2) // the little arrow to the right (upper-right, like the die)
+            drawBentArrow(p, QPointF(0.42 * k, 0.10 * k), k * 0.55, 1);
+        break;
+    }
+    default:
+        break;
+    }
+    p.restore();
+}
+
+void drawFootballHelmet(QPainter &p, const QPointF &c, qreal k, bool facingLeft)
+{
+    // A compact american-football helmet: white dome, dark outline, ear
+    // hole, and a 3-bar face mask. `k` = marker radius. facingLeft flips
+    // the mask side (toward the defender).
+    p.save();
+    p.translate(c);
+    if (facingLeft)
+        p.scale(-1, 1);
+    const qreal w = 0.90 * k, h = 0.80 * k; // local bounding box half-sizes
+    // Compact: NO filled halo disc (it would erase a token standing under
+    // the marker) — a white OUTLINE halo around the dome only.
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QRectF dome(-w * 0.5, -h * 0.55, w * 0.95, h * 0.95);
+    p.setPen(QPen(QColor(190, 244, 255, 235), qMax(2.0, k * 0.16)));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(dome, h * 0.48, h * 0.48);
+    // Dome.
+    p.setPen(QPen(QColor(30, 30, 36, 255), qMax(1.0, k * 0.09)));
+    p.setBrush(QColor(225, 242, 255, 255));
+    p.drawRoundedRect(dome, h * 0.48, h * 0.48);
+    // Center stripe.
+    p.setPen(QPen(QColor(30, 30, 36, 200), qMax(1.0, k * 0.05)));
+    p.drawLine(QPointF(-w * 0.02, -h * 0.55), QPointF(-w * 0.02, -h * 0.05));
+    // Eye opening (dark) on the front (right side in local coords).
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(30, 30, 36, 255));
+    p.drawRoundedRect(QRectF(w * 0.16, -h * 0.30, w * 0.26, h * 0.22), 2, 2);
+    // Ear hole.
+    p.drawEllipse(QPointF(-w * 0.18, -h * 0.05), w * 0.09, w * 0.09);
+    // Face mask: 3 bars from the front of the dome.
+    QPen mask(QColor(30, 30, 36, 255), qMax(1.0, k * 0.075));
+    mask.setCapStyle(Qt::RoundCap);
+    p.setPen(mask);
+    p.setBrush(Qt::NoBrush);
+    for (int i = 0; i < 3; ++i) {
+        const qreal y0 = -h * 0.22 + i * h * 0.16;
+        const qreal y1 = y0 + h * 0.05;
+        p.drawArc(QRectF(w * 0.30, y0 - k * 0.02, w * 0.42, h * 0.16 + k * 0.04),
+                  -60 * 16, 120 * 16);
+        Q_UNUSED(y1);
+    }
+    p.setPen(QPen(QColor(30, 30, 36, 255), qMax(1.0, k * 0.07)));
+    p.drawLine(QPointF(w * 0.52, -h * 0.26), QPointF(w * 0.52, h * 0.10));
     p.restore();
 }
 } // namespace
@@ -1879,6 +2116,33 @@ void FieldView::paintEvent(QPaintEvent *)
             p.setPen(ringPen);
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(ctr, ringR, ringR);
+        }
+    }
+
+    // --- Round 13 turn 11 (user): the BLOCK MARKER between attacker and
+    //     defender — a football helmet while the die is pending, the chosen
+    //     die's SYMBOL (transparent) after the choice. Follows the tokens'
+    //     animated glide, so it travels with the follow step too.
+    if (!m_blockTarget.isEmpty() && !m_blockAttacker.isEmpty()) {
+        auto findTok = [this](const QString &id) -> const PlayerToken * {
+            for (const auto &team : { m_homePlayers, m_awayPlayers })
+                for (const PlayerToken &t : team)
+                    if (t.playerId == id)
+                        return &t;
+            return nullptr;
+        };
+        const PlayerToken *att = findTok(m_blockAttacker);
+        const PlayerToken *def = findTok(m_blockTarget);
+        if (att && def) {
+            const QPointF va = tokenVisualPos(*att);
+            const QPointF vd = tokenVisualPos(*def);
+            const QPointF mid(f.x() + (va.x() + vd.x()) * 0.5 * cellW,
+                              f.y() + (va.y() + vd.y()) * 0.5 * cellH);
+            const qreal k = qMin(cellW, cellH) * 0.45;
+            if (m_blockDieFace >= 1 && m_blockDieFace <= 6)
+                drawBlockDieSymbol(p, mid, k, m_blockDieFace);
+            else
+                drawFootballHelmet(p, mid, k, va.x() < vd.x());
         }
     }
 

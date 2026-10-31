@@ -16,6 +16,11 @@
 
 #include <QResizeEvent>
 
+QString PlayerInfoWidget::shownName() const
+{
+    return m_nameLabel ? m_nameLabel->text() : QString();
+}
+
 namespace {
 const QColor INK(0x22, 0x28, 0x32);
 const QColor INK2(0x68, 0x72, 0x80);

@@ -599,7 +599,8 @@ void MainWindow::applyModelToUi()
     // Round 13 turn 4 (user): the RED glow on the player being blocked
     // (armed by the blockRoll/block report, cleared by the model when the
     // block resolves).
-    m_field->setBlockTarget(m_model->blockTargetId());
+    m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
+                            m_model->blockDieFace());
 
     // The info card tracks the player it currently shows: a model sync
     // refreshes its content (state changes to box, injuries, ...) and a
@@ -631,7 +632,17 @@ static QString reportFingerprint(const QJsonObject &report)
     // Canonical compact JSON -> short hash. Two identical reports (the same
     // event re-sent) share a fingerprint; two genuinely different events
     // almost never do (different dice / players / ids).
-    const QByteArray canonical = QJsonDocument(report).toJson(QJsonDocument::Compact);
+    //
+    // Round 13 turn 8 (user: "tiro su armatura e tiro su injury viene
+    // ripetuto"): the server sends the SAME injury report TWICE — first
+    // with skipInjuryParts=CAS, then skipInjuryParts=EVERYTHING_BUT_CAS
+    // (ground truth: tests/live_reports_capture.jsonl, def 18416181, both
+    // sends armorRoll [1,2]). skipInjuryParts is a DISPLAY-CONTROL flag,
+    // not event data — hash the report WITHOUT it, so the re-send is
+    // deduped like any other.
+    QJsonObject r = report;
+    r.remove(QStringLiteral("skipInjuryParts"));
+    const QByteArray canonical = QJsonDocument(r).toJson(QJsonDocument::Compact);
     const QByteArray md5 = QCryptographicHash::hash(canonical, QCryptographicHash::Md5);
     return QString::fromLatin1(md5.constData(), 8);
 }
@@ -672,20 +683,40 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         m_reportFpTimes.insert(fp, now);
         ++m_loggedReportCount;
 
-        // Round 13 turn 4 (user: "il giocatore BLOCCATO deve avere il
-        // highlight+glow rosso"): the blockRoll/block reports carry
-        // defenderId = the player being blocked. Arm the model's block
-        // target (red glow on the field); it self-clears when the block
-        // resolves (state change / new turn / new actor).
+        // Round 13 turn 8 (user, FINAL rule): the RED GLOW on the DEFENDER
+        // (the player being blocked) must be on for the whole block action
+        // and die when the ATTACKER's blue actor glow disappears. Ground
+        // truth (game_1957772 capture): `blockRoll` carries defenderId =
+        // NULL — the reports that DO carry it are `block` and
+        // `blockChoice` (sequence: selectBlitzTarget -> block -> blockRoll
+        // -> blockChoice -> injury). Arm on those; the attacker is the
+        // model's current actor (the block reports arrive while the
+        // attacker is the actor). NOT on `injury`: it lands with the
+        // resolution changes (actor already gone) and would re-arm a dead
+        // glow. Re-arming on the same defender is a no-op; a new defender
+        // replaces the glow — one red glow at a time, no stacking (user:
+        // multiple blocks per turn must not stack glows).
         const QString rid = report.value(QStringLiteral("reportId")).toString();
-        if (rid == QLatin1String("blockRoll") || rid == QLatin1String("block")) {
+        if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
+            || rid == QLatin1String("blockChoice")) {
             const QString victim = report.value(QStringLiteral("defenderId")).toString();
             if (!victim.isEmpty()) {
                 m_model->setBlockTargetId(victim);
+                // Turn 11: the blockChoice carries the CHOSEN die:
+                // blockRoll[] + diceIndex (capture-verified). The marker
+                // between attacker/defender switches helmet -> die symbol.
+                if (rid == QLatin1String("blockChoice")) {
+                    const QJsonArray roll =
+                        report.value(QStringLiteral("blockRoll")).toArray();
+                    const int idx = report.value(QStringLiteral("diceIndex")).toInt(-1);
+                    if (idx >= 0 && idx < roll.size())
+                        m_model->setBlockDieFace(roll.at(idx).toInt());
+                }
                 // Reports-only syncs do NOT emit stateUpdated (no model
-                // changes): push the glow straight to the field.
+                // changes): push the marker straight to the field.
                 if (m_field)
-                    m_field->setBlockTarget(victim);
+                    m_field->setBlockMarker(m_model->blockAttackerId(), victim,
+                                            m_model->blockDieFace());
             }
         }
 
@@ -1011,12 +1042,22 @@ void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
         return;
     }
     const FFBPlayer *p = nullptr;
+    // ROUND 13 TURN 8 CRASH FIX (user: the client crashed on hover, "soprattutto
+    // quelli del dugout"): the bench path used to hold `p = &c` where c is an
+    // element of a LOCAL roster COPY (rosterHome()/rosterAway() return by
+    // value) — that copy died at the end of the else-if block and the later
+    // p->hasCoords / showPlayerCard(p) reads were USE-AFTER-FREE (valgrind:
+    // read in a block freed by QArrayDataPointer<FFBPlayer>::~QArrayDataPointer).
+    // The corrupted data leaked into the card (shownPlayerId) and later
+    // aborted in GameModel::findPlayerById (ASSERT "p" qarraydatapointer.h).
+    // The copy must outlive every use of p: function scope.
+    QVector<FFBPlayer> roster;
     if (!token.playerId.isEmpty()) {
         p = m_model ? m_model->findPlayerById(token.playerId) : nullptr;
     } else if (m_model && !token.name.isEmpty()) {
         // Bench face: resolve by name on the right side.
-        const auto roster = token.sideHome ? m_model->rosterHome()
-                                           : m_model->rosterAway();
+        roster = token.sideHome ? m_model->rosterHome()
+                                : m_model->rosterAway();
         for (const FFBPlayer &c : roster)
             if (c.name == token.name) {
                 p = &c;

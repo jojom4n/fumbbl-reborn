@@ -43,6 +43,8 @@ class QEvent;
 class QScrollArea;
 class QVBoxLayout;
 class QLabel;
+class QCheckBox;
+class QScrollBar;
 
 class ActionLogWidget : public QWidget
 {
@@ -81,6 +83,7 @@ signals:
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     // Round 13 turn 4: the name-label hover lives HERE (owned by the log,
     // safe against row deletion under the mouse).
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -92,15 +95,28 @@ private:
                   const QString &defenderName, const QString &actorId,
                   const QString &defenderId, const QColor &actorColor,
                   const QColor &defenderColor);
-    // True if the user is at (or near) the BOTTOM of the scroll: only then
-    // does the next append auto-scroll (stick-to-bottom, round 13 turn 4).
+    // True if the user is at (or near) the BOTTOM of the scroll.
     bool atBottom() const;
+    // Scroll the newest line into view (user + programmatic-safe).
+    void scrollToEnd();
+    // Live stick state from a USER scrollbar move (turn 9).
+    void onScrollbarMoved();
+    // Settle the scroll (0ms, coalesced): re-lay out the inner widget and
+    // scroll to the end when stick-to-bottom is on.
+    void settleScroll();
 
     QScrollArea *m_scroll = nullptr;
     QWidget *m_stack = nullptr;
     QVBoxLayout *m_stackLayout = nullptr;
     QLabel *m_title = nullptr;
     QLabel *m_chevron = nullptr;
+    // Round 13 turn 9 (user): autoscroll is LIVE — it re-arms the moment
+    // the user brings the log back to the bottom (stick-to-bottom), and a
+    // tiny "auto" checkbox in the title bar shows/controls it.
+    QCheckBox *m_autoCheck = nullptr;
+    bool m_stick = true;      // follow the newest line
+    bool m_progScroll = false; // value changes we caused (not user scrolls)
+    bool m_settlePending = false; // one settle pass per event-loop iteration
     bool m_expanded = false;
     int m_entryCount = 0;
     QStringList m_plain; // toPlainText() backing store

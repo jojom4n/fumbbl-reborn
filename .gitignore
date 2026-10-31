@@ -23,3 +23,6 @@ FUMBBL __*.pdf
 # mockup tooling artifacts
 *.log
 __pycache__/
+
+# Agent session rules — local only, never committed (user rule, turn 8)
+AGENTS.md

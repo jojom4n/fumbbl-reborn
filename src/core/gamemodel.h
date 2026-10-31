@@ -156,7 +156,21 @@ public:
     // state changes (fieldModelSetPlayerState), a new turn/half starts, or
     // another player becomes the actor.
     QString blockTargetId() const { return m_blockTargetId; }
-    void setBlockTargetId(const QString &playerId) { m_blockTargetId = playerId; }
+    // Round 13 turn 8 (user, FINAL rule): the red glow on the DEFENDER
+    // lives as long as the block action — it dies when the ATTACKER loses
+    // his (blue) actor glow. `attacker` empty = the current actor at arming
+    // time (the block reports arrive while the attacker is the actor).
+    void setBlockTargetId(const QString &playerId, const QString &attacker = QString())
+    {
+        m_blockTargetId = playerId;
+        if (!m_blockTargetId.isEmpty())
+            m_blockAttackerId = attacker.isEmpty() ? m_activePlayerId : attacker;
+    }
+    // Turn 11: the attacker of an open block (the marker pair) + the CHOSEN
+    // block die face (0 = not chosen yet, 1..6 = blockChoice blockRoll[diceIndex]).
+    QString blockAttackerId() const { return m_blockAttackerId; }
+    int blockDieFace() const { return m_blockDieFace; }
+    void setBlockDieFace(int face) { m_blockDieFace = face; }
 
     // --- Move trail (round 13, user request) ---------------------------------
     // The CUMULATIVE movement trace of the remote acting player: each entry
@@ -264,6 +278,8 @@ private:
     // Acting player (turn holder).
     QString m_activePlayerId;
     QString m_blockTargetId; // round 13 turn 4: the player being blocked
+    QString m_blockAttackerId; // turn 8: whose actor glow holds the block open
+    int m_blockDieFace = 0; // turn 11: chosen block die (0 = pending)
 
     // Move trail of the acting player (round 13 — see moveTrace()).
     QString m_traceActor;                  // player whose trace is tracked

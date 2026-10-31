@@ -94,6 +94,11 @@ public:
     // at zoom 1) space.
     QRectF fieldRect() const;
     QRectF dugoutRect(bool home) const;
+    // Widget-space version of the two above under the CURRENT zoom/pan
+    // (clampPan centers the fitted scene, so scene space != widget space
+    // from the very first frame — tests must scan the widget-space rect).
+    QRectF fieldRectPx() const;
+    QRectF dugoutRectPx(bool home) const;
     // The stadium image rect in scene (widget, zoom 1) space — public for
     // the preview tool / tests (the navigation clamp target).
     QRectF sceneRect() const;
@@ -115,7 +120,12 @@ public:
     // (like the selection's blue glow, reserved red = injury/failure/block).
     // Empty id = no block glow. Drawn in field space, follows zoom/pan and
     // the token's animated glide.
-    void setBlockTarget(const QString &playerId);
+    // Round 13 turn 11: the BLOCK PAIR — defender (red glow) + attacker
+    // (the marker between the two) + the chosen block die face (0 = the
+    // block is open but the die is not chosen yet: a football helmet
+    // symbol; 1..6 = the chosen die's glyph, symbol only on transparent).
+    void setBlockMarker(const QString &attackerId, const QString &defenderId,
+                        int dieFace);
     QString blockTarget() const { return m_blockTarget; }
 
     // Action wheel (Mockup F play mode — kept for the future game client,
@@ -227,6 +237,8 @@ private:
     int m_turn = 1;
     QString m_selectedPlayer; // playerId highlighted with a ring
     QString m_blockTarget; // round 13 turn 4: red glow (player being blocked)
+    QString m_blockAttacker; // turn 11: the pair for the between-the-two marker
+    int m_blockDieFace = 0; // turn 11: 0 = helmet, 1..6 = die symbol
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => ANIMATED rain

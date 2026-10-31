@@ -486,12 +486,19 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         const QString si = enumName(report.value(QStringLiteral("seriousInjury")));
         if (!ar.isEmpty()) {
             DiceLogLine l;
+            // ROUND 13 TURN 8 (user, rules — he is always right): an armor
+            // roll that BREAKS the armor is a SUCCESS of the roll ("se
+            // l'armatura è BROKEN allora è un SUCCESSO, non un FAILURE") —
+            // and ONLY on that success does the injury roll happen (1-7
+            // stunned, 8+ KO/injured, 15-16 dead). A failed armor roll
+            // leaves the player prone on the ground with NO injury roll.
+            // So: BROKEN -> Success label, holds -> Failure label.
             l.text = armorBroken ? QStringLiteral("Armor BROKEN!")
                                  : QStringLiteral("Armor holds");
             l.color = armorBroken ? kOrange : kGray;
             l.defenderId = defenderId; // victim
             fillD6Rolls(l, ar);
-            l.d6Ok = !armorBroken;
+            l.d6Ok = armorBroken;
             l.d6ShowResult = true;
             out.append(l);
         }

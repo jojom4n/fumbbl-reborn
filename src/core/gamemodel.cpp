@@ -441,9 +441,26 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                         const bool cont = !m_tracePaths.isEmpty()
                             && m_tracePaths.last().last()
                                    == QPoint(player->fieldX, player->fieldY);
-                        if (cont)
+                        if (cont) {
                             // Next step of the ongoing route.
                             m_tracePaths.last().append(QPoint(nx, ny));
+                        } else if (!m_blockTargetId.isEmpty() && key == m_blockAttackerId) {
+                            // Turn 11 (user): the FOLLOW — after the block
+                            // choice the attacker follows the defender
+                            // ("solita trail con freccettina che segnala il
+                            // piccolo movimento dell'attacker"). The follow is
+                            // NOT a moving action on the wire (capture: the
+                            // coordinate step lands straight after the
+                            // followupChoice dialog, no
+                            // actingPlayerSetPlayerAction), so without this
+                            // it would be untraced. Any actor step while a
+                            // block is open IS the follow.
+                            QVector<QPoint> path;
+                            if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
+                                path << QPoint(player->fieldX, player->fieldY);
+                            path << QPoint(nx, ny);
+                            m_tracePaths.append(path);
+                        }
                         // else: a coordinate change with no move action and
                         // no active route (turn-setup placement, a push) —
                         // it starts no route.
@@ -459,10 +476,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         FFBPlayer *player = findPlayer(key);
         if (player)
             player->state = readInt(value);
-        // Round 13 turn 4: the block RESOLVED for its target (knocked down,
-        // prone, banned, ...): the red block glow dies with the new state.
-        if (key == m_blockTargetId)
-            m_blockTargetId.clear();
+        // Round 13 turn 8 (user, FINAL rule): the defender's state changes
+        // DURING the block (down, box, KO, ...) — the red glow must SURVIVE
+        // them. It dies only when the attacker's actor glow disappears
+        // (actingPlayerSetPlayerId) or a new turn/half starts.
         return;
     }
 
@@ -569,9 +586,14 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             m_tracePaths.clear();
             m_movePending = false;
         }
-        // Round 13 turn 4: a DIFFERENT non-null actor means the previous
-        // action (and its block, if any) is over — the red glow dies.
-        if (!m_activePlayerId.isEmpty() && m_activePlayerId != oldActor)
+        // Round 13 turn 8 (user, FINAL rule): the red block glow on the
+        // DEFENDER lives exactly as long as the block action — it dies when
+        // the ATTACKER loses his (blue) actor glow: the actor becomes
+        // another player OR nobody (null). Turn 4's rule (clear on any
+        // different non-null actor) was wrong: with re-rolls the attacker
+        // re-armed in the same batch and the glow flickered / was often
+        // missing (user: "non sempre c'è il glow rosso").
+        if (!m_blockTargetId.isEmpty() && m_activePlayerId != m_blockAttackerId)
             m_blockTargetId.clear();
         return;
     }

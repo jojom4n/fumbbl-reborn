@@ -14,6 +14,7 @@
 // by the live spectator_smoke tool.)
 // =============================================================================
 #include <QtTest>
+#include <QVBoxLayout>
 
 #include <QApplication>
 #include <QFile>
@@ -21,6 +22,9 @@
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QEvent> // QEnterEvent / QLeaveEvent
+#include <QCheckBox>
+#include <QScrollBar>
+#include <QScrollArea>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
@@ -122,6 +126,12 @@ private slots:
     void actionLogNameHoverOpensCard();
     // ---- Round 13 (per-square movement animation) ----
     void movementAnimationGlidesThroughGrid();
+    // ---- Round 13 turn 8 (dugout hover UAF crash) ----
+    void dugoutHoverSurvivesModelSync();
+    // ---- Round 13 turn 11 (block marker between attacker/defender) ----
+    void blockMarkerDrawsBetweenPair();
+    // ---- Round 13 turn 9 (autoscroll checkbox + stick-to-bottom) ----
+    void actionLogAutoscrollStickToBottom();
 };
 
 namespace {
@@ -1704,6 +1714,295 @@ void UiWiringTest::fieldRainAnimationActive()
     QVERIFY(!field.isRaining());
     field.setWeather(QStringLiteral("Light Rain"));
     QVERIFY(field.isRaining());
+}
+
+// Round 13 turn 8 CRASH REGRESSION (user: the client crashed on hover, "
+// soprattutto quelli del dugout"): the bench hover path resolved the player
+// by name into a LOCAL roster copy and kept a pointer into it — the copy
+// died at the end of the else-if block and the later showPlayerCard(p) was
+// use-after-free (valgrind: read in a block freed by
+// QArrayDataPointer<FFBPlayer>::~QArrayDataPointer; the corrupted data
+// later aborted in GameModel::findPlayerById, ASSERT "p" in
+// qarraydatapointer.h). Hover a dugout face, sync the model (box vectors
+// rebuild), hover again: the card must always carry the RIGHT name.
+void UiWiringTest::dugoutHoverSurvivesModelSync()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    w.onGameState(fixtureGame());
+    QVERIFY(model && field && info);
+
+    // A FIELD player of each side — the test SENDS THEM TO THE BOX (model
+    // changes), which is exactly what rebuilds the box vectors on a sync.
+    // NOTE: rosterHome()/rosterAway() return a COPY — never take a pointer
+    // into that temporary (that is exactly the turn-8 UAF); keep a copy.
+    FFBPlayer homePick, awayPick;
+    bool haveHome = false, haveAway = false;
+    for (const FFBPlayer &p : model->rosterHome())
+        if (p.hasCoords && GameModel::isOnField(p.fieldX, p.fieldY)) {
+            homePick = p;
+            haveHome = true;
+            break;
+        }
+    for (const FFBPlayer &p : model->rosterAway())
+        if (p.hasCoords && GameModel::isOnField(p.fieldX, p.fieldY)) {
+            awayPick = p;
+            haveAway = true;
+            break;
+        }
+    QVERIFY2(haveHome && haveAway, "fixture needs field players on both sides");
+    const QString homeName = homePick.name;
+    const QString awayName = awayPick.name;
+    const QString homeId = homePick.playerId;
+    const QString awayId = awayPick.playerId;
+
+    // Send one player of each side to the box (box vectors get built).
+    {
+        QJsonArray ch;
+        QJsonObject c1;
+        c1.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelSetPlayerCoordinate"));
+        c1.insert(QStringLiteral("modelChangeKey"), homeId);
+        c1.insert(QStringLiteral("modelChangeValue"), QJsonArray() << (-1) << 0);
+        QJsonObject c2;
+        c2.insert(QStringLiteral("modelChangeId"), QStringLiteral("fieldModelSetPlayerCoordinate"));
+        c2.insert(QStringLiteral("modelChangeKey"), awayId);
+        c2.insert(QStringLiteral("modelChangeValue"), QJsonArray() << 30 << 0);
+        ch.append(c1);
+        ch.append(c2);
+        w.onModelSync(ch, QJsonArray());
+        QApplication::processEvents();
+    }
+
+    // The exact hover point of a bench face (scan the dugout rect in
+    // WIDGET space — clampPan centers the scene, so scene != widget).
+    const auto facePoint = [&](bool side) -> QPoint {
+        const QRect r = field->dugoutRectPx(side).toAlignedRect();
+        for (int y = r.y() + 3; y < r.bottom() - 2; y += 3)
+            for (int x = r.x() + 3; x < r.right() - 2; x += 3) {
+                bool s = true;
+                const FieldView::BoxEntry *e = field->boxEntryAt(QPoint(x, y), s);
+                if (e && s == side)
+                    return QPoint(x, y);
+            }
+        return QPoint();
+    };
+    const QPoint ph = facePoint(true);
+    const QPoint pa = facePoint(false);
+    QVERIFY2(ph != QPoint(), "no home bench face hit-testable");
+    QVERIFY2(pa != QPoint(), "no away bench face hit-testable");
+
+    auto hover = [&](const QPoint &pos) {
+        QMouseEvent ev(QEvent::MouseMove, QPointF(pos), field->mapToGlobal(pos),
+                       Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(field, &ev);
+        QApplication::processEvents();
+    };
+
+    // Hover the home bench face: the card opens with the RIGHT name.
+    hover(ph);
+    QCOMPARE(info->shownPlayerId(), homeId);
+    QCOMPARE(info->shownName(), homeName.toUpper());
+
+    // A model sync rebuilds the box vectors (the old bug freed the roster
+    // copy the card's data was read from).
+    QJsonArray ch;
+    QJsonObject c;
+    c.insert(QStringLiteral("modelChangeId"), QStringLiteral("actingPlayerSetPlayerId"));
+    c.insert(QStringLiteral("modelChangeKey"), QString());
+    c.insert(QStringLiteral("modelChangeValue"), QString());
+    ch.append(c);
+    w.onModelSync(ch, QJsonArray());
+    QApplication::processEvents();
+
+    // Hover the away bench face, then back home: both must resolve to the
+    // right players (the UAF read freed memory — usually garbage, sometimes
+    // an abort in findPlayerById when the freed block was reused/zeroed).
+    hover(pa);
+    QCOMPARE(info->shownPlayerId(), awayId);
+    QCOMPARE(info->shownName(), awayName.toUpper());
+    // Another sync (the box vectors rebuild again) — hover both sides once
+    // more: the UAF read freed memory (garbage names, or an abort in
+    // findPlayerById when the freed block was reused).
+    {
+        QJsonArray ch2;
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), QStringLiteral("actingPlayerSetPlayerId"));
+        c.insert(QStringLiteral("modelChangeKey"), QString());
+        c.insert(QStringLiteral("modelChangeValue"), QString());
+        ch2.append(c);
+        w.onModelSync(ch2, QJsonArray());
+        QApplication::processEvents();
+    }
+    hover(pa);
+    QCOMPARE(info->shownPlayerId(), awayId);
+    QCOMPARE(info->shownName(), awayName.toUpper());
+    hover(ph);
+    QCOMPARE(info->shownPlayerId(), homeId);
+    QCOMPARE(info->shownName(), homeName.toUpper());
+}
+
+// Round 13 turn 11 (user): the BLOCK MARKER — a football helmet between
+// attacker and defender while the die is pending, the chosen die's SYMBOL
+// (transparent) after the choice. Two adjacent tokens, marker at the
+// shared-edge midpoint: the midpoint pixel must NOT be plain grass, and it
+// must differ between the helmet and a die face.
+// Round 13 turn 9 (user): the action log autoscrolls when the user is (or
+// comes back) at the bottom; scrolling up pauses it; the tiny 'auto'
+// checkbox in the title bar reflects the state.
+void UiWiringTest::actionLogAutoscrollStickToBottom()
+{
+    ActionLogWidget log;
+    log.resize(360, 320);
+    log.show();
+    QApplication::processEvents();
+    QScrollArea *scroll = log.findChild<QScrollArea *>();
+    QVERIFY2(scroll, "the log has a scroll area");
+    auto *sb = scroll->verticalScrollBar();
+    QVERIFY2(sb, "the log has a vertical scrollbar");
+    QCheckBox *check = log.findChild<QCheckBox *>();
+    QVERIFY2(check, "the log title bar has the small 'auto' checkbox");
+
+    const auto line = [](int i) {
+        DiceLogLine l;
+        l.text = QStringLiteral("Block roll %1").arg(i);
+        l.d6Roll = 1 + (i % 6);
+        return l;
+    };
+    for (int i = 0; i < 40; ++i)
+        log.appendLine(line(i), QStringLiteral("Coach"));
+    QApplication::processEvents();
+    // The app re-lays out the log constantly; one realistic resize settles
+    // the inner geometry (the resizeEvent override does the manual sizing).
+    log.resize(log.width() + 1, log.height());
+    log.resize(360, log.height());
+    QApplication::processEvents();
+    QVERIFY2(sb->maximum() > 0, "the log must be scrollable now");
+    QCOMPARE(sb->value(), sb->maximum());
+
+    sb->setValue(0);
+    QApplication::processEvents();
+    QVERIFY2(!check->isChecked(), "scrolled up: the 'auto' checkbox unchecks");
+    log.appendLine(line(41), QStringLiteral("Coach"));
+    QApplication::processEvents();
+    QCOMPARE(sb->value(), 0);
+
+    sb->setValue(sb->maximum());
+    QApplication::processEvents();
+    QVERIFY2(check->isChecked(), "back at the bottom: 'auto' re-checks");
+    log.appendLine(line(42), QStringLiteral("Coach"));
+    QApplication::processEvents();
+    QCOMPARE(sb->value(), sb->maximum());
+}
+
+void UiWiringTest::blockMarkerDrawsBetweenPair()
+{
+    FieldView field;
+    field.resize(1040, 600);
+    field.show();
+    QApplication::processEvents();
+    FieldView::PlayerToken a, d;
+    a.x = 10; a.y = 6; a.playerId = QStringLiteral("ATT"); a.state = 1; a.number = 1;
+    d.x = 10; d.y = 8; d.playerId = QStringLiteral("DEF"); d.state = 1; d.number = 2;
+    field.setPlayers({ a }, { d });
+    QApplication::processEvents();
+
+    // The marker sits at the midpoint of the two token visual positions
+    // (paint code: fieldRect + (va+vd)/2 * cell). Scan a box around the
+    // geometric midpoint between rows 7/8 of column 10 — robust against
+    // exact token-center conventions.
+    const QPoint c00 = field.cellCenterPx(0, 0);
+    const QPoint c10 = field.cellCenterPx(1, 0);
+    const QPoint c01 = field.cellCenterPx(0, 1);
+    const QPoint col10 = QPoint(int(c00.x() + 10.5 * (c10.x() - c00.x())),
+                                int(c00.y() + 7.5 * (c01.y() - c00.y())));
+    const int cell = qMax(1, c10.x() - c00.x());
+    fprintf(stderr, "DBG box: col10=%d,%d cell=%d\n", col10.x(), col10.y(), cell);
+    // The marker colors: white halo / light dome or die-red.
+    const auto isMarker = [](QRgb c) {
+        const int r = qRed(c), g = qGreen(c), b = qBlue(c);
+        // The marker halo/dome is a GLOWING CYAN (b > r + 40): nothing
+        // else on the field is cyan (grid = neutral white, rings =
+        // saturated blue/red, tokens = light neutral).
+        return r > 150 && b > r + 25 && g > r + 10;
+    };
+    // True if ANY marker pixel is in the box.
+    // Scan the WHOLE field for marker pixels (bluish white) and report
+    // their bounding box — robust against exact midpoint conventions.
+    struct Found {
+        bool any = false; int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        bool operator==(const Found &o) const
+        { return any == o.any && x0 == o.x0 && y0 == o.y0
+                && x1 == o.x1 && y1 == o.y1; }
+        bool operator!=(const Found &o) const { return !(*this == o); }
+    };
+    // Paint space != widget space (pan offset), so don't chase the exact
+    // midpoint: scan the whole field box for the marker's cyan glow,
+    // EXCLUDING the two token discs (face art contains cyan-ish eye
+    // pixels). The marker sits BETWEEN the tokens, outside both discs.
+    const QRect fbox = field.fieldRectPx().toAlignedRect().adjusted(-cell, -cell, cell, cell);
+    const QPoint tokA = field.cellCenterPx(10, 6);
+    const QPoint tokD = field.cellCenterPx(10, 8);
+    const int d2 = int(0.2 * cell * cell); // 0.45-cell disc radius, squared
+    const auto inTokDisc = [&](int x, int y) {
+        const auto d = [&](const QPoint &c) {
+            const int dx = x - c.x(), dy = y - c.y();
+            return dx * dx + dy * dy;
+        };
+        return d(tokA) < d2 || d(tokD) < d2;
+    };
+    const auto findMarker = [&]() {
+        const QImage im = field.grab().toImage();
+        Found f;
+        for (int y = qBound(0, fbox.top(), im.height() - 1);
+             y <= qBound(0, fbox.bottom(), im.height() - 1); ++y)
+            for (int x = qBound(0, fbox.left(), im.width() - 1);
+                 x <= qBound(0, fbox.right(), im.width() - 1); ++x) {
+                if (inTokDisc(x, y))
+                    continue;
+                if (isMarker(im.pixel(x, y))) {
+                    f.any = true;
+                    f.x0 = qMin(f.x0 ? f.x0 : x, x);
+                    f.y0 = qMin(f.y0 ? f.y0 : y, y);
+                    f.x1 = qMax(f.x1 ? f.x1 : x, x);
+                    f.y1 = qMax(f.y1 ? f.y1 : y, y);
+                }
+            }
+        return f;
+    };
+
+    // No marker: no marker pixel anywhere.
+    field.setBlockMarker(QString(), QString(), 0);
+    QApplication::processEvents();
+    QVERIFY2(!findMarker().any, "sanity: no marker pixel without a block");
+
+    // Helmet (die pending): marker pixels appear BETWEEN the pair.
+    field.setBlockMarker(QStringLiteral("ATT"), QStringLiteral("DEF"), 0);
+    QApplication::processEvents();
+    Found helmet = findMarker();
+    const int mx0 = qMin(tokA.x(), tokD.x()) - cell;
+    const int mx1 = qMax(tokA.x(), tokD.x()) + cell;
+    const int my0 = qMin(tokA.y(), tokD.y()) - cell;
+    const int my1 = qMax(tokA.y(), tokD.y()) + cell;
+    const int cmx = (helmet.x0 + helmet.x1) / 2;
+    const int cmy = (helmet.y0 + helmet.y1) / 2;
+    QVERIFY2(helmet.any, "helmet marker must be drawn");
+    QVERIFY2(cmx >= mx0 && cmx <= mx1 && cmy >= my0 && cmy <= my1,
+             "the marker must sit between the attacker and defender");
+
+    // Chosen die (face 2): still a marker, but different from the helmet.
+    field.setBlockMarker(QStringLiteral("ATT"), QStringLiteral("DEF"), 2);
+    QApplication::processEvents();
+    Found symbol = findMarker();
+    QVERIFY2(symbol.any, "die symbol must be drawn");
+    QVERIFY(helmet != symbol);
+
+    // Block cleared: no marker pixel left.
+    field.setBlockMarker(QString(), QString(), 0);
+    QApplication::processEvents();
+    QVERIFY2(!findMarker().any, "clearing the block removes the marker");
 }
 
 QTEST_MAIN(UiWiringTest)

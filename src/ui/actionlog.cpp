@@ -3,6 +3,7 @@
 // =============================================================================
 #include "ui/actionlog.h"
 
+#include <QCheckBox>
 #include <QEnterEvent>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -12,6 +13,9 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStringList>
+#include <QTimer>
+#include <QApplication>
+#include <QResizeEvent>
 #include <QVBoxLayout>
 
 namespace {
@@ -68,8 +72,24 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_chevron->setCursor(Qt::PointingHandCursor);
     m_chevron->setStyleSheet(QStringLiteral("color: #222832; font-size: 13px; font-weight: bold;"));
     m_chevron->setFixedWidth(16);
+    // Round 13 turn 9 (user): the tiny "auto" autoscroll checkbox in the
+    // title bar (small font). It reflects the live stick-to-bottom state:
+    // unchecks when the user scrolls up, re-checks when the user brings the
+    // log back to the bottom; the user can also tick it to force following.
+    m_autoCheck = new QCheckBox(QStringLiteral("auto"), header);
+    m_autoCheck->setStyleSheet(QStringLiteral("color: #222832; background: transparent;"));
+    QFont cf = m_autoCheck->font();
+    cf.setPointSizeF(8);
+    m_autoCheck->setFont(cf);
+    m_autoCheck->setChecked(true);
+    connect(m_autoCheck, &QCheckBox::toggled, this, [this](bool on) {
+        m_stick = on;
+        if (on)
+            scrollToEnd();
+    });
     hl->addWidget(m_title);
     hl->addStretch(1);
+    hl->addWidget(m_autoCheck);
     hl->addWidget(m_chevron);
     outer->addWidget(header);
 
@@ -78,7 +98,12 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_scroll->setFrameShape(QFrame::NoFrame);
     m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_scroll->setWidgetResizable(true);
+    // Round 13 turn 9: the inner stack is sized MANUALLY (not widgetResizable):
+    // a widgetResizable QScrollArea re-lays out the inner widget only from
+    // its own resizeEvent, so a burst of appends (live game) left the
+    // scrollbar range stale (maximum frozen at the old content height).
+    // Manual geometry = the classic pattern, fully deterministic.
+    m_scroll->setWidgetResizable(false);
     m_scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; }"));
     m_stack = new QWidget(m_scroll);
     m_stack->setStyleSheet(QStringLiteral("background: transparent;"));
@@ -88,6 +113,12 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_stackLayout->addStretch(1);
     m_scroll->setWidget(m_stack);
     outer->addWidget(m_scroll, 1);
+
+    // The scrollbar's value is watched to know when the USER scrolls:
+    // at the bottom -> stick (auto) re-arms; up -> it pauses. Programmatic
+    // scrolls (m_progScroll) are ignored so the state is user-driven only.
+    connect(m_scroll->verticalScrollBar(), &QScrollBar::valueChanged, this,
+            [this](int) { onScrollbarMoved(); });
 }
 
 int ActionLogWidget::compactHeight()
@@ -114,6 +145,71 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
     p.setPen(border);
     p.setBrush(Qt::NoBrush);
     p.drawRoundedRect(r, 10, 10);
+}
+
+void ActionLogWidget::onScrollbarMoved()
+{
+    // Round 13 turn 9: USER scroll detection. A value change that is NOT
+    // ours = the user moved the view: at the bottom (or a hair above) ->
+    // autoscroll re-arms ("dovrebbe scrollare automaticamente se l'utente
+    // lo riporta in fondo"); up -> it pauses and the checkbox unchecks.
+    if (m_progScroll)
+        return;
+    const bool at = atBottom();
+    if (at != m_stick) {
+        m_stick = at;
+        if (m_autoCheck) {
+            m_autoCheck->blockSignals(true);
+            m_autoCheck->setChecked(m_stick);
+            m_autoCheck->blockSignals(false);
+        }
+    }
+}
+
+// A widgetResizable QScrollArea re-lays out its inner widget only on its
+// OWN resizeEvent; a burst of appends (live game: dozens of reports in a
+// row) can outgrow the viewport without one arriving, leaving the scrollbar
+// range stale (maximum stuck at the old content height). Nudge the size by
+// a pixel and back: forces the inner layout + scrollbar range to settle on
+// the new content height. Coalesced to one pass per event-loop iteration
+// (m_settlePending) so a batch of appends settles exactly once, after the
+// whole batch has laid out.
+void ActionLogWidget::settleScroll()
+{
+    if (m_settlePending)
+        return;
+    m_settlePending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_settlePending = false;
+        if (!m_scroll)
+            return;
+        // The range churn during the nudge is OURS: ignore it in the
+        // user-scroll detection so it can never flip the stick state.
+        m_progScroll = true;
+        // Manual inner geometry: as wide as the viewport, as tall as the
+        // content needs (at least the viewport, so an empty log fills it).
+        m_stackLayout->invalidate(); // force the size cache to recompute
+        const int w = m_scroll->viewport()->width();
+        const int need = qMax(m_scroll->viewport()->height(),
+                              m_stackLayout->sizeHint().height());
+        m_stack->setGeometry(0, 0, w, need);
+        m_progScroll = false;
+        if (m_stick)
+            scrollToEnd();
+    });
+}
+
+void ActionLogWidget::scrollToEnd()
+{
+    if (!m_scroll)
+        return;
+    auto *sb = m_scroll->verticalScrollBar();
+    m_progScroll = true;
+    sb->setValue(sb->maximum());
+    // The flag must survive this event-loop pass (Qt may re-emit
+    // valueChanged when the range settles after the layout) but not the
+    // next user scroll: a 0ms timer clears it right after the batch.
+    QTimer::singleShot(0, this, [this] { m_progScroll = false; });
 }
 
 bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
@@ -157,12 +253,17 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
     // downscaling stays crisp at any DPI (4K-ready). Spacing between
     // consecutive dice is an explicit thin gap element (Qt rich text does
     // NOT honor `hspace` on <img>).
+    // Round 13 turn 8: NO QString::arg here. The triple .arg() chain on a
+    // template with a REPEATED %2 placeholder made Qt 6.12 emit
+    // "QString::arg: Argument missing" warnings (visible in the user's crash
+    // log — harmless to the render, but noise where the real crash lived).
+    // Plain concatenation: zero placeholders, zero arg calls, zero warnings.
     const auto dieImg = [](const QString &src) {
-        return QStringLiteral(" <img src=\"%1\" width=\"%2\" height=\"%2\">"
-                              "<span style=\"color:#ffffff\">&nbsp;</span>")
-            .arg(src)
-            .arg(kDice)
-            .arg(kDice);
+        const QString sz = QString::number(kDice);
+        return QStringLiteral(" <img src=") + src
+             + QStringLiteral("\" width=") + sz
+             + QStringLiteral("\" height=") + sz
+             + QStringLiteral("\"><span style=\"color:#ffffff\">&nbsp;</span>");
     };
     if (!line.blockFaces.isEmpty()) {
         for (const QString &face : line.blockFaces) {
@@ -244,10 +345,7 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         ++m_entryCount;
         while (m_plain.size() > kMaxEntries)
             m_plain.removeFirst();
-        if (atBottom()) {
-            const auto sb = m_scroll->verticalScrollBar();
-            sb->setValue(sb->maximum());
-        }
+        settleScroll(); // keep the scrollbar range honest + follow
         return;
     }
 
@@ -328,6 +426,7 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
 
     row->setFixedHeight(kRowH);
     m_stackLayout->insertWidget(m_stackLayout->count() - 1, row); // before the stretch
+    settleScroll(); // turn 9: only when the user is (back) at the bottom
 
     // Plain dump: actor + text + "→ defender" (the defender is part of the
     // visible line, so it belongs in the plain form too).
@@ -339,13 +438,8 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     while (m_plain.size() > kMaxEntries)
         m_plain.removeFirst();
 
-    // STICK-TO-BOTTOM (round 13 turn 4): only auto-scroll when the user is
-    // already at the bottom — otherwise the user is reading history and the
-    // view must stay put.
-    if (atBottom()) {
-        const auto sb = m_scroll->verticalScrollBar();
-        sb->setValue(sb->maximum());
-    }
+    // (Turn 9: the scroll happens right after the row is inserted —
+    // m_stick is the live user-driven stick-to-bottom state.)
 }
 
 void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
@@ -354,6 +448,28 @@ void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorNa
                                  const QColor &defenderColor)
 {
     addEntry(line, actorName, defenderName, actorId, defenderId, actorColor, defenderColor);
+}
+
+void ActionLogWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    // Manual inner geometry (turn 9): keep the stack as wide as the
+    // viewport and at least as tall as the content.
+    if (m_scroll && m_stack && m_stackLayout) {
+        const int w = m_scroll->viewport()->width();
+        const int need = qMax(m_scroll->viewport()->height(),
+                              m_stackLayout->sizeHint().height());
+        m_stack->setGeometry(0, 0, w, need);
+        // Re-layout can move the scrollbar range: if we are following,
+        // stay pinned to the newest line (the app re-lays out the log
+        // constantly — the follow must survive it).
+        if (m_stick) {
+            auto *sb = m_scroll->verticalScrollBar();
+            m_progScroll = true;
+            sb->setValue(sb->maximum());
+            m_progScroll = false;
+        }
+    }
 }
 
 void ActionLogWidget::mousePressEvent(QMouseEvent *event)
