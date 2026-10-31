@@ -1127,9 +1127,12 @@ struct DugoutLayout {
     QVector<QPointF> centers; // one per face, in entries order
 };
 
-// The bench faces: 1 row for <=8 players, 2 rows of 8 above — the faces
-// stay readable even with a full 16-man bench (user: "le facce dei
-// giocatori non siano troppo piccole"). Shared by boxSlots (hit-test) and
+// Round 13 turn 7 (user): the face size is FIXED — sized by the 16-slot
+// grid, NEVER by the bench count ("non voglio volti a grandezza variabile a
+// seconda di quanti sono"). The grid is 2 rows x 8 slots = room for 16 per
+// dugout; players fill the slots in order (left->right, top->bottom) and
+// ONLY the present players are drawn ("non voglio empty slot"). Wide, even
+// spacing ("spazia di più"). Shared by boxSlots (hit-test) and
 // paintBoxStrip (painter) so the two never drift.
 DugoutLayout dugoutFaceLayout(const QRectF &R, int count)
 {
@@ -1137,24 +1140,19 @@ DugoutLayout dugoutFaceLayout(const QRectF &R, int count)
     count = qBound(0, count, kDugoutMaxFaces);
     if (count == 0)
         return out;
-    const qreal marginX = R.width() * 0.04;
-    const qreal marginY = R.height() * 0.09;
-    const qreal availW = R.width() - 2 * marginX;
-    const qreal availH = R.height() - 2 * marginY;
-    const int perRow = qMin(count, 8);
-    const int rows = qMax(1, (count + perRow - 1) / perRow);
-    out.faceD = qMin(qMin(availH / rows * 0.94, availW / perRow * 0.92),
-                     R.height() * 0.80);
+    constexpr int kCols = 8, kRows = 2; // 16 slots
+    const qreal marginX = R.width() * 0.03;
+    const qreal cellW = (R.width() - 2 * marginX) / kCols;
+    out.faceD = cellW * 0.78;              // FIXED, 16-slot sized
+    const qreal gap = cellW - out.faceD;   // generous, even
+    const qreal blockH = kRows * out.faceD + (kRows - 1) * gap;
+    const qreal x0 = R.x() + marginX;
+    const qreal y0 = R.center().y() - blockH / 2;
     for (int i = 0; i < count; ++i) {
-        const int row = i / perRow;
-        const int col = i % perRow;
-        const int inRow = qMin(perRow, count - row * perRow);
-        const qreal rowW = inRow * out.faceD;
-        const qreal x0 = R.center().x() - rowW / 2;
-        const qreal cy = rows == 1
-            ? R.center().y()
-            : (row == 0 ? R.center().y() - availH / 4 : R.center().y() + availH / 4);
-        out.centers.append(QPointF(x0 + col * out.faceD + out.faceD / 2, cy));
+        const int row = i / kCols;
+        const int col = i % kCols;
+        out.centers.append(QPointF(x0 + (col + 0.5) * cellW,
+                                   y0 + (row + 0.5) * out.faceD + row * gap));
     }
     return out;
 }
@@ -1174,58 +1172,54 @@ void drawStar(QPainter &p, const QPointF &c, qreal r, qreal rot,
     p.drawPolygon(poly);
 }
 
-// The little STATE badge on the dugout face ring (TOP-LEFT of the ring,
-// so it never covers the number badge at the bottom-right). Vector —
+// The little STATE badge on the dugout face ring. Round 13 turn 7 (user):
+// TOP-RIGHT of the ring, made EXACTLY LIKE THE NUMBER BADGE (dark disc +
+// gold rim) but SLIGHTLY MORE INTERNAL and SMALLER ("falli come sono i
+// numeri, ma tienili leggermente più interni e piccoli"). Vector —
 // QPainter is the right tool for small crisp badges (turn-5 rule).
-void drawDugoutStateBadge(QPainter &p, int state, const QRectF &ring)
+void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
 {
     const int st = state & 0xFF;
     if (st != 5 && st != 6 && st != 7 && st != 8 && st != 10 && st != 13)
         return; // reserves (and any other state): plain face
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
-    const qreal br = ring.width() * 0.27; // badge radius
-    // Top-left 45 deg, straddling the ring's edge (like the number badge).
-    const QPointF c = ring.center()
-                       + QPointF(-ring.width() * 0.37, -ring.height() * 0.37);
-    if (st == 5) { // KO: cartoon dizzy stars
-        drawStar(p, c + QPointF(-br * 0.55, -br * 0.35), br * 0.40, 0.3,
-                 QColor(255, 214, 64, 255));
-        drawStar(p, c + QPointF(br * 0.50, -br * 0.45), br * 0.28, -0.2,
-                 QColor(255, 214, 64, 255));
-        drawStar(p, c + QPointF(br * 0.15, br * 0.50), br * 0.32, 0.8,
-                 QColor(255, 214, 64, 255));
-    } else if (st == 8) { // dead: small skull
-        p.setPen(QPen(QColor(25, 25, 30, 210), 0.8));
+    // Number badge ref: center (0.27, 0.29)*faceD, r 0.26*faceD.
+    // Status badge: top-right, slightly more internal (0.33 vs 0.41 faceD
+    // from center) and smaller (0.21 vs 0.26 faceD).
+    const qreal br = faceD * 0.21;
+    const QPointF bc = c + QPointF(faceD * 0.22, -faceD * 0.24);
+    p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.0));
+    p.setBrush(QColor(0x1e, 0x1e, 0x26));
+    p.drawEllipse(bc, br, br);
+    if (st == 5) { // KO: cartoon dizzy stars (inside the disc)
+        const QColor gold(255, 214, 64, 255);
+        drawStar(p, bc + QPointF(-br * 0.36, -br * 0.28), br * 0.34, 0.3, gold);
+        drawStar(p, bc + QPointF(br * 0.38, -br * 0.34), br * 0.24, -0.2, gold);
+        drawStar(p, bc + QPointF(br * 0.05, br * 0.36), br * 0.28, 0.8, gold);
+    } else if (st == 8) { // dead: small skull (inside the disc)
+        const qreal k = br * 0.62;
+        p.setPen(QPen(QColor(25, 25, 30, 210), 0.7));
         p.setBrush(QColor(236, 233, 226, 255));
-        p.drawEllipse(QRectF(c.x() - br * 0.72, c.y() - br * 0.85,
-                             br * 1.44, br * 1.44));
-        p.drawRoundedRect(QRectF(c.x() - br * 0.38, c.y() + br * 0.35,
-                                 br * 0.76, br * 0.42), 1, 1); // jaw
+        p.drawEllipse(QRectF(bc.x() - k * 0.72, bc.y() - k * 0.85,
+                             k * 1.44, k * 1.44));
+        p.drawRoundedRect(QRectF(bc.x() - k * 0.38, bc.y() + k * 0.35,
+                                 k * 0.76, k * 0.42), 1, 1); // jaw
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(28, 28, 33, 255));
-        p.drawEllipse(c + QPointF(-br * 0.30, -br * 0.15), br * 0.19, br * 0.21);
-        p.drawEllipse(c + QPointF(br * 0.30, -br * 0.15), br * 0.19, br * 0.21);
+        p.drawEllipse(bc + QPointF(-k * 0.30, -k * 0.15), k * 0.19, k * 0.21);
+        p.drawEllipse(bc + QPointF(k * 0.30, -k * 0.15), k * 0.19, k * 0.21);
         QPolygonF nose;
-        nose << c + QPointF(0, br * 0.03) << c + QPointF(-br * 0.11, br * 0.28)
-             << c + QPointF(br * 0.11, br * 0.28);
+        nose << bc + QPointF(0, k * 0.03) << bc + QPointF(-k * 0.11, k * 0.28)
+             << bc + QPointF(k * 0.11, k * 0.28);
         p.drawPolygon(nose);
-        p.setPen(QPen(QColor(28, 28, 33, 220), 0.8));
-        p.drawLine(QPointF(c.x() - br * 0.18, c.y() + br * 0.60),
-                   QPointF(c.x() - br * 0.18, c.y() + br * 0.76));
-        p.drawLine(QPointF(c.x() + br * 0.18, c.y() + br * 0.60),
-                   QPointF(c.x() + br * 0.18, c.y() + br * 0.76));
     } else { // injured (6,7) / missing (10) / banned (13): red medical cross
-        p.setPen(QPen(QColor(255, 255, 255, 255), 1.0));
-        p.setBrush(QColor(255, 255, 255, 245));
-        p.drawEllipse(c, br, br);
-        const qreal arm = br * 0.52;
-        p.setPen(Qt::NoPen);
+        const qreal t = br * 0.24; // half-thickness
+        const qreal L = br * 0.60; // half-length
+        p.setPen(QPen(QColor(255, 255, 255, 255), qMax(1.0, br * 0.16)));
         p.setBrush(QColor(204, 34, 30, 255));
-        p.drawRoundedRect(QRectF(c.x() - arm / 2, c.y() - arm * 1.15,
-                                 arm, arm * 2.3), 1, 1);
-        p.drawRoundedRect(QRectF(c.x() - arm * 1.15, c.y() - arm / 2,
-                                 arm * 2.3, arm), 1, 1);
+        p.drawRoundedRect(QRectF(bc.x() - t, bc.y() - L, t * 2, L * 2), 1, 1);
+        p.drawRoundedRect(QRectF(bc.x() - L, bc.y() - t, L * 2, t * 2), 1, 1);
     }
     p.restore();
 }
@@ -1311,15 +1305,14 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         p.restore();
     }
 
-    // 2) The bench faces (team-ringed, number bottom-right, STATE badge
-    //    top-left of the ring — round 13 turn 5, user design).
+    // 2) The bench faces (team-ringed, FIXED size for 16, number badge
+    //    bottom-right, STATE badge top-right — round 13 turn 7, user design).
     const DugoutLayout lay =
         dugoutFaceLayout(R, qMin(entries.size(), kDugoutMaxFaces));
     for (int i = 0; i < lay.centers.size(); ++i) {
         const BoxEntry *e = &entries[i];
         const QPointF c = lay.centers[i];
         const qreal faceD = lay.faceD;
-        const QRectF ring(c.x() - faceD / 2, c.y() - faceD / 2, faceD, faceD);
         const QPixmap pm = assets::playerFace(e->positionName, e->race);
         if (!pm.isNull()) {
             const qreal fr = faceD * 0.31; // clears the thick ring (turn 6)
@@ -1352,8 +1345,8 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                        Qt::AlignCenter, QString::number(e->number));
         }
 
-        // State badge (TOP-LEFT of the ring — never covers the number).
-        drawDugoutStateBadge(p, e->state, ring);
+        // State badge (TOP-RIGHT of the ring — never covers the number).
+        drawDugoutStateBadge(p, e->state, c, faceD);
     }
 }
 
