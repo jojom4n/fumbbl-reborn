@@ -42,6 +42,7 @@ private slots:
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void moveTrailAccumulatesAndClears();
+    void turnMarksAndBlockMarkerLifecycle();
     void staticHelpers();
     void positionNames();
     void resetClearsState();
@@ -484,6 +485,107 @@ void GameModelTest::resetClearsState()
     QVERIFY(m.initialize(loadLiveFixtureGame()));
     QVERIFY(m.isInitialized());
     QVERIFY(!m.rosterHome().isEmpty());
+}
+
+// Turn 12/13 (user): the per-turn marks and the block-marker lifecycle —
+// the model side of the field badges:
+//   * track numbers parse the server's {coordinate, number} payload,
+//   * the blitzer is the actor when turnDataSetBlitzUsed flips true,
+//   * the moment a player stops acting they are marked "acted this turn",
+//   * the block marker (helmet/die) dies when the attacker starts a NEW
+//     move, when the defender id goes null, or on a new turn.
+void GameModelTest::turnMarksAndBlockMarkerLifecycle()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadFixtureGame()));
+
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+
+    // --- track numbers: value = {coordinate: [x, y], number: N} ---------
+    QJsonObject tn;
+    tn.insert(QStringLiteral("coordinate"), QJsonArray() << 4 << 5);
+    tn.insert(QStringLiteral("number"), 0);
+    QJsonArray ch;
+    ch.append(change(QStringLiteral("fieldModelAddTrackNumber"), QString(), QJsonValue(tn)));
+    QJsonObject tn2;
+    tn2.insert(QStringLiteral("coordinate"), QJsonArray() << 3 << 5);
+    tn2.insert(QStringLiteral("number"), 1);
+    ch.append(change(QStringLiteral("fieldModelAddTrackNumber"), QString(), QJsonValue(tn2)));
+    model.applyModelChanges(ch);
+    QCOMPARE(model.trackNumbers().value(QPoint(4, 5)), 0);
+    QCOMPARE(model.trackNumbers().value(QPoint(3, 5)), 1);
+    QJsonObject rm;
+    rm.insert(QStringLiteral("coordinate"), QJsonArray() << 4 << 5);
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("fieldModelRemoveTrackNumber"), QString(), QJsonValue(rm)));
+    model.applyModelChanges(ch);
+    QVERIFY(!model.trackNumbers().contains(QPoint(4, 5)));
+    QVERIFY(model.trackNumbers().contains(QPoint(3, 5)));
+
+    // --- blitz: the actor carries the lightning while blitzUsed = true ---
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue(QStringLiteral("18109690"))));
+    ch.append(change(QStringLiteral("turnDataSetBlitzUsed"), QString(), QJsonValue(true)));
+    model.applyModelChanges(ch);
+    QCOMPARE(model.blitzingPlayerId(), QStringLiteral("18109690"));
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("turnDataSetBlitzUsed"), QString(), QJsonValue(false)));
+    model.applyModelChanges(ch);
+    QVERIFY(model.blitzingPlayerId().isEmpty());
+
+    // --- acted this turn: the previous actor gets the green check --------
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue(QStringLiteral("18109691"))));
+    model.applyModelChanges(ch);
+    QVERIFY(model.actedThisTurn().contains(QStringLiteral("18109690")));
+    QVERIFY(!model.actedThisTurn().contains(QStringLiteral("18109691")));
+
+    // --- block marker lifecycle -----------------------------------------
+    // The attacker IS the actor (real flow: block reports arrive while the
+    // attacker acts).
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue(QStringLiteral("18109690"))));
+    model.applyModelChanges(ch);
+    model.setBlockTargetId(QStringLiteral("18109691")); // attacker = actor
+    model.setBlockDieFace(2); // the chosen die: the marker shows the symbol
+    QVERIFY(model.blockMarkerActive());
+    QCOMPARE(model.blockDieFace(), 2);
+
+    // A NEW move by the attacker ends the block: the marker is not left
+    // attached to the token.
+    ch = QJsonArray();
+    QJsonArray coords;
+    coords << 14 << 5;
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                     QJsonValue(QStringLiteral("move"))));
+    ch.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                     QStringLiteral("18109690"), QJsonValue(coords)));
+    model.applyModelChanges(ch);
+    QVERIFY(!model.blockMarkerActive());
+    QCOMPARE(model.blockDieFace(), 0);
+    // ...but the defender's red glow survives (turn-8 rule).
+    QCOMPARE(model.blockTargetId(), QStringLiteral("18109691"));
+
+    // A new turn wipes the per-turn marks (and any re-armed marker).
+    model.setBlockTargetId(QStringLiteral("18109691"));
+    model.setBlockDieFace(3);
+    QVERIFY(model.blockMarkerActive());
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("turnDataSetTurnNr"), QStringLiteral("home"),
+                     QJsonValue(6)));
+    model.applyModelChanges(ch);
+    QVERIFY(!model.blockMarkerActive());
+    QVERIFY(model.actedThisTurn().isEmpty());
+    QVERIFY(model.blitzingPlayerId().isEmpty());
 }
 
 QTEST_MAIN(GameModelTest)

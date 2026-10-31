@@ -258,11 +258,16 @@ QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
     // "QString::arg: Argument missing" warnings (visible in the user's crash
     // log — harmless to the render, but noise where the real crash lived).
     // Plain concatenation: zero placeholders, zero arg calls, zero warnings.
+    // Turn 12 BUG (user: "TUTTI i dadi non appaiono"): the opening quotes
+    // of the attribute VALUES were missing (`src=:/dice/x.png"` instead of
+    // `src=":/dice/x.png"`) — the HTML parser swallowed the whole
+    // `:/dice/x.png"` as the unquoted value, the resource never resolved
+    // and every die rendered as an empty broken-image box.
     const auto dieImg = [](const QString &src) {
         const QString sz = QString::number(kDice);
-        return QStringLiteral(" <img src=") + src
-             + QStringLiteral("\" width=") + sz
-             + QStringLiteral("\" height=") + sz
+        return QStringLiteral(" <img src=\"") + src
+             + QStringLiteral("\" width=\"") + sz
+             + QStringLiteral("\" height=\"") + sz
              + QStringLiteral("\"><span style=\"color:#ffffff\">&nbsp;</span>");
     };
     if (!line.blockFaces.isEmpty()) {

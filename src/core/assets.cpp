@@ -271,6 +271,11 @@ QPixmap dugoutPanel()
     return loadPixmap(QStringLiteral("dugout/panel.png"));
 }
 
+QPixmap blockHelmet()
+{
+    return loadPixmap(QStringLiteral("markers/helmet.png"));
+}
+
 QPixmap stadiumTexture()
 {
     return loadPixmap(QStringLiteral("stadium/stands.png"));

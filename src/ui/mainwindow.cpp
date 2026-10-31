@@ -196,6 +196,9 @@ void MainWindow::createToolbar()
     addToolBar(Qt::TopToolBarArea, m_headerToolbar);
     m_headerView = new HeaderView(m_headerToolbar);
     m_headerToolbar->addWidget(m_headerView);
+    // Turn 12 (user): no header dots (or header content) before a game
+    // state arrives — the whole strip is hidden until the first sync.
+    m_headerToolbar->setVisible(false);
     // Round 8: no END TURN — this is a spectator client; ending the turn is
     // not part of spectating (the button is gone from HeaderView itself).
 }
@@ -527,7 +530,14 @@ void MainWindow::applyModelToUi()
 
     // Header (Mockup F): reroll dots, on-turn gold emphasis, weather, team
     // accents — all straight from the model.
-    m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway());
+    // Turn 12 (user): N dots = the team's rerolls (0..6); gold while
+    // available this turn, white once used (turnData.reRolls).
+    m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway(),
+                             m_model->turnReRollsHome(), m_model->turnReRollsAway());
+    // Turn 12 (user: "al client startup non ci siano dei puntini"): the
+    // header only exists once a game state has loaded — this function is
+    // only reached after initialize(), so make the strip visible now.
+    m_headerToolbar->setVisible(true);
     m_headerView->setHomePlaying(m_model->homePlaying());
     m_headerView->setWeather(m_model->weather());
     m_headerView->setAccents(
@@ -601,6 +611,15 @@ void MainWindow::applyModelToUi()
     // block resolves).
     m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
                             m_model->blockDieFace());
+
+    // Turn 13 (user, "come su FUMBBL"): the per-turn token marks + the
+    // numbered trail cells, straight from the model.
+    m_field->setActedPlayers(m_model->actedThisTurn());
+    m_field->setBlitzingPlayer(m_model->blitzingPlayerId());
+    m_field->setTrackNumbers(m_model->trackNumbers());
+    // Turn 14: the pass receiver's WHITE glow (fieldModelSetTargetSelectionState
+    // SELECTED -> model->passTargetId()).
+    m_field->setPassTarget(m_model->passTargetId());
 
     // The info card tracks the player it currently shows: a model sync
     // refreshes its content (state changes to box, injuries, ...) and a
@@ -996,7 +1015,9 @@ void MainWindow::clearMatchUi()
     setScore(0, 0);
     setTurn(1);
     m_headerView->setTurnElapsedSeconds(0);
-    m_headerView->setRerolls(0, 0);
+    m_headerView->setRerolls(0, 0, 0, 0);
+    // Turn 12: the header goes back to hidden until a new game loads.
+    m_headerToolbar->setVisible(false);
     m_headerView->setWeather(QString());
     m_headerView->setLogos(QPixmap(), QPixmap());
     m_field->setTeamLogos(QPixmap(), QPixmap());

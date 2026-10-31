@@ -198,10 +198,12 @@ void HeaderView::setHomePlaying(bool homePlaying)
     update();
 }
 
-void HeaderView::setRerolls(int home, int away)
+void HeaderView::setRerolls(int totalHome, int totalAway, int leftHome, int leftAway)
 {
-    m_rerollsHome = home;
-    m_rerollsAway = away;
+    m_rerollsTotalHome = totalHome;
+    m_rerollsTotalAway = totalAway;
+    m_rerollsHome = leftHome;
+    m_rerollsAway = leftAway;
     update();
 }
 
@@ -293,15 +295,18 @@ void HeaderView::paintEvent(QPaintEvent *)
     p.drawText(64, subY, subH);
     p.drawText(W - 64 - fmSub.horizontalAdvance(subA), subY, subA);
 
-    // --- reroll dots (3 slots, filled = remaining) ----------------------------
+    // --- reroll dots (turn 12: as many as the team has; gold = still
+    //     available this turn, white = used) ----------------------------
     // Home: 16px right of the home name; away: mirrored, 16px left of the
     // away name (mockup layout).
+    const int dotGap = 19;
     const qreal xh = 64 + fmName.horizontalAdvance(homeName) + 16;
-    for (int i = 0; i < 3; ++i)
-        coin(p, xh + i * 19, 16, 7, i < m_rerollsHome);
-    const qreal xa = W - 64 - 3 * 19 - 16 - fmName.horizontalAdvance(awayName);
-    for (int i = 0; i < 3; ++i)
-        coin(p, xa + i * 19, 16, 7, i < m_rerollsAway);
+    for (int i = 0; i < m_rerollsTotalHome; ++i)
+        coin(p, xh + i * dotGap, 16, 7, i < m_rerollsHome);
+    const qreal xa = W - 64 - m_rerollsTotalAway * dotGap - 16
+                     - fmName.horizontalAdvance(awayName);
+    for (int i = 0; i < m_rerollsTotalAway; ++i)
+        coin(p, xa + i * dotGap, 16, 7, i < m_rerollsAway);
 
     // --- center: score ---------------------------------------------------------
     // Round 9: the score/center-row gap was too small — score moved up

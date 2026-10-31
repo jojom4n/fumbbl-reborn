@@ -98,6 +98,12 @@ QPixmap dugoutSymbol(const QString &kind);
 // rect, the same (or another) panel mounts on it. Null = the vector
 // fallback panel is drawn instead.
 QPixmap dugoutPanel();
+// Round 13 turn 12 (user: "il casco è orribile, rifallo con Qwen-Image"):
+// the BLOCK MARKER helmet — a Qwen-Image american football helmet on a
+// pure white background, background keyed to transparent here. Drawn by the
+// field view on a white disc BETWEEN attacker and defender while the block
+// die is pending. Null pixmap when missing (vector fallback helmet).
+QPixmap blockHelmet();
 // The FANTASY STADIUM backdrop (assets/stadium/stands.png, Qwen top-down:
 // packed medieval stands, inspired by Blood Bowl 3 — round 13, user). Fills
 // the widget behind the field scene (replaces the flat grey apron). Null

@@ -46,7 +46,10 @@ public:
     void setTurn(int turn, int half);
     void setTurnElapsedSeconds(int seconds); // count-up display
     void setHomePlaying(bool homePlaying);   // which team is on turn
-    void setRerolls(int home, int away);
+    // Turn 12 (user): as many dots as the TEAM has rerolls (could be 0 or
+    // 6); a dot is gold while it is still available THIS TURN and turns
+    // white as it is used (turnData.reRolls).
+    void setRerolls(int totalHome, int totalAway, int leftHome, int leftAway);
     void setLogos(const QPixmap &home, const QPixmap &away);
     void setWeather(const QString &weather); // display name ("Nice Weather")
 
@@ -59,8 +62,10 @@ public:
     int halfNumber() const { return m_half; }
     int elapsedSeconds() const { return m_elapsedSeconds; }
     bool homePlaying() const { return m_homePlaying; }
-    int rerollsHome() const { return m_rerollsHome; }
+    int rerollsHome() const { return m_rerollsHome; }        // left this turn
     int rerollsAway() const { return m_rerollsAway; }
+    int rerollsTotalHome() const { return m_rerollsTotalHome; } // number of dots
+    int rerollsTotalAway() const { return m_rerollsTotalAway; }
 
     QSize sizeHint() const override { return QSize(800, 62); }
     int fixedHeight() const { return 62; }
@@ -86,8 +91,10 @@ private:
     int m_half = 1;
     int m_elapsedSeconds = 0;
     bool m_homePlaying = true;
-    int m_rerollsHome = 0;
+    int m_rerollsHome = 0;      // gold dots (remaining this turn)
     int m_rerollsAway = 0;
+    int m_rerollsTotalHome = 0; // total dots drawn
+    int m_rerollsTotalAway = 0;
     QPixmap m_homeLogo;
     QPixmap m_awayLogo;
     QString m_weather;

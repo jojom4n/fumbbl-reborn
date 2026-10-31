@@ -116,9 +116,13 @@ public:
     // Team logo URLs (absolute; empty when the state carries no logo).
     QString teamHomeLogoUrl() const { return m_teamHomeLogoUrl; }
     QString teamAwayLogoUrl() const { return m_teamAwayLogoUrl; }
-    // Remaining rerolls (header dots: 3 slots, filled = remaining).
+    // Turn 12 (user): the header shows as many dots as the TEAM has
+    // rerolls (team.reRolls — could be 0 or 6), and a dot turns white as
+    // it is used THIS TURN (turnData.reRolls = remaining this turn).
     int reRollsHome() const { return m_reRollsHome; }
     int reRollsAway() const { return m_reRollsAway; }
+    int turnReRollsHome() const { return m_turnReRollsHome; }
+    int turnReRollsAway() const { return m_turnReRollsAway; }
     int scoreHome() const { return m_scoreHome; }
     int scoreAway() const { return m_scoreAway; }
     int turn() const { return m_turn; }
@@ -171,6 +175,40 @@ public:
     QString blockAttackerId() const { return m_blockAttackerId; }
     int blockDieFace() const { return m_blockDieFace; }
     void setBlockDieFace(int face) { m_blockDieFace = face; }
+    // Turn 12 (user): the marker (helmet / chosen die) between attacker
+    // and defender dies as soon as the ATTACKER acts on the follow
+    // decision — it must not stay attached to the player. The RED GLOW on
+    // the defender keeps its own (turn 8) lifecycle and is NOT touched
+    // here.
+    bool blockMarkerActive() const { return !m_blockAttackerId.isEmpty(); }
+    void clearBlockMarker() { m_blockAttackerId.clear(); m_blockDieFace = 0; }
+
+    // Turn 13 (user, "come su FUMBBL"): the numbered cells of the current
+    // movement trail. GROUND TRUTH (game_1957772 capture): the server sends
+    // fieldModelAddTrackNumber / fieldModelRemoveTrackNumber with
+    // {coordinate: [x,y], number: N} — the official client paints N on the
+    // cell (FieldLayerUnderPlayers.drawTrackNumber). We mirror the server
+    // data 1:1.
+    QHash<QPoint, int> trackNumbers() const { return m_trackNumbers; }
+
+    // Turn 13 (user, "come su FUMBBL"): the green check on a field player
+    // who ALREADY ACTED this turn. No server flag exists (verified: no
+    // playedThisTurn in the state nor in the changes) — the client tracks
+    // it: a player is marked the moment they STOP being the actor.
+    QSet<QString> actedThisTurn() const { return m_actedThisTurn; }
+
+    // Turn 14 (user): the player designated as PASS RECEIVER glows (white,
+    // user: "il glow fallo bianco"). GROUND TRUTH (capture):
+    // fieldModelSetTargetSelectionState {playerId, targetSelectionStatus:
+    // "SELECTED", ...}; value null = the selection is gone.
+    QString passTargetId() const { return m_passTargetId; }
+
+    // Turn 13 (user): the BLITZ symbol (top-left of the ring) on the player
+    // who blitzed this turn. GROUND TRUTH (ffb-common TurnData.setBlitzUsed):
+    // the blitzer is exactly the ACTING PLAYER at the moment
+    // turnDataSetBlitzUsed goes true; it dies when the flag goes false or
+    // the turn changes.
+    QString blitzingPlayerId() const { return m_blitzingPlayerId; }
 
     // --- Move trail (round 13, user request) ---------------------------------
     // The CUMULATIVE movement trace of the remote acting player: each entry
@@ -249,8 +287,14 @@ private:
     QString m_teamAwayCoach;
     QString m_teamHomeLogoUrl;
     QString m_teamAwayLogoUrl;
-    int m_reRollsHome = 0;
+    int m_reRollsHome = 0;   // team total (number of dots)
     int m_reRollsAway = 0;
+    int m_turnReRollsHome = 0; // remaining THIS turn (dots still colored)
+    int m_turnReRollsAway = 0;
+    QHash<QPoint, int> m_trackNumbers; // turn 13: server trail cell numbers
+    QSet<QString> m_actedThisTurn;    // turn 13: players already acted
+    QString m_passTargetId;           // turn 14: pass receiver (white glow)
+    QString m_blitzingPlayerId;       // turn 13: this turn's blitzer
 
     // Position lookup: positionId -> positionName/shorthand/keywords,
     // filled from teamX.roster.positionArray (live players carry only the

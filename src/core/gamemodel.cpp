@@ -130,6 +130,10 @@ void GameModel::clearState()
     m_traceActor.clear();
     m_tracePaths.clear();
     m_movePending = false;
+    m_trackNumbers.clear();
+    m_actedThisTurn.clear();
+    m_passTargetId.clear();
+    m_blitzingPlayerId.clear();
 }
 
 void GameModel::reset()
@@ -176,6 +180,14 @@ bool GameModel::initialize(const QJsonObject &game)
     m_teamAwayLogoUrl = teamLogoUrl(away);
     m_reRollsHome = readInt(home.value(QStringLiteral("reRolls")));
     m_reRollsAway = readInt(away.value(QStringLiteral("reRolls")));
+    // Turn 12: the colored dots follow the CURRENT-TURN remaining rerolls
+    // (turnData.reRolls; capture-verified: team total vs per-turn values).
+    m_turnReRollsHome = readInt(
+        game.value(QStringLiteral("turnDataHome")).toObject()
+            .value(QStringLiteral("reRolls")));
+    m_turnReRollsAway = readInt(
+        game.value(QStringLiteral("turnDataAway")).toObject()
+            .value(QStringLiteral("reRolls")));
 
     // Position lookup first: live players carry only the positionId.
     parseRosterPositions(home, true);
@@ -437,6 +449,11 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                         path << QPoint(nx, ny);
                         m_tracePaths.append(path);
                         m_movePending = false;
+                        // Turn 12 (user): a NEW action by the attacker also
+                        // ends the block — the marker is not "left
+                        // attached" to the token.
+                        if (key == m_blockAttackerId && m_blockDieFace > 0)
+                            clearBlockMarker();
                     } else {
                         const bool cont = !m_tracePaths.isEmpty()
                             && m_tracePaths.last().last()
@@ -460,6 +477,14 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                                 path << QPoint(player->fieldX, player->fieldY);
                             path << QPoint(nx, ny);
                             m_tracePaths.append(path);
+                            // Turn 12 (user): "se l'attacker segue, il
+                            // simbolo deve sparire, non deve rimanergli
+                            // attaccato" — the helmet/die marker dies the
+                            // moment the attacker takes the follow step.
+                            // (The red glow on the defender keeps its
+                            // turn-8 lifecycle.)
+                            if (m_blockDieFace > 0)
+                                clearBlockMarker();
                         }
                         // else: a coordinate change with no move action and
                         // no active route (turn-setup placement, a push) —
@@ -469,6 +494,28 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             }
             setPlayerCoords(player, value);
         }
+        return;
+    }
+
+    // Turn 12 (user): the block is fully resolved when the server clears
+    // the defender id (capture: gameSetDefenderId null lands right after
+    // the follow decision, even when the attacker did NOT follow — the
+    // marker must be gone in both cases). The red glow keeps living until
+    // the attacker's actor glow dies (turn 8 rule).
+    if (id == QLatin1String("gameSetDefenderId")) {
+        if (value.isNull())
+            clearBlockMarker();
+        return;
+    }
+
+    // Turn 12 (user): the colored reroll dots follow the CURRENT-TURN
+    // remaining rerolls (capture: turnDataSetReRolls {key, value}).
+    if (id == QLatin1String("turnDataSetReRolls")) {
+        const int n = value.toInt();
+        if (key == QLatin1String("home"))
+            m_turnReRollsHome = n;
+        else if (key == QLatin1String("away"))
+            m_turnReRollsAway = n;
         return;
     }
 
@@ -508,6 +555,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         m_half = readInt(value);
         clearMoveTrace(); // a new half: the trace dies with the old turn
         m_blockTargetId.clear(); // round 13 turn 4: a new half kills the glow
+        m_actedThisTurn.clear();
+        m_blitzingPlayerId.clear();
+        m_trackNumbers.clear();
+        m_passTargetId.clear();
         return;
     }
 
@@ -562,6 +613,61 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // TS reference: only the "home" key updates the displayed turn.
         if (key == QLatin1String("home"))
             m_turn = readInt(value);
+        // Turn 13: a new turn resets the per-turn marks (green checks,
+        // blitzer, trail numbers — the server removes them individually,
+        // but a new turn starts a fresh numbering anyway). The block
+        // marker dies with the turn too.
+        m_actedThisTurn.clear();
+        m_blitzingPlayerId.clear();
+        m_trackNumbers.clear();
+        clearBlockMarker();
+        return;
+    }
+
+    // Turn 13 (user, "come su FUMBBL"): the numbered trail cells.
+    // GROUND TRUTH (capture): value = {coordinate: [x,y], number: N}.
+    // GROUND TRUTH (capture): value = {coordinate: [x, y], number: N}.
+    if (id == QLatin1String("fieldModelAddTrackNumber")) {
+        const QJsonObject o = value.toObject();
+        int x = -1, y = -1;
+        if (readCoords(o.value(QStringLiteral("coordinate")), x, y) && isOnField(x, y))
+            m_trackNumbers.insert(QPoint(x, y),
+                                  o.value(QStringLiteral("number")).toInt());
+        return;
+    }
+    if (id == QLatin1String("fieldModelRemoveTrackNumber")) {
+        const QJsonObject o = value.toObject();
+        int x = -1, y = -1;
+        if (readCoords(o.value(QStringLiteral("coordinate")), x, y))
+            m_trackNumbers.remove(QPoint(x, y));
+        return;
+    }
+
+    // Turn 14 (user): the PASS RECEIVER (white glow). GROUND TRUTH
+    // (capture): {playerId, targetSelectionStatus: "SELECTED", ...}; a
+    // null value ends the selection.
+    if (id == QLatin1String("fieldModelSetTargetSelectionState")) {
+        if (value.isNull())
+            m_passTargetId.clear();
+        else {
+            const QJsonObject o = value.toObject();
+            if (o.value(QStringLiteral("targetSelectionStatus")).toString()
+                    == QLatin1String("SELECTED"))
+                m_passTargetId = o.value(QStringLiteral("playerId")).toString();
+            else
+                m_passTargetId.clear();
+        }
+        return;
+    }
+
+    // Turn 13 (user): the BLITZ symbol. GROUND TRUTH (ffb-common
+    // TurnData.setBlitzUsed): the blitzer is the acting player at the
+    // moment the flag goes true.
+    if (id == QLatin1String("turnDataSetBlitzUsed")) {
+        if (value.toBool())
+            m_blitzingPlayerId = m_activePlayerId;
+        else
+            m_blitzingPlayerId.clear();
         return;
     }
 
@@ -595,6 +701,12 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // missing (user: "non sempre c'è il glow rosso").
         if (!m_blockTargetId.isEmpty() && m_activePlayerId != m_blockAttackerId)
             m_blockTargetId.clear();
+        // Turn 13 (user, "come su FUMBBL"): the moment a player STOPS
+        // being the actor, they have acted this turn — the green check.
+        // (A -> null and A -> B both count; A -> A is the same action
+        // continuing, no mark.)
+        if (!oldActor.isEmpty() && oldActor != newActor)
+            m_actedThisTurn.insert(oldActor);
         return;
     }
 

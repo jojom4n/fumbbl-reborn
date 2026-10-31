@@ -151,20 +151,28 @@ int main(int argc, char *argv[])
         const FFBPlayer *att0 = w.model()->findPlayerById(homePid);
         const FFBPlayer *def0 = w.model()->findPlayerById(awayPid);
         if (att0 && att0->hasCoords && def0 && def0->hasCoords) {
-            const int nx = def0->fieldX == att0->fieldX ? def0->fieldX
-                                                       : att0->fieldX + 1;
-            const int ny = (def0->fieldY == att0->fieldY)
-                ? (att0->fieldY == 0 ? 1 : att0->fieldY - 1)
-                : def0->fieldY;
             // put the defender right below the attacker (adjacent row)
             change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"),
                    awayPid, QJsonArray() << att0->fieldX << (att0->fieldY - 1));
-            Q_UNUSED(nx); Q_UNUSED(ny);
         }
+        // The fixture parks HOME #2 on the same cell as the defender — park
+        // it elsewhere so the block pair reads cleanly in the crop.
+        for (const FFBPlayer &p : w.model()->rosterHome())
+            if (p.hasCoords && p.playerId != homePid
+                && p.fieldX == att0->fieldX && p.fieldY == att0->fieldY - 1) {
+                change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"),
+                       p.playerId, QJsonArray() << (p.fieldX - 2) << p.fieldY);
+                break;
+            }
         w.onModelSync(ch, QJsonArray());
     }
     w.onModelSync(QJsonArray(), reports);
-    QApplication::processEvents();
+    // Let the tokens finish their glide to the new cells (the preview moved
+    // the defender + home #2), then capture.
+    for (int i = 0; i < 8; ++i) {
+        QThread::msleep(100);
+        QApplication::processEvents();
+    }
 
     // --- Round 13 turn 4: the RED BLOCK GLOW. The blockRoll above armed the
     //     glow on the DEFENDER (awayPid); capture a crop around him BEFORE the
@@ -178,6 +186,65 @@ int main(int argc, char *argv[])
             const int pad = int(cell * 3.5);
             QRect r(c.x() - pad, c.y() - pad, pad * 2, pad * 2);
             saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_blockglow.png");
+        }
+    }
+
+    // --- Turn 11: the block CHOICE -> the between-the-two marker switches
+    //     helmet -> the chosen die's SYMBOL (transparent). Face 2 = skull+arrow.
+    {
+        QJsonArray rep;
+        QJsonObject r;
+        r.insert("reportId", "blockChoice");
+        r.insert("defenderId", awayPid);
+        QJsonArray fr;
+        fr << 6 << 2;
+        r.insert("blockRoll", fr);
+        r.insert("diceIndex", 1);
+        rep.append(r);
+        w.onModelSync(QJsonArray(), rep);
+        QApplication::processEvents();
+    }
+
+    // --- Turn 13: the green CHECK — switch the actor away and back so the
+    //     previous actor gets marked as "already acted this turn", then
+    //     re-arm the block glow + choice (the actor switch cleared them).
+    {
+        QString awaySecond;
+        for (const FFBPlayer &p : w.model()->rosterAway())
+            if (p.hasCoords && p.playerId != awayPid) {
+                awaySecond = p.playerId;
+                break;
+            }
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerId"), QString(),
+               QJsonValue(awaySecond));
+        w.onModelSync(ch, QJsonArray());
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("actingPlayerSetPlayerId"), QString(),
+               QJsonValue(homePid));
+        QJsonArray rep2;
+        QJsonObject r2;
+        r2.insert("reportId", "blockRoll");
+        r2.insert("choosingTeamId", w.model()->teamHomeId());
+        QJsonArray faces2;
+        faces2 << 6 << 2;
+        r2.insert("blockRoll", faces2);
+        r2.insert("defenderId", awayPid);
+        rep2.append(r2);
+        w.onModelSync(ch2, rep2);
+        QJsonArray rep3;
+        QJsonObject r3;
+        r3.insert("reportId", "blockChoice");
+        r3.insert("defenderId", awayPid);
+        QJsonArray fr3;
+        fr3 << 6 << 2;
+        r3.insert("blockRoll", fr3);
+        r3.insert("diceIndex", 1);
+        rep3.append(r3);
+        w.onModelSync(QJsonArray(), rep3);
+        for (int i = 0; i < 8; ++i) {
+            QThread::msleep(100);
+            QApplication::processEvents();
         }
     }
 
@@ -211,20 +278,77 @@ int main(int argc, char *argv[])
         w.onModelSync(ch, QJsonArray());
     }
 
-    // --- Turn 11: the block CHOICE -> the between-the-two marker switches
-    //     helmet -> the chosen die's SYMBOL (transparent). Face 2 = skull+arrow.
+    // --- Turn 12/14 (user): per-turn token badges, numbered trail cells,
+    //     the white pass-receiver glow, and the ball flight (growing ball).
     {
-        QJsonArray rep;
-        QJsonObject r;
-        r.insert("reportId", "blockChoice");
-        r.insert("defenderId", awayPid);
-        QJsonArray fr;
-        fr << 6 << 2;
-        r.insert("blockRoll", fr);
-        r.insert("diceIndex", 1);
-        rep.append(r);
-        w.onModelSync(QJsonArray(), rep);
+        QJsonArray ch;
+        // Blitzed this turn -> gold lightning top-left on the actor.
+        change(ch, QStringLiteral("turnDataSetBlitzUsed"), QString(), QJsonValue(true));
+        // A confused player (state bit 512) -> gold "?" bottom-left.
+        for (const FFBPlayer &p : away)
+            if (p.hasCoords && p.playerId != awayPid) {
+                change(ch, QStringLiteral("fieldModelSetPlayerState"), p.playerId,
+                       QJsonValue(512));
+                break;
+            }
+        // Numbered trail cells (server: fieldModelAddTrackNumber) — the
+        // numbers land just above the trail the actor just drew.
+        const auto trackAt = [&](int x, int y, int n) {
+            QJsonObject o;
+            o.insert(QStringLiteral("coordinate"), QJsonArray() << x << y);
+            o.insert(QStringLiteral("number"), n);
+            change(ch, QStringLiteral("fieldModelAddTrackNumber"), QString(), o);
+        };
+        trackAt(trailX - 1, trailY, 1);
+        trackAt(trailX - 2, trailY, 2);
+        trackAt(trailX - 2, trailY - 1, 3);
+        trackAt(trailX - 2, trailY - 2, 4);
+        // Pass receiver -> WHITE glow (fieldModelSetTargetSelectionState).
+        for (const FFBPlayer &p : away)
+            if (p.hasCoords && p.playerId != awayPid) {
+                QJsonObject o;
+                o.insert(QStringLiteral("playerId"), p.playerId);
+                o.insert(QStringLiteral("targetSelectionStatus"),
+                         QStringLiteral("SELECTED"));
+                o.insert(QStringLiteral("targetSelectionStatusIsCommitted"), false);
+                o.insert(QStringLiteral("usedSkills"), QJsonArray());
+                change(ch, QStringLiteral("fieldModelSetTargetSelectionState"),
+                       QString(), o);
+                break;
+            }
+        w.onModelSync(ch, QJsonArray());
         QApplication::processEvents();
+    }
+
+    // Ball flight: the throw steps through the grid; the ball GROWS with
+    // every step (turn 14). Grab it mid-flight (settle timer = 900ms).
+    {
+        // Throw LEFT (towards the home TD) — that side of the fixture is
+        // empty, so the ball lands on free squares (a ball on a player's
+        // square is intentionally not drawn).
+        const FFBPlayer *baller = w.model()->findPlayerById(homePid);
+        int bx = qBound(4, (baller ? baller->fieldX : 10) - 1, 22);
+        int by = qBound(2, baller ? baller->fieldY : 7, 12);
+        QJsonArray ch;
+        change(ch, QStringLiteral("fieldModelSetBallCoordinate"), QString(),
+               QJsonArray() << bx << by);
+        w.onModelSync(ch, QJsonArray());
+        QThread::msleep(150);
+        QApplication::processEvents();
+        for (int step = 1; step <= 3; ++step) {
+            QJsonArray ch2;
+            change(ch2, QStringLiteral("fieldModelSetBallCoordinate"), QString(),
+                   QJsonArray() << (bx - step) << by);
+            w.onModelSync(ch2, QJsonArray());
+            QThread::msleep(150);
+            QApplication::processEvents();
+        }
+        const QPoint c = field->cellCenterPx(bx - 3, by);
+        const qreal cell = field->fieldRect().width() / 26.0;
+        const int pad = int(cell * 4);
+        saveCrop(*field, QRect(c.x() - pad, c.y() - pad, pad * 2, pad * 2)
+                        .intersected(field->rect()),
+                 outDir + "/round13_ballflight.png");
     }
 
     // Let the logos land.

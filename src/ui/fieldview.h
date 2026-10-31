@@ -128,6 +128,24 @@ public:
                         int dieFace);
     QString blockTarget() const { return m_blockTarget; }
 
+    // Round 13 turn 13 (user, "come su FUMBBL") — per-token marks, all
+    // drawn as small BADGES ON THE RING (white disc + gold symbol, the
+    // check is the green-disc exception):
+    //   * top-right  : GREEN disc + white CHECK  -> already acted this turn
+    //   * top-left   : white disc + gold LIGHTNING -> blitzed this turn
+    //   * bottom-left: white disc + gold "?"     -> confused (state bit 512)
+    void setActedPlayers(const QSet<QString> &ids);
+    void setBlitzingPlayer(const QString &playerId); // empty = none
+    // Turn 13: the numbered trail cells from the server
+    // (fieldModelAddTrackNumber {coordinate, number}).
+    void setTrackNumbers(const QHash<QPoint, int> &numbers);
+
+    // Round 13 turn 14 (user): the PASS RECEIVER glows — a WHITE radial
+    // halo + ring (user: "il glow intorno a chi riceve fallo bianco"),
+    // same breathing as the other glows. Empty id = none.
+    void setPassTarget(const QString &playerId);
+    QString passTarget() const { return m_passTarget; }
+
     // Action wheel (Mockup F play mode — kept for the future game client,
     // round 9): the wheel + target brackets are drawn ONLY for an explicit
     // target (setActionWheelTarget), never for the selection or for the
@@ -239,6 +257,20 @@ private:
     QString m_blockTarget; // round 13 turn 4: red glow (player being blocked)
     QString m_blockAttacker; // turn 11: the pair for the between-the-two marker
     int m_blockDieFace = 0; // turn 11: 0 = helmet, 1..6 = die symbol
+
+    // Turn 13: per-turn token marks (pushed by MainWindow from the model).
+    QSet<QString> m_actedPlayers;      // green check top-right
+    QString m_blitzingPlayer;          // gold lightning top-left
+    QHash<QPoint, int> m_trackNumbers; // numbered trail cells
+    QString m_passTarget;              // turn 14: white glow (pass receiver)
+
+    // Turn 14 (user): the BALL FLIGHT — while the ball steps through the
+    // grid after a throw, it grows along the trajectory (the further the
+    // receiver, the bigger; a 1-square fumble hop grows nothing). Size
+    // factor 1.0 at rest, up to kBallFlightMax.
+    int m_ballFlightSteps = 0;   // steps since the flight started
+    bool m_ballMoving = false;   // a step arrived in the last settle tick
+    QTimer *m_ballSettleTimer = nullptr;
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => ANIMATED rain

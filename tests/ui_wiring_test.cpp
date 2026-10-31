@@ -132,6 +132,7 @@ private slots:
     void blockMarkerDrawsBetweenPair();
     // ---- Round 13 turn 9 (autoscroll checkbox + stick-to-bottom) ----
     void actionLogAutoscrollStickToBottom();
+    void actionLogDiceImagesRender();
 };
 
 namespace {
@@ -1449,18 +1450,23 @@ void UiWiringTest::downedFaceNotSquashed()
     };
     // Round 13 turn 6: the token's ring is the TEAM RING (home = thick
     // blue, away = thick red) — the sanity pixel checks for that blue.
+    // Turn 12: the 0.07 ring is thinner than a pixel — every ring pixel is
+    // an AA blend of ring-blue over disc/grass, so test for BLUE-DOMINANT,
+    // not full-saturation blue.
     const auto homeBlueRing = [](const QImage &im, int x, int y) {
         const QRgb c = im.pixel(x, y);
-        return qBlue(c) > 180 && qBlue(c) > qGreen(c) && qGreen(c) > qRed(c);
+        return qBlue(c) > 80 && qBlue(c) > qRed(c) + 25 && qBlue(c) > qGreen(c) + 15;
     };
 
     const Shot standing = render(1);
     const Shot prone = render(3);
     // 12 o'clock of the team ring (between the face and the token edge):
     // a full round circle puts ring color there, a squashed ellipse puts
-    // grass. The radius scales with the actual cell size.
-    const int ringY1 = standing.c.y() - int(standing.cell * 0.42);
-    const int ringY2 = prone.c.y() - int(prone.cell * 0.42);
+    // grass. The radius scales with the actual cell size. Turn 12: the
+    // ring thinned to 0.07 (token s = 0.92 cell) -> band spans
+    // 0.432..0.46 cell: sample the middle of the band.
+    const int ringY1 = standing.c.y() - int(standing.cell * 0.43);
+    const int ringY2 = prone.c.y() - int(prone.cell * 0.43);
     QVERIFY2(homeBlueRing(standing.img, standing.c.x(), ringY1),
              "geometry sanity: standing token ring is home-blue");
     QVERIFY2(homeBlueRing(prone.img, prone.c.x(), ringY2),
@@ -1852,6 +1858,54 @@ void UiWiringTest::dugoutHoverSurvivesModelSync()
 // Round 13 turn 9 (user): the action log autoscrolls when the user is (or
 // comes back) at the bottom; scrolling up pauses it; the tiny 'auto'
 // checkbox in the title bar reflects the state.
+// Round 13 turn 12 (user: "TUTTI i dadi non appaiono"): the dice IMAGES
+// must actually render in the log rows — not empty broken-image boxes.
+// Regression for the missing-HTML-quotes bug in renderMiddle's dieImg.
+void UiWiringTest::actionLogDiceImagesRender()
+{
+    ActionLogWidget log;
+    log.resize(420, 300);
+    log.show();
+    QApplication::processEvents();
+
+    DiceLogLine l;
+    l.text = "Block roll";
+    l.d6Roll = 4;
+    l.d6Target = 5;
+    l.d6ShowResult = true;
+    l.d6Ok = true;
+    log.appendLine(l, "Gorker");
+    QApplication::processEvents();
+    log.resize(log.width() + 1, log.height());
+    log.resize(420, log.height());
+    QApplication::processEvents();
+
+    // The mid label of the row carries the dice <img>; grab it and look
+    // for the die's RED pixels (a broken-image placeholder has none).
+    QLabel *mid = nullptr;
+    for (QLabel *l2 : log.findChildren<QLabel *>())
+        if (l2->text().contains("Block roll")) {
+            mid = l2;
+            break;
+        }
+    QVERIFY2(mid, "the row has its middle label");
+    const QImage im = mid->grab().toImage();
+    int redPx = 0, totalPx = 0;
+    for (int y = 0; y < im.height(); ++y)
+        for (int x = 0; x < im.width(); ++x) {
+            if (im.pixel(x, y) == 0)
+                continue;
+            ++totalPx;
+            const QRgb c = im.pixel(x, y);
+            if (qRed(c) > 120 && qGreen(c) < 80 && qBlue(c) < 80)
+                ++redPx;
+        }
+    QVERIFY2(totalPx > 100, "the label actually painted something");
+    QVERIFY2(redPx > 30,
+             "the d6 die image rendered (red face pixels found) — "
+             "if this fails the <img> src quotes are broken again");
+}
+
 void UiWiringTest::actionLogAutoscrollStickToBottom()
 {
     ActionLogWidget log;
@@ -1920,17 +1974,30 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
                                 int(c00.y() + 7.5 * (c01.y() - c00.y())));
     const int cell = qMax(1, c10.x() - c00.x());
     fprintf(stderr, "DBG box: col10=%d,%d cell=%d\n", col10.x(), col10.y(), cell);
-    // The marker colors: white halo / light dome or die-red.
+    // The marker colors (turn 12): the unified marker is a WHITE DISC with
+    // a dark-ink rim (46,40,34) and either the GREY Qwen helmet
+    // (96,100,108) or a GOLD symbol (224,158,0). Detect helmet-grey, gold
+    // or ink-rim pixels — none of those exist elsewhere on the field
+    // (grid = neutral white, rings = saturated blue/red, face art is
+    // excluded with the token discs).
     const auto isMarker = [](QRgb c) {
         const int r = qRed(c), g = qGreen(c), b = qBlue(c);
-        // The marker halo/dome is a GLOWING CYAN (b > r + 40): nothing
-        // else on the field is cyan (grid = neutral white, rings =
-        // saturated blue/red, tokens = light neutral).
-        return r > 150 && b > r + 25 && g > r + 10;
+        // The Qwen helmet is a NEUTRAL grey (shadows 28,28,28 up to
+        // highlights) — r~g~b keeps the token's dark disc (35,35,42, b-g=7)
+        // and the brown pit wood out.
+        const bool greyNeutral = std::max(std::abs(r - g), std::max(std::abs(g - b),
+                                                                     std::abs(r - b))) <= 2
+                                 && r >= 22 && r <= 175;
+        // The bluish grey body (96,100,108).
+        const bool greyBlue = r > 75 && r < 175 && g > 80 && g < 185 && b > 85 && b < 195
+                              && b >= g && g >= r && (b - r) < 60;
+        // Gold symbol (224,158,0) incl. its AA blend over the white disc:
+        // strong red over blue + green over blue. (The number-badge gold
+        // rim lives on the token disc, excluded by the scan.)
+        const bool gold = r > 180 && g > 120 && g < 215 && b < 135
+                          && (r - b) > 90 && (g - b) > 30;
+        return greyNeutral || greyBlue || gold;
     };
-    // True if ANY marker pixel is in the box.
-    // Scan the WHOLE field for marker pixels (bluish white) and report
-    // their bounding box — robust against exact midpoint conventions.
     struct Found {
         bool any = false; int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
         bool operator==(const Found &o) const
@@ -1938,14 +2005,19 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
                 && x1 == o.x1 && y1 == o.y1; }
         bool operator!=(const Found &o) const { return !(*this == o); }
     };
-    // Paint space != widget space (pan offset), so don't chase the exact
-    // midpoint: scan the whole field box for the marker's cyan glow,
-    // EXCLUDING the two token discs (face art contains cyan-ish eye
-    // pixels). The marker sits BETWEEN the tokens, outside both discs.
-    const QRect fbox = field.fieldRectPx().toAlignedRect().adjusted(-cell, -cell, cell, cell);
+    // The marker sits at the midpoint of the two tokens: scan a box around
+    // the geometric midpoint (paint space may differ from widget space, so
+    // the midbox is generous: +/- 0.8 cell) and EXCLUDE the two token
+    // discs (face art / number badge contain marker-like pixels).
+    const QPoint mid = QPoint((field.cellCenterPx(10, 6).x()
+                               + field.cellCenterPx(10, 8).x()) / 2,
+                              (field.cellCenterPx(10, 6).y()
+                               + field.cellCenterPx(10, 8).y()) / 2);
+    const int mr = int(cell * 0.8);
+    const QRect mbox(mid.x() - mr, mid.y() - mr, mr * 2, mr * 2);
     const QPoint tokA = field.cellCenterPx(10, 6);
     const QPoint tokD = field.cellCenterPx(10, 8);
-    const int d2 = int(0.2 * cell * cell); // 0.45-cell disc radius, squared
+    const int d2 = int(0.2 * cell * cell); // ~token disc radius, squared
     const auto inTokDisc = [&](int x, int y) {
         const auto d = [&](const QPoint &c) {
             const int dx = x - c.x(), dy = y - c.y();
@@ -1956,20 +2028,24 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     const auto findMarker = [&]() {
         const QImage im = field.grab().toImage();
         Found f;
-        for (int y = qBound(0, fbox.top(), im.height() - 1);
-             y <= qBound(0, fbox.bottom(), im.height() - 1); ++y)
-            for (int x = qBound(0, fbox.left(), im.width() - 1);
-                 x <= qBound(0, fbox.right(), im.width() - 1); ++x) {
+        int hits = 0;
+        for (int y = qBound(0, mbox.top(), im.height() - 1);
+             y <= qBound(0, mbox.bottom(), im.height() - 1); ++y)
+            for (int x = qBound(0, mbox.left(), im.width() - 1);
+                 x <= qBound(0, mbox.right(), im.width() - 1); ++x) {
                 if (inTokDisc(x, y))
                     continue;
                 if (isMarker(im.pixel(x, y))) {
-                    f.any = true;
+                    ++hits;
                     f.x0 = qMin(f.x0 ? f.x0 : x, x);
                     f.y0 = qMin(f.y0 ? f.y0 : y, y);
                     f.x1 = qMax(f.x1 ? f.x1 : x, x);
                     f.y1 = qMax(f.y1 ? f.y1 : y, y);
                 }
             }
+        // The marker is a dense grey-helmet / gold-symbol cluster; stray AA
+        // pixels (token rim, badge edge) stay well below this.
+        f.any = hits >= 25;
         return f;
     };
 
