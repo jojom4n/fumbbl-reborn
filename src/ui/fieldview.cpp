@@ -21,6 +21,30 @@
 
 #include <cmath>
 
+// Round 13 turn 6 (user): the TEAM RING colors. Home team (left in the
+// header) = BLUE, away team (right in the header) = RED. Thick ("cicciotelli"),
+// drawn INSIDE the token so they never overflow the cell, with a thin dark
+// edge so the ring reads clearly against the face and the grass.
+namespace {
+inline QColor teamRingColor(bool home)
+{
+    return home ? QColor(0x2f, 0x6f, 0xe8) : QColor(0xe0, 0x28, 0x1e);
+}
+inline void drawTeamRing(QPainter &p, const QPointF &c, qreal d, bool home)
+{
+    const qreal w = d * 0.17;             // thick ring
+    const qreal rr = d * 0.5 - w / 2;     // outer edge = token edge (no overflow)
+    QPen rp(teamRingColor(home), w);
+    p.setPen(rp);
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(c, rr, rr);
+    QPen edge(QColor(18, 18, 24, 220), qMax(1.0, w * 0.28));
+    p.setPen(edge);
+    const qreal eo = rr + w / 2 - edge.widthF() / 2;
+    p.drawEllipse(c, eo, eo);
+}
+} // namespace
+
 FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
 {
@@ -1298,7 +1322,7 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         const QRectF ring(c.x() - faceD / 2, c.y() - faceD / 2, faceD, faceD);
         const QPixmap pm = assets::playerFace(e->positionName, e->race);
         if (!pm.isNull()) {
-            const qreal fr = faceD * 0.44;
+            const qreal fr = faceD * 0.31; // clears the thick ring (turn 6)
             const QRectF faceR(c.x() - fr, c.y() - fr, fr * 2, fr * 2);
             p.save();
             QPainterPath clip;
@@ -1308,10 +1332,9 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
             p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
             p.restore();
         }
-        p.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 235),
-                      qMax(1.0, faceD * 0.09)));
-        p.setBrush(Qt::NoBrush);
-        p.drawEllipse(ring);
+        // Round 13 turn 6: the SAME thick team ring as on the field (home
+        // blue / away red) — the bench reads as the same team.
+        drawTeamRing(p, c, faceD, leftSide);
 
         // Number badge (bottom-right of the ring, like the field tokens).
         if (e->number > 0) {
@@ -1478,6 +1501,23 @@ void FieldView::paintEvent(QPaintEvent *)
     //     the exact grid. The texture only supplies the grass detail, which
     //     stays soft even when zoomed (fine detail, tolerable) while lines
     //     and text stay razor-sharp at any zoom/HiDPI (user point 15).
+    // ROUND 13 TURN 6 (user: "gli angoli del campo sembrano giustapposti a
+    // qualcosa sotto"): the pit's inner corners are CURVED (the stone arch
+    // of the frame). The field is clipped to a ROUNDED rect (the manifest's
+    // pitRadius) so the grass/TD corners follow the arch instead of poking
+    // a sharp 90° corner over it. Tokens/glow are drawn AFTER the restore,
+    // unclipped.
+    p.save();
+    {
+        QPainterPath fieldClip;
+        const qreal prx = m_stadium.pitRadiusX * s.width();
+        const qreal pry = m_stadium.pitRadiusY * s.height();
+        if (prx > 0.5 || pry > 0.5)
+            fieldClip.addRoundedRect(f, prx, pry);
+        else
+            fieldClip.addRect(f);
+        p.setClipPath(fieldClip);
+    }
     const QPixmap tex = assets::fieldTexture();
     if (!tex.isNull()) {
         // ROUND 13 TURN 4 (user): NO empty grass apron — the 26x15 pitch is
@@ -1571,6 +1611,10 @@ void FieldView::paintEvent(QPaintEvent *)
     // --- The actor's cumulative MOVE TRAIL (round 13): drawn on the field,
     //     under the tokens — the player walks on top of his own trail.
     drawMoveTrail(p);
+
+    // End of the CLIPPED field (rounded pit corners). Everything after this
+    // (tokens, ball, glows, rain) is unclipped.
+    p.restore();
 
     // --- Ball on an empty square -------------------------------------------
     const auto atBall = [this](const QVector<PlayerToken> &team) {
@@ -1667,8 +1711,6 @@ void FieldView::paintEvent(QPaintEvent *)
     // the face assets are missing.
     const auto drawTeam = [this, &p, &f, cellW, cellH](const QVector<PlayerToken> &players,
                                                    bool sideHome) {
-        const QColor team = sideHome ? m_homeColor : m_awayColor;
-        const QColor teamDark = team.darker(150);
         const qreal s = qMin(cellW, cellH) * 0.92;
         for (const PlayerToken &t : players) {
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
@@ -1679,31 +1721,39 @@ void FieldView::paintEvent(QPaintEvent *)
             const QPointF vpos = tokenVisualPos(t);
             const QPointF ctr(f.x() + vpos.x() * cellW, f.y() + vpos.y() * cellH);
 
-            // Team-colored circle behind the face. Round 11: DOWN players
-            // keep the FULL round token — round 8 stretched the face into a
-            // flat ellipse and the face came out "schiacciata" (user
-            // report). Prone/stunned is shown by the state mark instead.
+            // Round 11: DOWN players keep the FULL round token — round 8
+            // stretched the face into a flat ellipse and the face came out
+            // "schiacciata" (user report). Prone/stunned is shown by the
+            // state mark instead.
+            //
+            // ROUND 13 TURN 6 (user): home = BLUE ring, away = RED ring,
+            // THICK ("cicciotelli"), inside the cell, clearly readable
+            // around the human face: dark base disc -> face -> thick team
+            // ring on the outer rim (outer edge = token edge, no overflow).
             const QRectF circ(ctr.x() - s * 0.5, ctr.y() - s * 0.5, s, s);
-            p.setPen(QPen(teamDark, 1.6));
-            p.setBrush(team);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0x23, 0x23, 0x2a));
             p.drawEllipse(circ);
 
-            // Face on top (slightly inset from the circle). Custom-named
-            // star pieces fall back to the side's race representative. The
-            // face assets are square (RGB, no alpha), so the face is clipped
-            // to the team circle — the mockup does the same with a mask.
+            // Face on top (inset from the ring). Custom-named star pieces
+            // fall back to the side's race representative. The face assets
+            // are square (RGB, no alpha), so the face is clipped to a
+            // circle — the mockup does the same with a mask.
             const QString race = sideHome ? m_homeRace : m_awayRace;
             const QPixmap pm = assets::playerFace(t.positionName, race);
             if (!pm.isNull()) {
-                const qreal fs = s * 0.78;
+                const qreal fs = s * 0.64; // clears the thick ring's inner edge
                 const QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
                 p.save();
                 QPainterPath clip;
-                clip.addEllipse(circ.adjusted(fs * 0.06, fs * 0.06, -fs * 0.06, -fs * 0.06));
+                clip.addEllipse(face.adjusted(fs * 0.02, fs * 0.02, -fs * 0.02, -fs * 0.02));
                 p.setClipPath(clip);
                 p.drawPixmap(face, pm, QRectF(0, 0, pm.width(), pm.height()));
                 p.restore();
             }
+
+            // The thick TEAM ring (home blue / away red) on the outer rim.
+            drawTeamRing(p, ctr, s, sideHome);
 
             // Round 10: player state mark over the face — prone = "/",
             // stunned = "X" (white with a dark under-stroke for contrast).

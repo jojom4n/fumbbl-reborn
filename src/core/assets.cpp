@@ -309,6 +309,9 @@ StadiumManifest stadiumManifest(const QString &name)
     m.fieldPit = readRect(o, QStringLiteral("fieldPit"));
     m.dugoutHome = readRect(o, QStringLiteral("dugoutHome"));
     m.dugoutAway = readRect(o, QStringLiteral("dugoutAway"));
+    const QJsonObject pr = o.value(QStringLiteral("pitRadius")).toObject();
+    m.pitRadiusX = pr.value(QStringLiteral("x")).toDouble();
+    m.pitRadiusY = pr.value(QStringLiteral("y")).toDouble();
     m.valid = !m.fieldPit.isNull();
     return m;
 }

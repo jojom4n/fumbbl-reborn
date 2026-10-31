@@ -38,6 +38,13 @@ struct StadiumManifest {
     QRectF fieldPit;   // the empty pit the 26x15 field is fitted into
     QRectF dugoutHome; // team 1 (home) dugout — top-left pavilion
     QRectF dugoutAway; // team 2 (away) dugout — top-right pavilion
+    // Round 13 turn 6 (user: the field corners must not look pasted ON the
+    // frame): the frame's inner corner curve, normalized to the stadium
+    // image size (x -> width, y -> height). 0,0 = square-cornered pit.
+    // The client clips the field to a rounded rect with this radius so the
+    // grass corners follow the stone arch of the pit.
+    qreal pitRadiusX = 0;
+    qreal pitRadiusY = 0;
 };
 // The stadium art for `name`. Null pixmap when missing.
 QPixmap stadiumImage(const QString &name = QStringLiteral("medieval_arena"));

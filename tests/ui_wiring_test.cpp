@@ -1437,21 +1437,23 @@ void UiWiringTest::downedFaceNotSquashed()
         return { field.grab().toImage(), field.cellCenterPx(13, 7),
                  field.fieldRect().width() / 26.0 };
     };
-    const auto goldish = [](const QImage &im, int x, int y) {
+    // Round 13 turn 6: the token's ring is the TEAM RING (home = thick
+    // blue, away = thick red) — the sanity pixel checks for that blue.
+    const auto homeBlueRing = [](const QImage &im, int x, int y) {
         const QRgb c = im.pixel(x, y);
-        return qRed(c) > 120 && qRed(c) >= qGreen(c) && qGreen(c) > qBlue(c);
+        return qBlue(c) > 180 && qBlue(c) > qGreen(c) && qGreen(c) > qRed(c);
     };
 
     const Shot standing = render(1);
     const Shot prone = render(3);
-    // 12 o'clock of the team ring (between the face clip and the circle
-    // edge): a full round circle puts team color there, a squashed ellipse
-    // puts grass. The radius scales with the actual cell size.
+    // 12 o'clock of the team ring (between the face and the token edge):
+    // a full round circle puts ring color there, a squashed ellipse puts
+    // grass. The radius scales with the actual cell size.
     const int ringY1 = standing.c.y() - int(standing.cell * 0.42);
     const int ringY2 = prone.c.y() - int(prone.cell * 0.42);
-    QVERIFY2(goldish(standing.img, standing.c.x(), ringY1),
-             "geometry sanity: standing token ring is gold");
-    QVERIFY2(goldish(prone.img, prone.c.x(), ringY2),
+    QVERIFY2(homeBlueRing(standing.img, standing.c.x(), ringY1),
+             "geometry sanity: standing token ring is home-blue");
+    QVERIFY2(homeBlueRing(prone.img, prone.c.x(), ringY2),
              "downed token must keep the FULL round circle (face not squashed)");
 }
 
