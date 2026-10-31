@@ -84,6 +84,13 @@ QPixmap dugoutTexture();
 // "reserve" | "ko" | "injured". 512px sources (4K-ready: downscaled in the
 // UI, never upscaled).
 QPixmap dugoutSymbol(const QString &kind);
+
+// Round 13 turn 5 (user's idea): the dugout WOOD PANEL as a separate asset
+// (assets/dugout/panel.png), MOUNTED by the field view on the stadium
+// manifest's dugout rects — the dugout is universal: any stadium ships its
+// rect, the same (or another) panel mounts on it. Null = the vector
+// fallback panel is drawn instead.
+QPixmap dugoutPanel();
 // The FANTASY STADIUM backdrop (assets/stadium/stands.png, Qwen top-down:
 // packed medieval stands, inspired by Blood Bowl 3 — round 13, user). Fills
 // the widget behind the field scene (replaces the flat grey apron). Null

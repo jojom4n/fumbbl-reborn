@@ -578,6 +578,7 @@ void MainWindow::applyModelToUi()
             e.positionName = pl.position;
             e.race = race;
             e.state = pl.state;
+            e.number = pl.number; // turn 5: number badge on the bench face
             out.append(e);
         }
         return out;

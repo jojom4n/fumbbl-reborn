@@ -266,6 +266,11 @@ QPixmap dugoutSymbol(const QString &kind)
     return loadPixmap(QStringLiteral("dugout/sym_%1.png").arg(kind));
 }
 
+QPixmap dugoutPanel()
+{
+    return loadPixmap(QStringLiteral("dugout/panel.png"));
+}
+
 QPixmap stadiumTexture()
 {
     return loadPixmap(QStringLiteral("stadium/stands.png"));
@@ -273,6 +278,13 @@ QPixmap stadiumTexture()
 
 QPixmap stadiumImage(const QString &name)
 {
+    // Round 13 turn 5 (user: the stadium must be 4K-beautiful like the
+    // field): prefer the 4K asset (stadium_4k.png, 3840px) — it stays crisp
+    // at any zoom on 4K monitors; stadiums without one fall back to the
+    // base resolution.
+    const QString fourK = QStringLiteral("stadiums/%1/stadium_4k.png").arg(name);
+    if (!dir().isEmpty() && QFile::exists(dir() + QStringLiteral("/") + fourK))
+        return loadPixmap(fourK);
     return loadPixmap(QStringLiteral("stadiums/%1/stadium.png").arg(name));
 }
 

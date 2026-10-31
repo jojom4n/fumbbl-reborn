@@ -65,11 +65,14 @@ in `memory-bank/` (soprattutto `activeContext.md`).
   sono ground truth: riprodotte e corrette nel codice.
 
 ## 5bis. ASSET GRAFICI E FONTI UFFICIALI (PERMANENTI, richieste esplicitamente)
-- **Tutti gli asset grafici si fanno SEMPRE con Qwen-Image** (ComfyUI, CPU),
-  MAI disegnati a mano in QPainter/codice (niente simboli/icone vettoriali
-  "fatti a mano" in codice). Il codice (QPainter) serve solo per la struttura
-  vettoriale del CAMPO (griglia, linee, testo) e per il layout; ogni elemento
-  grafico (simboli, icone, texture, sfondi) è un asset Qwen.
+- **Gli asset grafici principali (stadi, texture, sfondi, icone complesse)
+  si fanno con Qwen-Image** (ComfyUI, CPU).
+- **QPainter SBLOCCATO (31/ott, utente)**: se una cosa può essere disegnata
+  in modo ECCELLENTE con QPainter (badge di stato, simboli piccoli, indicatori,
+  struttura vettoriale, layout, testo), usarlo pure — il vettoriale è
+  preferibile quando rende più nitido (zoom/4K) e più controllabile. La scelta
+  è per elemento: texture/sfondi/arte complessa = Qwen; badge/icone piccole/
+  struttura = QPainter.
 - **I simboli ufficiali (dugout Reserves/KO/Injured, ecc.) devono essere
   PERFETTI e PRESSOCHÉ IDENTICI a quelli ufficiali della GW**: si parte
   SEMPRE dall'immagine ufficiale di riferimento e si replica con Qwen-Image

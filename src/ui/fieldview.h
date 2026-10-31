@@ -67,6 +67,8 @@ public:
         QString positionName; // face lookup
         QString race;         // team race (face fallback)
         int state = 0;        // ffb PlayerState
+        int number = 0;       // round 13 turn 5: the number badge (bottom
+                              // right of the face ring, like field tokens)
     };
     void setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> &away);
     void setBall(int x, int y, bool inPlay);
@@ -153,13 +155,6 @@ public:
     qreal zoom() const { return m_zoom; }
     QPointF pan() const { return m_pan; } // tests
     void resetView();
-
-    // Pure edge-pan computation (testable without a real cursor): the pan
-    // delta in WIDGET px for the cursor at `cursor` (global) given the
-    // top-level `windowRect` (global). Zero outside the edge zone / at
-    // zoom 1. Looking left = content moves right = positive x.
-    static QPointF edgePanDelta(const QRect &windowRect, const QPoint &cursor,
-                                qreal zoom);
 
     // The actor's CUMULATIVE move trail (round 13): one polyline per move
     // action, through the field cell centers, with an arrow at the end of
@@ -278,14 +273,9 @@ private:
     QPointF m_pan;           // translation in widget px (0,0 at zoom 1)
     QString m_hoverId; // hover key: token playerId, "box:<name>", or ""
 
-    // Round 13: EDGE PAN — a fast timer polls the global cursor position:
-    // inside the window's edge zone the view scrolls in that direction and
-    // the cursor is clamped to the window (multi-monitor: it must not spill
-    // onto the neighboring screen). Active only while zoomed (at zoom 1 the
-    // letterboxed scene cannot pan, and trapping the mouse would be a
-    // nuisance).
-    QTimer *m_edgePanTimer = nullptr;
-    void edgePanTick();
+    // Round 13 turn 5 (user): the edge pan was REMOVED (the cursor at the
+    // window edge kept scrolling the zoomed field). Only WASD (smoothPan)
+    // + right-drag + wheel-zoom + middle-reset remain.
 
     // Round 13 (user): SMOOTH keyboard pan — the held WASD keys are tracked
     // and a fast timer pans continuously (no more jumpy auto-repeat steps).
