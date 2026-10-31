@@ -248,6 +248,24 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Crop the marker with the CHOSEN die (face 2 = both down: skull +
+    // burst) while it is still armed — before the trail move clears it.
+    {
+        const FFBPlayer *att = w.model()->findPlayerById(homePid);
+        const FFBPlayer *def = w.model()->findPlayerById(awayPid);
+        if (att && def && att->hasCoords && def->hasCoords) {
+            const qreal cell = field->fieldRect().width() / 26.0;
+            const QPoint a = field->cellCenterPx(att->fieldX, att->fieldY);
+            const QPoint b = field->cellCenterPx(def->fieldX, def->fieldY);
+            QRect r(qMin(a.x(), b.x()), qMin(a.y(), b.y()),
+                    qMax(1, qAbs(a.x() - b.x())), qMax(1, qAbs(a.y() - b.y())));
+            const int pad = int(cell * 2.5);
+            r.adjust(-pad, -pad, pad, pad);
+            saveCrop(*field, r.intersected(field->rect()),
+                     outDir + "/round13_blockchoice.png");
+        }
+    }
+
     // --- Simulate a MOVE so the trail draws (round 13) --------------------------
     // The actor makes two moves from its REAL position, stepping ADJACENT
     // squares (like the server does): the trace must ACCUMULATE (one arrow

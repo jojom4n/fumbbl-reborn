@@ -1456,26 +1456,46 @@ void drawBentArrow(QPainter &p, const QPointF &c, qreal k, int dir)
     p.restore();
 }
 
-// A gold skull (the die faces 1/2 glyph).
-void drawGoldSkull(QPainter &p, const QPointF &c, qreal r)
+// Skull glyph, color-parametrized (face 1 = gold on the disc; face 2 =
+// disc-white on the gold burst).
+void drawSkull(QPainter &p, const QPointF &c, qreal r, const QColor &body,
+               const QColor &cavity, bool outlined)
 {
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(QPen(kMarkInk, r * 0.10, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(kMarkGold);
+    if (outlined) {
+        p.setPen(QPen(kMarkInk, r * 0.10, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(body);
+    } else {
+        p.setPen(Qt::NoPen);
+        p.setBrush(body);
+    }
     p.drawEllipse(c, r, r * 0.92);
     const QPointF jaw(c.x(), c.y() + r * 0.55);
     p.drawRoundedRect(QRectF(c.x() - r * 0.5, jaw.y(), r, r * 0.55), r * 0.18, r * 0.18);
-    // eye sockets: the disc white shows through.
+    // eye sockets + nose: the cavity color shows through.
     p.setPen(Qt::NoPen);
-    p.setBrush(kMarkDisc);
+    p.setBrush(cavity);
     p.drawEllipse(QPointF(c.x() - r * 0.42, c.y() - r * 0.15), r * 0.30, r * 0.32);
     p.drawEllipse(QPointF(c.x() + r * 0.42, c.y() - r * 0.15), r * 0.30, r * 0.32);
     QPolygonF nose;
     nose << QPointF(c.x(), c.y() + r * 0.10)
          << QPointF(c.x() - r * 0.22, c.y() + r * 0.45)
          << QPointF(c.x() + r * 0.22, c.y() + r * 0.45);
-    p.setBrush(kMarkInk);
     p.drawPolygon(nose);
+}
+
+// The official spiky burst (star) glyph — faces 2/6 (and the badge rim
+// look). Sized to fill most of the white disc.
+QPolygonF burstPolygon(const QPointF &c, qreal k, qreal scale)
+{
+    QPolygonF burst;
+    const int n = 12;
+    for (int i = 0; i < n * 2; ++i) {
+        const qreal rr = (i % 2 == 0 ? 0.58 * k : 0.28 * k) * scale;
+        const qreal a = M_PI * i / n - M_PI / 2;
+        burst << QPointF(c.x() + std::cos(a) * rr, c.y() + std::sin(a) * rr);
+    }
+    return burst;
 }
 
 void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
@@ -1483,44 +1503,43 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
     // k = marker radius. WHITE DISC + gold symbol, every face.
     p.save();
     markerDisc(p, c, 0.62 * k);
+    // GROUND TRUTH — official GW block die (BB2025, verified on official
+    // photos, see tools/mockup/compose_f.py::block_dice):
+    //   1 skull (player down)   2 skull IN A BURST (BOTH DOWN)
+    //   3 push arrow            4 push arrow (same symbol)
+    //   5 '!' in a burst (STUMBLE)  6 burst (POW)
     switch (face) {
-    case 5: { // exclamation mark
-        QPolygonF bar;
-        bar << QPointF(c.x() - 0.11 * k, c.y() - 0.42 * k)
-            << QPointF(c.x() + 0.11 * k, c.y() - 0.42 * k)
-            << QPointF(c.x() + 0.09 * k, c.y() + 0.10 * k)
-            << QPointF(c.x() - 0.09 * k, c.y() + 0.10 * k);
-        goldFill(p, bar);
+    case 5: { // '!' (stumble) — the white disc is the die badge, same as
+              // the block5 asset in the action log.
         p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(kMarkInk, 0.06 * k));
+        QPolygonF bar;
+        bar << QPointF(c.x() - 0.11 * k, c.y() - 0.40 * k)
+            << QPointF(c.x() + 0.11 * k, c.y() - 0.40 * k)
+            << QPointF(c.x() + 0.09 * k, c.y() + 0.08 * k)
+            << QPointF(c.x() - 0.09 * k, c.y() + 0.08 * k);
+        goldFill(p, bar);
+        p.setPen(Qt::NoPen);
         p.setBrush(kMarkGold);
-        p.drawEllipse(QPointF(c.x(), c.y() + 0.34 * k), 0.14 * k, 0.14 * k);
+        p.drawEllipse(QPointF(c.x(), c.y() + 0.30 * k), 0.13 * k, 0.13 * k);
         break;
     }
-    case 6: { // starburst (the "explosion" face)
-        auto burstOf = [c, k](qreal scale) {
-            QPolygonF burst;
-            const int n = 12;
-            for (int i = 0; i < n * 2; ++i) {
-                const qreal rr = (i % 2 == 0 ? 0.48 * k : 0.22 * k) * scale;
-                const qreal a = M_PI * i / n - M_PI / 2;
-                burst << QPointF(c.x() + std::cos(a) * rr, c.y() + std::sin(a) * rr);
-            }
-            return burst;
-        };
-        goldFill(p, burstOf(1.0));
+    case 6: // burst (POW)
+        goldFill(p, burstPolygon(c, k, 1.0));
         break;
-    }
-    case 3: // bent arrow (official faces 3/4)
+    case 3: // push arrow (official faces 3/4)
     case 4:
         drawBentArrow(p, c, k, face == 3 ? 1 : -1);
         break;
-    case 1: // skull
-        drawGoldSkull(p, c, 0.34 * k);
+    case 1: // skull (player down)
+        drawSkull(p, c, 0.34 * k, kMarkGold, kMarkDisc, true);
         break;
-    case 2: { // skull + arrow
-        drawGoldSkull(p, QPointF(c.x() - 0.16 * k, c.y()), 0.26 * k);
-        drawBentArrow(p, QPointF(c.x() + 0.30 * k, c.y() + 0.06 * k), k * 0.55, 1);
+    case 2: { // BOTH DOWN — turn 12 user report: the old skull+ARROW glyph
+              // was the "odd symbol". Official face (block2 asset): skull
+              // + explosion burst, both gold on the white disc.
+        drawSkull(p, QPointF(c.x() - 0.18 * k, c.y() + 0.06 * k), 0.26 * k,
+                  kMarkGold, kMarkDisc, true);
+        goldFill(p, burstPolygon(QPointF(c.x() + 0.20 * k, c.y() - 0.16 * k),
+                                 k * 0.70, 1.0));
         break;
     }
     default:
@@ -2284,7 +2303,9 @@ void FieldView::paintEvent(QPaintEvent *)
     // check (green disc + white symbol).
     const auto drawTurnBadges = [&](const PlayerToken &t, const QPointF &ctr,
                                     qreal s) {
-        const qreal tbr = qMin(cellW, cellH) * 0.21;
+        // Turn 12 (user: "i simboli sul ring devono essere più piccoli"):
+        // 0.21 -> 0.15 minDim.
+        const qreal tbr = qMin(cellW, cellH) * 0.15;
         const auto drawBadge = [&](const QPointF &c,
                                    const QColor &discCol,
                                    const std::function<void()> &glyph) {
@@ -2327,12 +2348,18 @@ void FieldView::paintEvent(QPaintEvent *)
         }
         if (t.state & 0x00200) { // PlayerState._BIT_CONFUSED (ffb-common)
             drawBadge(botL, QColor(255, 255, 255), [&]() {
-                p.setPen(Qt::NoPen);
-                p.setBrush(kMarkGold);
+                // Turn 12 (user: "pallino bianco vuoto in basso a sinistra"):
+                // drawText uses the PEN, not the brush — the "?" was being
+                // painted with NoPen and the disc came out empty.
                 QFont qf = p.font();
-                qf.setPointSizeF(qMax(6.0, tbr * 1.7));
+                qf.setPointSizeF(qMax(5.0, tbr * 1.6));
                 qf.setBold(true);
                 p.setFont(qf);
+                p.setPen(QPen(kMarkInk, qMax(1.2, tbr * 0.18), Qt::SolidLine,
+                              Qt::RoundCap, Qt::RoundJoin));
+                p.drawText(QRectF(botL.x() - tbr, botL.y() - tbr, tbr * 2, tbr * 2),
+                           Qt::AlignCenter, QStringLiteral("?"));
+                p.setPen(kMarkGold);
                 p.drawText(QRectF(botL.x() - tbr, botL.y() - tbr, tbr * 2, tbr * 2),
                            Qt::AlignCenter, QStringLiteral("?"));
             });
