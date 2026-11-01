@@ -128,6 +128,17 @@ public:
     int turn() const { return m_turn; }
     int half() const { return m_half; }
     QString turnMode() const { return m_turnMode; } // setup|first_turn|regular|halftime|overtime|ended
+
+    // Turn 15 (user, point 11): the KICKOFF flight. The wire sends only the
+    // landing cell (no path, no kicker) — the model synthesizes the flight
+    // origin (previous on-field ball position in the kicker's half, or the
+    // kicker's 30-yd line) and the kicker (nearest kicking-team field
+    // player to the origin). `kickoffSeq` bumps once per kickoff so the UI
+    // triggers the animation exactly once.
+    int kickoffSeq() const { return m_kickoffSeq; }
+    QPoint kickoffOrigin() const { return m_kickoffOrigin; }
+    QPoint kickoffLanding() const { return m_kickoffLanding; }
+    QString kickoffKickerId() const { return m_kickoffKickerId; }
     bool homePlaying() const { return m_homePlaying; }
     // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
     // ...). Empty before the first state.
@@ -310,6 +321,11 @@ private:
     int m_turn = 1;
     int m_half = 0;
     QString m_turnMode = QStringLiteral("setup");
+    bool m_pendingKickoff = false; // turn 15: kickoff turn started, flight pending
+    int m_kickoffSeq = 0;          // turn 15: bumps once per kickoff flight
+    QPoint m_kickoffOrigin;
+    QPoint m_kickoffLanding;
+    QString m_kickoffKickerId;
     bool m_homePlaying = true;
     QString m_weather;
 

@@ -250,13 +250,62 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         // ReportPlayerAction: ACTING_PLAYER_ID + playerAction enum. THE
         // subject field is `actingPlayerId` (round-9 bug: the old parser
         // read `playerId`, so "move"/"stand up" had no subject).
+        // Turn 15 (user: "riempi l'action log con le azioni del client
+        // ufficiale"): the OFFICIAL client (PlayerActionMessage.render)
+        // prints the PlayerAction enum's description string — use the same
+        // wording (ffb-common PlayerAction.java, ground truth).
         const QString an = enumName(report.value(QStringLiteral("playerAction")));
-        push(humanize(an), kLightGray, actorId);
+        static const QHash<QString, QString> kActionText = {
+            { QStringLiteral("move"),                QStringLiteral("moves") },
+            { QStringLiteral("blitzMove"),           QStringLiteral("blitzes") },
+            { QStringLiteral("block"),               QStringLiteral("blocks") },
+            { QStringLiteral("standUp"),             QStringLiteral("stands up") },
+            { QStringLiteral("standUpBlitz"),        QStringLiteral("stands up (Blitz)") },
+            { QStringLiteral("passMove"),            QStringLiteral("passes") },
+            { QStringLiteral("handOverMove"),        QStringLiteral("hands the ball over") },
+            { QStringLiteral("foulMove"),            QStringLiteral("fouls") },
+            { QStringLiteral("gazeMove"),            QStringLiteral("gazes") },
+            { QStringLiteral("multipleBlock"),       QStringLiteral("multi-blocks") },
+            { QStringLiteral("throwTeamMateMove"),   QStringLiteral("throws a team-mate") },
+            { QStringLiteral("kickTeamMateMove"),    QStringLiteral("kicks a team-mate") },
+            { QStringLiteral("throwBomb"),           QStringLiteral("throws a bomb") },
+            { QStringLiteral("hailMaryBomb"),        QStringLiteral("hails Mary with a bomb") },
+            { QStringLiteral("dumpOff"),             QStringLiteral("dumps off the bomb") },
+            { QStringLiteral("swoop"),               QStringLiteral("swoops") },
+            { QStringLiteral("removeConfusion"),     QStringLiteral("removes confusion") },
+            { QStringLiteral("lookIntoMyEyes"),      QStringLiteral("looks into the eyes of") },
+            { QStringLiteral("balefulHex"),          QStringLiteral("balefully hexes") },
+            { QStringLiteral("allYouCanEat"),        QStringLiteral("all you can eats") },
+            { QStringLiteral("putridRegurgitationMove"),  QStringLiteral("putridly regurgitates") },
+            { QStringLiteral("putridRegurgitationBlock"), QStringLiteral("putridly regurgitates") },
+            { QStringLiteral("putridRegurgitationBlitz"), QStringLiteral("putridly regurgitates") },
+            { QStringLiteral("kickEmBlock"),         QStringLiteral("kick-em blocks") },
+            { QStringLiteral("kickEmBlitz"),         QStringLiteral("kick-em blitzes") },
+            { QStringLiteral("blackInk"),            QStringLiteral("uses Black Ink") },
+            { QStringLiteral("catchOfTheDay"),       QStringLiteral("uses Catch of the Day") },
+            { QStringLiteral("thenIStartedBlastin"), QStringLiteral("starts blastin'") },
+            { QStringLiteral("theFlashingBlade"),    QStringLiteral("flashes the blade") },
+            { QStringLiteral("viciousVines"),        QStringLiteral("uses Vicious Vines") },
+            { QStringLiteral("furiousOutburst"),     QStringLiteral("has a furious outburst") },
+            { QStringLiteral("secureTheBall"),       QStringLiteral("secures the ball") },
+            { QStringLiteral("breatheFire"),         QStringLiteral("breathes fire") },
+            { QStringLiteral("chainsaw"),            QStringLiteral("chainsaws") },
+            { QStringLiteral("stab"),                QStringLiteral("stabs") },
+            { QStringLiteral("projectileVomit"),     QStringLiteral("projectile vomits") },
+        };
+        const auto it = kActionText.constFind(an);
+        push(it != kActionText.constEnd() ? it.value() : humanize(an),
+             kLightGray, actorId);
     } else if (id == QLatin1String("block")) {
         // ReportBlock: ONLY defenderId = the player being blocked. No dice
         // here (the dice arrive in the `blockRoll` report — round-9 bug:
         // the old parser looked for them here and never found them).
-        push(QStringLiteral("Block"), kYellow, QString(), defenderId);
+        // Turn 15 (official wording, BlockMessage.render): the line is
+        // "ATTACKER blocks DEFENDER: " — the report carries ONLY the
+        // defender; the ATTACKER is the current acting player, so the
+        // parser leaves actorId empty and MainWindow fills it from the
+        // model (the block reports arrive while the attacker is the actor).
+        push(QStringLiteral("blocks"), kYellow, QString(), defenderId);
     } else if (id == QLatin1String("blockRoll")) {
         // ReportBlockRoll: choosingTeamId + blockRoll[6] + defenderId.
         // The six block dice — the star of the action log.

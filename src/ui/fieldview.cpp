@@ -82,10 +82,14 @@ FieldView::FieldView(QWidget *parent)
     // goes back to the resting size.
     m_ballSettleTimer = new QTimer(this);
     m_ballSettleTimer->setSingleShot(true);
-    m_ballSettleTimer->setInterval(900);
+    // Turn 15: 900ms could fire BETWEEN two wire bounce steps of a kickoff
+    // (server ticks ~0.5-1s) and chop the flight — 1600ms is safe.
+    m_ballSettleTimer->setInterval(1600);
     connect(m_ballSettleTimer, &QTimer::timeout, this, [this]() {
         m_ballFlightSteps = 0;
         m_ballMoving = false;
+        m_ballFlightBaseDist = 0; // turn 15: the bounce profile restarts
+        m_kickoffKickerId.clear(); // turn 15: the kicker glow ends with it
         update();
     });
     connect(m_pulseTimer, &QTimer::timeout, this, [this]() {
@@ -214,6 +218,22 @@ void FieldView::setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> 
     update();
 }
 
+void FieldView::beginKickoffFlight(const QPoint &origin, const QString &kickerId)
+{
+    // Turn 15 (user, point 11): armed once per kickoff (the model bumps its
+    // seq). The actual animation starts on the landing setBall, which is
+    // the model's ball coordinate (the wire sends landing + bounces only).
+    m_kickoffOrigin = origin;
+    m_kickoffArmed = true;
+    m_kickoffKickerId = kickerId; // the blue glow starts immediately
+    m_ballFlightBaseDist = 0;
+    // Any leftover ball animation (e.g. a pass still settling) must not
+    // hijack the kickoff flight: the flight path is started by the landing
+    // setBall, from this origin.
+    m_tokenAnim.remove(QStringLiteral("__ball__"));
+    update();
+}
+
 void FieldView::setBall(int x, int y, bool inPlay)
 {
     m_ballX = x;
@@ -229,15 +249,35 @@ void FieldView::setBall(int x, int y, bool inPlay)
             m_visualPos.insert(id, QPointF(x + 0.5, y + 0.5));
             m_tokenAnim.remove(id);
         } else if (m_prevBall != np) {
+            // Turn 15 (user, point 11): KICKOFF — the model jumped the ball
+            // straight to the landing cell; synthesize the flight from the
+            // kickoff origin (the model's 30-yd line or the previous
+            // on-field position) to here, with the bouncing size profile
+            // (see the painter). The kickoff leg counts as a MULTI-step
+            // flight (steps >= 2) so the profile is enabled.
+            const bool kickoffLeg = m_kickoffArmed;
+            if (kickoffLeg) {
+                m_kickoffArmed = false;
+                m_prevBall = m_kickoffOrigin;
+                m_ballFlightBaseDist = 0;
+            }
             startTokenAnim(id, np);
             // Turn 14 (user): the ball GROWS along the pass trajectory —
             // every step since the flight started adds a little size (capped
             // in the painter). A 1-step fumble hop starts the flight at 1
             // step = NO growth (the painter only grows from step 2 up).
-            if (!m_ballMoving)
+            if (kickoffLeg) {
+                m_ballFlightSteps = 2;
+            } else if (!m_ballMoving) {
                 m_ballFlightSteps = 1;
-            else
+            } else {
                 ++m_ballFlightSteps;
+                // Turn 15: a step arrived while a flight was running — the
+                // previous leg is DONE: fold its length into the base so the
+                // bounce profile phase is continuous across wire steps.
+                m_ballFlightBaseDist += qAbs(np.x() - m_prevBall.x())
+                    + qAbs(np.y() - m_prevBall.y());
+            }
             m_ballMoving = true;
             m_ballSettleTimer->start();
         } else if (!m_tokenAnim.value(id).active) {
@@ -249,8 +289,11 @@ void FieldView::setBall(int x, int y, bool inPlay)
         m_visualPos.remove(id);
         m_tokenAnim.remove(id);
         m_havePrevBall = false;
-        m_ballFlightSteps = 0; // the ball left the field: no flight
+        m_kickoffArmed = false; // the ball left the field: no flight
+        m_ballFlightSteps = 0;
         m_ballMoving = false;
+        m_ballFlightBaseDist = 0;
+        m_kickoffKickerId.clear();
     }
     if (anyTokenAnimActive())
         ensureAnimTimer();
@@ -714,6 +757,8 @@ void FieldView::startTokenAnim(const QString &id, const QPoint &to)
     a.active = true;
     a.leg = 0;
     a.t = 0.0;
+    a.legMs = (id == QLatin1String("__ball__") && m_kickoffArmed)
+            ? 48 : FieldView::kLegDur; // kickoff: a fast, long loft
     a.waypoints.append(QPointF(from.x() + 0.5, from.y() + 0.5));
     // Grid path from `from` to `to`: step one square at a time, preferring the
     // axis with the larger remaining distance (axis-aligned moves come out as
@@ -752,15 +797,14 @@ bool FieldView::anyTokenAnimActive() const
 
 void FieldView::animTick()
 {
-    static const qreal kLegDur = 0.085; // 85 ms per square (fast + pleasant)
-    const qreal dt = 0.016;             // 16 ms frame
+    const qreal dt = 0.016; // 16 ms frame
     bool any = false;
     for (auto it = m_tokenAnim.begin(); it != m_tokenAnim.end(); ++it) {
         TokenAnim &a = it.value();
         if (!a.active)
             continue;
         any = true;
-        a.t += dt / kLegDur;
+        a.t += dt * 1000.0 / qreal(qMax(1, a.legMs));
         while (a.t >= 1.0) {
             if (a.leg + 1 < a.waypoints.size()) {
                 a.t -= 1.0;
@@ -889,27 +933,36 @@ void FieldView::drawMoveTrail(QPainter &p)
     }
 
     // Turn 13 (user, "come su FUMBBL"): the numbered cells — the server's
-    // TrackNumbers (fieldModelAddTrackNumber {coordinate, number}) painted
-    // on each cell, a SMALL number just above the trail line (the line
-    // runs through the cell centers, so the number sits right on top of
-    // it). White with a dark under-stroke, like the trail itself.
+    // TrackNumbers (fieldModelAddTrackNumber {coordinate, number}).
+    // Turn 15 (user, points 3 + 9 + 10):
+    //   * the STARTING cell's 0 is NOT painted ("non mostrare lo 0");
+    //   * a number that sometimes sat right ON the trail line (it was
+    //     centered just above the cell middle, where the trail runs) is
+    //     now painted in the cell's TOP-LEFT CORNER — a fixed, orderly
+    //     position that never overlaps the trail (which runs through
+    //     centers), and stays visible in the FINAL cell even with the
+    //     moving token on it (the corner is outside the token disc) —
+    //     this is the "clean" spot for the final cell number too.
     if (!m_trackNumbers.isEmpty()) {
-        const auto cellH = f.height() / kFieldHeight;
+        const qreal cellH = f.height() / kFieldHeight;
         QFont nf = p.font();
-        nf.setPointSizeF(qMax(5.0, qMin(cellW, cellH) * 0.42));
+        nf.setPointSizeF(qMax(5.0, qMin(cellW, cellH) * 0.40));
         nf.setBold(true);
         p.setFont(nf);
         for (auto it = m_trackNumbers.constBegin(); it != m_trackNumbers.constEnd(); ++it) {
+            const int n = it.value();
+            if (n == 0)
+                continue; // the starting square keeps its cell clean
             const QPoint cell = it.key();
             const QPointF cc = cellCenter(cell.x(), cell.y());
-            const QPointF at(cc.x(), cc.y() - cellH * 0.16); // sopra il trail
-            const QString n = QString::number(it.value());
-            QRectF box(at.x() - cellW * 0.3, at.y() - cellH * 0.42,
-                       cellW * 0.6, cellH * 0.5);
-            p.setPen(QPen(QColor(24, 24, 30, 220), qMax(2.5, cellW * 0.12)));
-            p.drawText(box, Qt::AlignCenter, n);
+            const QPointF at(cc.x() - cellW * 0.36, cc.y() - cellH * 0.34); // top-left corner
+            const QString num = QString::number(n);
+            QRectF box(at.x() - cellW * 0.20, at.y() - cellH * 0.30,
+                       cellW * 0.40, cellH * 0.42);
+            p.setPen(QPen(QColor(24, 24, 30, 220), qMax(2.0, cellW * 0.09)));
+            p.drawText(box, Qt::AlignCenter, num);
             p.setPen(QColor(255, 255, 255, 240));
-            p.drawText(box, Qt::AlignCenter, n);
+            p.drawText(box, Qt::AlignCenter, num);
         }
     }
     p.restore();
@@ -1411,6 +1464,38 @@ inline void markerDisc(QPainter &p, const QPointF &c, qreal r)
     p.drawEllipse(c, r - rim / 2, r - rim / 2);
 }
 
+// Turn 15 (user, point 1): the vector american football, shared by the
+// ball on the field AND the ball-in-hand indicator on the token (the old
+// carrier marker was a plain ugly ellipse — the "versione brutta").
+inline void drawFootball(QPainter &p, const QPointF &c, qreal bw, qreal bh,
+                         qreal rotDeg)
+{
+    p.save();
+    p.translate(c);
+    p.rotate(rotDeg);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QRectF body(-bw / 2, -bh / 2, bw, bh);
+    QRadialGradient ballGrad(QPointF(-bw * 0.18, -bh * 0.22), bw * 0.62);
+    ballGrad.setColorAt(0.0, QColor(0xb5, 0x7a, 0x3e));
+    ballGrad.setColorAt(0.75, QColor(0x8b, 0x5a, 0x2b));
+    ballGrad.setColorAt(1.0, QColor(0x5f, 0x3a, 0x18));
+    p.setBrush(ballGrad);
+    p.setPen(QPen(QColor(0x3a, 0x22, 0x0e), qMax(1.0, bw * 0.045)));
+    p.drawEllipse(body);
+    // laces: a white strip + cross ticks across the middle
+    const qreal lw = bw * 0.46, lh = bh * 0.16;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(245, 242, 232, 255));
+    p.drawRoundedRect(QRectF(-lw / 2, -lh / 2, lw, lh), lh * 0.4, lh * 0.4);
+    QPen lace(QColor(0x3a, 0x22, 0x0e), qMax(1.0, bh * 0.06));
+    p.setPen(lace);
+    for (int i = 1; i <= 4; ++i) {
+        const qreal lx = -lw / 2 + lw * i / 5.0;
+        p.drawLine(QPointF(lx, -lh * 0.42), QPointF(lx, lh * 0.42));
+    }
+    p.restore();
+}
+
 // Gold stroke with a thin dark under-outline (readable on white).
 inline void goldStroke(QPainter &p, const QPolygonF &path, qreal width, bool closed)
 {
@@ -1439,20 +1524,35 @@ inline void goldFill(QPainter &p, const QPolygonF &path)
 
 // Face 3/4 arrows: the bent two-segment arrow. `dir` 1 = face 3, -1 = face 4
 // (same geometry as the official faces, now gold on the shared disc).
+// Turn 15 (user, point 2: "la freccia dovrebbe essere PIENA e gialla, si
+// vedono solo i bordi"): the push symbol is now a SOLID arrow — a filled
+// shaft and a filled head with a thin dark rim, not an outline-only glyph.
 void drawBentArrow(QPainter &p, const QPointF &c, qreal k, int dir)
 {
     p.save();
     p.translate(c);
+    p.setRenderHint(QPainter::Antialiasing, true);
     const qreal s = k * dir; // flip vertically
-    QPolygonF shaft;
-    shaft << QPointF(-0.42 * k, -0.28 * s) << QPointF(0.05 * k, -0.28 * s)
-          << QPointF(0.05 * k, 0.22 * s);
-    goldStroke(p, shaft, k * 0.16, false);
+    const qreal w = k * 0.17; // half-width of the shaft
+    // Filled shaft: horizontal bar (left -> right) then vertical bar down.
+    QPolygonF hbar;
+    hbar << QPointF(-0.48 * k, -0.30 * s - w) << QPointF(0.02 * k, -0.30 * s - w)
+         << QPointF(0.02 * k, -0.30 * s + w)  << QPointF(-0.48 * k, -0.30 * s + w);
+    QPolygonF vbar;
+    vbar << QPointF(-0.02 * k - w, -0.30 * s) << QPointF(0.02 * k + w, -0.30 * s)
+         << QPointF(0.02 * k + w, 0.26 * s)   << QPointF(-0.02 * k - w, 0.26 * s);
+    // Filled head: a down-pointing triangle at the shaft's end.
     QPolygonF head;
-    head << QPointF(-0.15 * k, 0.44 * s)
-         << QPointF(0.05 * k, 0.48 * s)
-         << QPointF(0.25 * k, 0.22 * s);
-    goldFill(p, head);
+    head << QPointF(0.02 * k - 0.34 * k, 0.22 * s)
+         << QPointF(0.02 * k + 0.34 * k, 0.22 * s)
+         << QPointF(0.02 * k, 0.56 * s);
+    QPen rim(kMarkInk, k * 0.07);
+    rim.setJoinStyle(Qt::RoundJoin);
+    p.setPen(rim);
+    p.setBrush(kMarkGold);
+    p.drawPolygon(hbar);
+    p.drawPolygon(vbar);
+    p.drawPolygon(head);
     p.restore();
 }
 
@@ -1509,18 +1609,20 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
     //   3 push arrow            4 push arrow (same symbol)
     //   5 '!' in a burst (STUMBLE)  6 burst (POW)
     switch (face) {
-    case 5: { // '!' (stumble) — the white disc is the die badge, same as
-              // the block5 asset in the action log.
+    case 5: { // '!' (stumble) — turn 15 (user, point 14): the exclamation
+              // mark is inscribed in the burst (star) TOO, like the block5
+              // die face: gold burst, the '!' knocked out in the disc color.
+        goldFill(p, burstPolygon(c, k, 0.92));
         p.setRenderHint(QPainter::Antialiasing, true);
-        QPolygonF bar;
-        bar << QPointF(c.x() - 0.11 * k, c.y() - 0.40 * k)
-            << QPointF(c.x() + 0.11 * k, c.y() - 0.40 * k)
-            << QPointF(c.x() + 0.09 * k, c.y() + 0.08 * k)
-            << QPointF(c.x() - 0.09 * k, c.y() + 0.08 * k);
-        goldFill(p, bar);
         p.setPen(Qt::NoPen);
-        p.setBrush(kMarkGold);
-        p.drawEllipse(QPointF(c.x(), c.y() + 0.30 * k), 0.13 * k, 0.13 * k);
+        p.setBrush(kMarkDisc);
+        QPolygonF bar;
+        bar << QPointF(c.x() - 0.09 * k, c.y() - 0.32 * k)
+            << QPointF(c.x() + 0.09 * k, c.y() - 0.32 * k)
+            << QPointF(c.x() + 0.07 * k, c.y() + 0.05 * k)
+            << QPointF(c.x() - 0.07 * k, c.y() + 0.05 * k);
+        p.drawPolygon(bar);
+        p.drawEllipse(QPointF(c.x(), c.y() + 0.25 * k), 0.10 * k, 0.10 * k);
         break;
     }
     case 6: // burst (POW)
@@ -1994,43 +2096,29 @@ void FieldView::paintEvent(QPaintEvent *)
     if (m_ballInPlay && !ballOccupied) {
         // Round 13 (user): the ball glides through the grid too — draw it at
         // its animated VISUAL position (cell coords), not the model cell.
-        // Turn 14 (user): during a pass flight the ball GROWS along the
-        // trajectory (steps-1 so a 1-step fumble hop grows nothing), capped
-        // at 1.7x — "senza esagerare".
-        const int flightGrow = qMax(0, m_ballFlightSteps - 1);
-        const qreal ballScale = 1.0 + 0.07 * qMin(flightGrow, 10);
+        // Turn 15 (user, point 11): the in-flight size is a BOUNCE profile —
+        // the ball rises (bigger), lands (normal), bounces smaller, ...
+        // across the trajectory (phase in cells travelled since the flight
+        // started; arcs of ~3.2 cells, each damped 0.70x). A 1-step fumble
+        // hop (steps == 1) stays flat (turn 14 rule: no growth on fumble).
+        qreal ballScale = 1.0;
+        if (m_ballMoving && m_ballFlightSteps >= 2) {
+            const TokenAnim &ba = m_tokenAnim.value(QLatin1String("__ball__"));
+            const qreal d = m_ballFlightBaseDist + (ba.leg + ba.t);
+            const qreal L = 3.2; // cells per bounce arc
+            const qreal phase = d / L;
+            ballScale = 1.0 + 0.55 * qAbs(qSin(M_PI * phase))
+                                     * qPow(0.70, std::floor(phase));
+        }
         const QPointF bvc = m_visualPos.value(QLatin1String("__ball__"),
                                               QPointF(m_ballX + 0.5, m_ballY + 0.5));
         const QPointF bctr(f.x() + bvc.x() * cellW, f.y() + bvc.y() * cellH);
         // Turn 12 (user: "il pallone sembra una cacca"): a proper vector
-        // american football — a brown ellipse with a highlight, a dark
-        // outline, a white lace strip with side laces.
+        // american football (drawFootball, shared with the ball-in-hand
+        // marker — turn 15 point 1).
         const qreal bw = cellW * 0.52 * ballScale;
         const qreal bh = cellH * 0.34 * ballScale;
-        p.save();
-        p.translate(bctr);
-        p.rotate(-18);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        const QRectF body(-bw / 2, -bh / 2, bw, bh);
-        QRadialGradient ballGrad(QPointF(-bw * 0.18, -bh * 0.22), bw * 0.62);
-        ballGrad.setColorAt(0.0, QColor(0xb5, 0x7a, 0x3e));
-        ballGrad.setColorAt(0.75, QColor(0x8b, 0x5a, 0x2b));
-        ballGrad.setColorAt(1.0, QColor(0x5f, 0x3a, 0x18));
-        p.setBrush(ballGrad);
-        p.setPen(QPen(QColor(0x3a, 0x22, 0x0e), qMax(1.0, bw * 0.045)));
-        p.drawEllipse(body);
-        // laces: a white strip + cross ticks across the middle
-        const qreal lw = bw * 0.46, lh = bh * 0.16;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(245, 242, 232, 255));
-        p.drawRoundedRect(QRectF(-lw / 2, -lh / 2, lw, lh), lh * 0.4, lh * 0.4);
-        QPen lace(QColor(0x3a, 0x22, 0x0e), qMax(1.0, bh * 0.06));
-        p.setPen(lace);
-        for (int i = 1; i <= 4; ++i) {
-            const qreal lx = -lw / 2 + lw * i / 5.0;
-            p.drawLine(QPointF(lx, -lh * 0.42), QPointF(lx, lh * 0.42));
-        }
-        p.restore();
+        drawFootball(p, bctr, bw, bh, -18);
     }
 
     // --- Target brackets + action wheel (drawn UNDER the tokens, like the
@@ -2153,26 +2241,31 @@ void FieldView::paintEvent(QPaintEvent *)
 
             // Round 10: player state mark over the face — prone = "/",
             // stunned = "X" (white with a dark under-stroke for contrast).
+            // Turn 15 (user, point 6: "una X vera e propria, non una
+            // sbarra sovrapposta all'altra"): the old code drew each arm
+            // as dark-stroke THEN white-stroke, so the second arm's dark
+            // under-stroke painted OVER the first arm's white. Now: ALL
+            // dark under-strokes first, then all white over-strokes — one
+            // clean X with a uniform thin rim.
             const int base = t.state & 0xFF;
             if (base == 3 || base == 4) {
                 const qreal mw = s * 0.46;
                 const QRectF mr(ctr.x() - mw / 2, ctr.y() - mw / 2, mw, mw);
-                QPen under(QColor(24, 24, 30, 210), qMax(3.0, s * 0.15));
+                QPen under(QColor(24, 24, 30, 210), qMax(3.5, s * 0.16));
                 under.setCapStyle(Qt::RoundCap);
-                QPen over(QColor(255, 255, 255, 235), qMax(1.5, s * 0.08));
+                QPen over(QColor(255, 255, 255, 235), qMax(2.0, s * 0.10));
                 over.setCapStyle(Qt::RoundCap);
-                const auto diag = [&](const QPointF &a, const QPointF &b) {
-                    p.setPen(under);
-                    p.drawLine(a, b);
-                    p.setPen(over);
-                    p.drawLine(a, b);
+                const auto arms = [&](const QPen &pen) {
+                    p.setPen(pen);
+                    if (base == 3)
+                        p.drawLine(mr.bottomLeft(), mr.topRight()); // "/"  (prone)
+                    else {
+                        p.drawLine(mr.topLeft(), mr.bottomRight()); // "X" (stunned)
+                        p.drawLine(mr.bottomLeft(), mr.topRight());
+                    }
                 };
-                if (base == 3)
-                    diag(mr.bottomLeft(), mr.topRight()); // "/"  (prone)
-                else {
-                    diag(mr.topLeft(), mr.bottomRight()); // "\"
-                    diag(mr.bottomLeft(), mr.topRight()); // "/"  -> "X" (stunned)
-                }
+                arms(under); // pass 1: every arm's rim
+                arms(over);  // pass 2: every arm's white body
             }
 
             // Number badge (bottom-right of the token — follows it while it
@@ -2183,20 +2276,25 @@ void FieldView::paintEvent(QPaintEvent *)
             p.setBrush(QColor(0x1e, 0x1e, 0x26));
             p.drawEllipse(bc, br, br);
             p.setPen(Qt::white);
+            // Turn 15 (user, point 12: "i numeri dei giocatori appaiono
+            // un poco sproporzionati"): two-digit numbers need a smaller
+            // font to sit in the same badge (12pt 1-digit vs 9pt 2-digit,
+            // scaled with the badge radius).
             QFont numFont = p.font();
-            numFont.setPointSizeF(qMax(5.0, br * 1.5));
+            const int ndigits = t.number > 99 ? 3 : (t.number > 9 ? 2 : 1);
+            numFont.setPointSizeF(qMax(5.0, br * (ndigits == 1 ? 1.5 : 1.12)));
             numFont.setBold(true);
             p.setFont(numFont);
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
-            // Ball carrier indicator (small football, top-left of the token)
+            // Ball carrier indicator (top-left of the token). Turn 15
+            // (user, point 1): the old marker was still the ugly plain
+            // ellipse — now the SAME vector football as the ball on the
+            // field, at badge scale.
             if (t.hasBall) {
-                const QRectF br2(ctr.x() - s * 0.5, ctr.y() - s * 0.44,
-                                 cellW * 0.34, cellH * 0.22);
-                p.setPen(QPen(QColor(0x40, 0x26, 0x12), 1));
-                p.setBrush(QColor(0xc7, 0x83, 0x3b));
-                p.drawEllipse(br2);
+                drawFootball(p, QPointF(ctr.x() - s * 0.34, ctr.y() - s * 0.38),
+                             cellW * 0.30, cellH * 0.20, -18);
             }
         }
     };
@@ -2294,6 +2392,12 @@ void FieldView::paintEvent(QPaintEvent *)
     };
     drawGlow(m_blockTarget, QColor(225, 64, 54));   // red = block (turn 4)
     drawGlow(m_passTarget, QColor(255, 255, 255));  // white = pass receiver
+    // Turn 15 (user, point 11): the KICKER of a kickoff gets the usual
+    // blue glow while the ball is in flight (cleared by the settle timer;
+    // the ballInPlay guard keeps it off for a kickoff TIMEOUT where the
+    // ball never enters play).
+    if (m_ballInPlay)
+        drawGlow(m_kickoffKickerId, QColor(70, 160, 255));
 
     // Turn 13 (user, "come su FUMBBL") — the per-turn BADGES on the ring,
     // drawn AFTER the glows (the actor's blue halo would otherwise cover

@@ -17,6 +17,8 @@
 #include "ui/spectatedialog.h"
 #include "ui/actionlog.h"
 #include "ui/fieldview.h"
+
+#include <algorithm>
 #include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
@@ -591,6 +593,27 @@ void MainWindow::applyModelToUi()
             e.number = pl.number; // turn 5: number badge on the bench face
             out.append(e);
         }
+        // Turn 15 (user, point 13): the dugout is SORTED — reserves first,
+        // then KO (downed, state base 5), then injured (badly hurt 6 /
+        // serious injury 7); the rest (dead/banned) last. Roster order is
+        // kept inside each group (stable sort).
+        // PlayerState bases (ffb-common PlayerState.java):
+        //   5 KNOCKED_OUT, 6 BADLY_HURT, 7 SERIOUS_INJURY, 8 RIP, 9 RESERVE
+        const auto rank = [](int state) {
+            const int base = state & 0xFF;
+            if (base == 9)
+                return 0; // reserve (never on the field)
+            if (base == 5)
+                return 1; // KO
+            if (base == 6 || base == 7)
+                return 2; // injured
+            return 3;     // dead / banned / other
+        };
+        std::stable_sort(out.begin(), out.end(),
+                         [&rank](const FieldView::BoxEntry &a,
+                                 const FieldView::BoxEntry &b) {
+                             return rank(a.state) < rank(b.state);
+                         });
         return out;
     };
     m_field->setBoxes(boxEntries(true), boxEntries(false));
@@ -620,6 +643,15 @@ void MainWindow::applyModelToUi()
     // Turn 14: the pass receiver's WHITE glow (fieldModelSetTargetSelectionState
     // SELECTED -> model->passTargetId()).
     m_field->setPassTarget(m_model->passTargetId());
+    // Turn 15 (user, point 11): the KICKOFF flight — the model bumps its
+    // seq when the kickoff landing cell arrives (the wire sends only the
+    // landing; the trajectory + bounces + kicker glow are synthesized in
+    // the field view).
+    if (m_model->kickoffSeq() != m_lastKickoffSeq) {
+        m_lastKickoffSeq = m_model->kickoffSeq();
+        m_field->beginKickoffFlight(m_model->kickoffOrigin(),
+                                    m_model->kickoffKickerId());
+    }
 
     // The info card tracks the player it currently shows: a model sync
     // refreshes its content (state changes to box, injuries, ...) and a
@@ -719,8 +751,24 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
             || rid == QLatin1String("blockChoice")) {
             const QString victim = report.value(QStringLiteral("defenderId")).toString();
-            if (!victim.isEmpty()) {
-                m_model->setBlockTargetId(victim);
+            // Turn 15 (user, point 8): FRENZY's second block. The server
+            // re-runs the whole block sequence for the same actor (StepEnd
+            // Blocking pushes a fresh Block sequence, same defender). On a
+            // NEW `block` report the previous choice is STALE — reset the
+            // die face so the marker starts as the pending-die helmet
+            // again, then the new blockRoll/blockChoice re-fill it.
+            if (rid == QLatin1String("block"))
+                m_model->setBlockDieFace(0);
+            QString target = victim;
+            if (target.isEmpty() && !m_model->blockTargetId().isEmpty())
+                // Turn 15: the `blockRoll` report carries defenderId NULL
+                // (capture-verified) — for a frenzy second block this is
+                // the only arming chance between the `block` report and
+                // the `blockChoice`: reuse the current target so the
+                // helmet keeps showing.
+                target = m_model->blockTargetId();
+            if (!target.isEmpty()) {
+                m_model->setBlockTargetId(target);
                 // Turn 11: the blockChoice carries the CHOSEN die:
                 // blockRoll[] + diceIndex (capture-verified). The marker
                 // between attacker/defender switches helmet -> die symbol.
@@ -734,14 +782,28 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
                 // Reports-only syncs do NOT emit stateUpdated (no model
                 // changes): push the marker straight to the field.
                 if (m_field)
-                    m_field->setBlockMarker(m_model->blockAttackerId(), victim,
+                    m_field->setBlockMarker(m_model->blockAttackerId(), target,
                                             m_model->blockDieFace());
             }
         }
 
         // Structured dice: the action log renders the die faces (round 8:
         // "non ci mettere i numeri: metti i dadi") and resolved names.
-        for (const DiceLogLine &line : parseReport(report))
+        // Turn 15 (official BlockMessage): "X blocks Y:" — the `block`
+        // report carries only the defender; the attacker is the current
+        // actor (the block reports arrive while the attacker is the actor).
+        QVector<DiceLogLine> lines = parseReport(report);
+        if (rid == QLatin1String("block")) {
+            const QString attacker = m_model->activePlayerId();
+            for (DiceLogLine &l : lines)
+                if (l.actorId.isEmpty() && !l.defenderId.isEmpty()) {
+                    l.actorId = attacker;
+                    l.text = (attacker == m_model->blitzingPlayerId())
+                                 ? QStringLiteral("blitzes")
+                                 : QStringLiteral("blocks");
+                }
+        }
+        for (const DiceLogLine &line : lines)
             appendDiceLog(line);
     }
     // Keep the fingerprint table bounded (a full game has a few hundred).

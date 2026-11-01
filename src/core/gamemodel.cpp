@@ -400,6 +400,49 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     if (id == QLatin1String("fieldModelSetBallCoordinate")) {
         int x = -1, y = -1;
         if (readCoords(value, x, y)) {
+            // Turn 15 (user, point 11): KICKOFF flight. GROUND TRUTH
+            // (game_1957772 capture): the wire sends ONLY the landing cell
+            // (+ later scatter bounces) — no flight path, no kicker id.
+            // The trajectory is synthesized: from the ball's previous
+            // on-field position (a post-TD kick starts in the scorer's
+            // end zone) or from the kicker's half, to the landing cell.
+            if (m_pendingKickoff && isOnField(x, y)) {
+                m_pendingKickoff = false;
+                m_kickoffLanding = QPoint(x, y);
+                // The ball lands in the REceiving team's half — the kicking
+                // team is the other one (it kicks from its own half).
+                const bool homeReceives = (x <= 12);
+                const bool awayKicks = homeReceives;
+                const bool kickSideHome = !awayKicks;
+                QPoint origin;
+                const bool prevOnField = m_ballOnField && isOnField(m_ballX, m_ballY);
+                if (prevOnField
+                    && ((kickSideHome ? m_ballX <= 12 : m_ballX > 12)))
+                    origin = QPoint(m_ballX, m_ballY); // e.g. the TD end zone
+                else
+                    origin = kickSideHome ? QPoint(7, 7) : QPoint(18, 7); // 30-yd line
+                m_kickoffOrigin = origin;
+                // The KICKER: the kicking team's field player nearest the
+                // origin (the coach places the ball anywhere in their own
+                // half — the nearest player is the best visual stand-in).
+                const auto roster = kickSideHome ? rosterHome() : rosterAway();
+                QString best;
+                qreal bestD = 1e9;
+                for (const FFBPlayer &pl : roster) {
+                    if (!pl.hasCoords || !isOnField(pl.fieldX, pl.fieldY))
+                        continue;
+                    if (pl.sideHome != kickSideHome)
+                        continue;
+                    const qreal d = qSqrt(qPow(pl.fieldX - origin.x(), 2)
+                                          + qPow(pl.fieldY - origin.y(), 2));
+                    if (d < bestD) {
+                        bestD = d;
+                        best = pl.playerId;
+                    }
+                }
+                m_kickoffKickerId = best;
+                ++m_kickoffSeq;
+            }
             m_ballOnField = true;
             m_ballX = x;
             m_ballY = y;
@@ -581,6 +624,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         m_turnMode = obj.contains(QStringLiteral("name"))
                          ? obj.value(QStringLiteral("name")).toString()
                          : value.toString();
+        // Turn 15 (user, point 11): a KICKOFF turn starts — the next
+        // on-field ball placement is the kickoff landing: the flight
+        // (trajectory + bounces + kicker glow) is synthesized from it.
+        m_pendingKickoff = (m_turnMode == QStringLiteral("kickoff"));
         // Turn START (post-TD or post-half setup: the players are about to
         // be re-placed) — the trace of the old drive is gone. (Live
         // capture: the mode sequence at a new turn is ...regular ->

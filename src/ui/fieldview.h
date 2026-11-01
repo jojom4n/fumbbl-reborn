@@ -72,6 +72,11 @@ public:
     };
     void setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> &away);
     void setBall(int x, int y, bool inPlay);
+    // Turn 15 (user, point 11): the KICKOFF flight — the ball is thrown in
+    // flight from `origin` to the model's landing cell, with a bouncing
+    // size profile (bigger in the air, normal on the ground), and the
+    // kicker glows blue. `kickerId` empty = no glow.
+    void beginKickoffFlight(const QPoint &origin, const QString &kickerId);
     void setTurn(int turn);
     // Per-match team logos (FUMBBL /i/<id> PNGs) drawn as watermarks centered
     // on each half (~18% alpha). Null pixmaps = no watermark.
@@ -271,6 +276,13 @@ private:
     int m_ballFlightSteps = 0;   // steps since the flight started
     bool m_ballMoving = false;   // a step arrived in the last settle tick
     QTimer *m_ballSettleTimer = nullptr;
+    // Turn 15 (user, point 11): the kickoff flight — a synthesized
+    // trajectory from m_kickoffOrigin to the model's landing cell, with a
+    // bouncing size profile. The wire sends only the landing cell.
+    QPoint m_kickoffOrigin;
+    bool m_kickoffArmed = false; // waiting for the landing setBall
+    qreal m_ballFlightBaseDist = 0; // cells already covered by prior steps
+    QString m_kickoffKickerId;      // blue-glow kicker (turn 15)
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
     QString m_weather;   // display name; "rain" substring => ANIMATED rain
@@ -349,6 +361,7 @@ private:
         int leg = 0;                // current leg: waypoints[leg] -> [leg+1]
         qreal t = 0.0;              // 0..1 progress on the current leg
         bool active = false;
+        int legMs = FieldView::kLegDur; // per-leg duration (kickoffs fly faster)
     };
     QHash<QString, TokenAnim> m_tokenAnim;
     QHash<QString, QPointF> m_visualPos;
@@ -356,6 +369,9 @@ private:
     QPoint m_prevBall;
     bool m_havePrevBall = false;
     QTimer *m_animTimer = nullptr;
+
+public:
+    static constexpr int kLegDur = 85; // ms per square (fast + pleasant)
     void startTokenAnim(const QString &id, const QPoint &to);
     void animTick();
     void ensureAnimTimer();

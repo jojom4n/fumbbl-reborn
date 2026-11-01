@@ -369,6 +369,77 @@ int main(int argc, char *argv[])
                  outDir + "/round13_ballflight.png");
     }
 
+    // --- Kickoff flight (turn 15, user point 11) --------------------------------
+    // The wire sends only the landing cell: the model synthesizes the
+    // origin (kicker's half) + the kicker (nearest away field player to it);
+    // the field view animates the flight with the bouncing size profile.
+    {
+        // Let the pass flight settle first (1.6s).
+        for (int i = 0; i < 12; ++i) {
+            QThread::msleep(200);
+            QApplication::processEvents();
+        }
+        // Away kicks off: the ball lands in the HOME half (x=6, y=3).
+        QJsonArray ch;
+        QJsonObject tm; tm.insert(QStringLiteral("name"), QStringLiteral("kickoff"));
+        change(ch, QStringLiteral("gameSetTurnMode"), QString(), tm);
+        w.onModelSync(ch, QJsonArray());
+        QThread::msleep(120);
+        QApplication::processEvents();
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("fieldModelSetBallCoordinate"), QString(),
+               QJsonArray() << 6 << 3);
+        w.onModelSync(ch2, QJsonArray());
+        {
+            int dx=-1, dy=-1;
+            const bool on = w.model()->ballAt(dx, dy);
+            fprintf(stderr, "KO step1 ball=%s seq=%d\n",
+                    on ? qPrintable(QStringLiteral("%1,%2").arg(dx).arg(dy)) : "off",
+                    w.model()->kickoffSeq());
+        }
+        // Grab the ball MID-FLIGHT on its first (tallest) arc: the ball
+        // is visibly bigger while in the air, back to normal on landing.
+        // Pump the event loop in small slices so the 16ms anim timer
+        // actually advances the flight.
+        // Pump in fine slices: a plain QTimer delivers at most ONE timeout
+        // per processEvents() call, so coarse sleeps would make the flight
+        // crawl (the real app has a proper event loop and runs at speed).
+        auto pump = [&](int ms) {
+            for (int t = 0; t < ms; t += 10) {
+                QThread::msleep(10);
+                QApplication::processEvents();
+            }
+        };
+        pump(300); // mid first arc: the ball is visibly bigger in the air
+        saveCrop(*field, field->fieldRectPx().toAlignedRect(),
+                 outDir + "/round13_kickoff1.png");
+        pump(500); // descent + landing zone
+        saveCrop(*field, field->fieldRectPx().toAlignedRect(),
+                 outDir + "/round13_kickoff1b.png");
+        // Second arc / landing + the wire BOUNCE step ([6,3] -> [7,4]).
+        QThread::msleep(700);
+        QApplication::processEvents();
+        QJsonArray ch3;
+        change(ch3, QStringLiteral("fieldModelSetBallCoordinate"), QString(),
+               QJsonArray() << 7 << 4);
+        w.onModelSync(ch3, QJsonArray());
+        {
+            int dx=-1, dy=-1;
+            const bool on = w.model()->ballAt(dx, dy);
+            fprintf(stderr, "KO step2 ball=%s\n",
+                    on ? qPrintable(QStringLiteral("%1,%2").arg(dx).arg(dy)) : "off");
+        }
+        QThread::msleep(200);
+        QApplication::processEvents();
+        saveCrop(*field, field->fieldRectPx().toAlignedRect(),
+                 outDir + "/round13_kickoff2.png");
+        // Back to regular play.
+        QJsonArray ch4;
+        QJsonObject tm2; tm2.insert(QStringLiteral("name"), QStringLiteral("regular"));
+        change(ch4, QStringLiteral("gameSetTurnMode"), QString(), tm2);
+        w.onModelSync(ch4, QJsonArray());
+    }
+
     // Let the logos land.
     for (int i = 0; i < 10; ++i) {
         QThread::msleep(300);
@@ -376,9 +447,6 @@ int main(int argc, char *argv[])
     }
 
     // --- Whole HUD -----------------------------------------------------------------
-    fprintf(stderr, "DBG field geom in window: %d,%d %dx%d\n",
-            field->mapTo(&w, QPoint(0, 0)).x(), field->mapTo(&w, QPoint(0, 0)).y(),
-            field->width(), field->height());
     w.grab().save(outDir + "/round13_window.png");
     qInfo().noquote() << "saved" << outDir << "/round13_window.png";
 
@@ -386,7 +454,7 @@ int main(int argc, char *argv[])
     //     the field is fitted into the manifest pit; the dugouts are the top
     //     band. Crop using the widget-space geometry (zoom 1 / pan 0).
     {
-        const QRect fr = field->fieldRect().toAlignedRect();
+        const QRect fr = field->fieldRectPx().toAlignedRect();
         saveCrop(*field, fr, outDir + "/round13_field.png");
         const QRect hr = field->dugoutRect(true).toAlignedRect();
         const QRect ar = field->dugoutRect(false).toAlignedRect();
@@ -440,7 +508,7 @@ int main(int argc, char *argv[])
             QThread::msleep(200);
             QApplication::processEvents();
         }
-        saveCrop(*field, field->fieldRect().toAlignedRect(), outDir + "/round13_rain.png");
+        saveCrop(*field, field->fieldRectPx().toAlignedRect(), outDir + "/round13_rain.png");
         qInfo().noquote() << "saved" << outDir << "/round13_rain.png";
     }
 

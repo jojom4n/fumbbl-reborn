@@ -848,8 +848,11 @@ void UiWiringTest::playerActionReportShowsSubject()
     const QString text = log->toPlainText();
     QVERIFY2(text.contains(name), qPrintable(text));
     QVERIFY2(!text.contains(pid), qPrintable(text)); // no raw id
-    QVERIFY(text.contains(QStringLiteral("Move")));
-    QVERIFY(text.contains(QStringLiteral("Stand Up")));
+    // Turn 15 (user: "riempi l'action log con le azioni del client
+    // ufficiale"): the wording follows the official PlayerActionMessage —
+    // "X moves", "X stands up".
+    QVERIFY(text.contains(QStringLiteral("moves")));
+    QVERIFY(text.contains(QStringLiteral("stands up")));
 }
 
 // Round 9 point 6: the six block dice live in the `blockRoll` report

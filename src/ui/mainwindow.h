@@ -150,9 +150,20 @@ private:
     // arrived within the last kDedupWindowMs is dropped; a batch large
     // enough to be a FULL re-sync (>= kResyncBatch reports while the log is
     // already populated) rebuilds the log from the batch.
-    static constexpr int kDedupWindowMs = 120000;
+    //
+    // Round 13 turn 15 (user: "metti i vari stand up" + "riempi l'action
+    // log con le azioni del client ufficiale"): the window was 2 MINUTES —
+    // but the same player can legitimately repeat an identical report
+    // within two minutes (move -> down -> stand up -> move; the same
+    // defender blocked twice by different attackers; turnEnd is identical
+    // every turn). Capture ground truth (game_1957772): step-retry
+    // re-sends arrive within ~1-3 lines (a couple of seconds), while real
+    // repeats are tens of seconds apart. 2.5s catches the retries and lets
+    // the real repeats through.
+    static constexpr int kDedupWindowMs = 2500;
     static constexpr int kResyncBatch = 10;
     QHash<QString, qint64> m_reportFpTimes; // fingerprint -> last-seen ms
+    int m_lastKickoffSeq = 0; // turn 15: kickoff flights already started
     QElapsedTimer m_clock;
     int m_loggedReportCount = 0;
     // Field click: empty id = deselect.

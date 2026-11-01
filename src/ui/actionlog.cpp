@@ -76,7 +76,8 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     // title bar (small font). It reflects the live stick-to-bottom state:
     // unchecks when the user scrolls up, re-checks when the user brings the
     // log back to the bottom; the user can also tick it to force following.
-    m_autoCheck = new QCheckBox(QStringLiteral("auto"), header);
+    // Turn 15 (user): the label was "auto" — now "auto-scroll".
+    m_autoCheck = new QCheckBox(QStringLiteral("auto-scroll"), header);
     m_autoCheck->setStyleSheet(QStringLiteral("color: #222832; background: transparent;"));
     QFont cf = m_autoCheck->font();
     cf.setPointSizeF(8);
