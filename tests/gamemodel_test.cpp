@@ -501,6 +501,67 @@ void GameModelTest::moveNumbersContinuousAcrossBlitzBlockAndFrenzy()
     model.applyModelChanges(changes);
     QCOMPARE(model.moveSegments().size(), 0);
     QCOMPARE(model.blockStepMarks().size(), 0);
+
+    // --- Round 16 (user: "in caso di blocco di giocatore adiacente, basta
+    // il solo trail, non c'è bisogno di contare le caselle"): a PLAIN
+    // block action — the drive STARTS with the block, no movement before
+    // it — is UNNUMBERED for its whole lifetime: no block mark, no
+    // follow-step numbers. Just the trail.
+    // Geometry: the defender (new actor) sits at (1,2); put the other
+    // player (at (2,1)) adjacent at (2,2).
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(2, 2)));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("block"))));
+    model.applyModelChanges(changes);
+    model.setBlockTargetId(actor);
+    model.noteBlockStep(actor); // the FIRST event of the drive is the block
+    QCOMPARE(model.blockStepMarks().size(), 0); // unnumbered: no mark
+
+    // Push + a BARE follow step (StepFollowup — no action re-dispatch)
+    // + resolution: the follow is TRACED (the trail is drawn) but carries
+    // NO numbers.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(3, 2))); // push
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), defender,
+                          coords(1, 1))); // the follow (block still open)
+    changes.append(change(QStringLiteral("gameSetDefenderId"), QString(),
+                          QJsonValue()));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 1);
+    QCOMPARE(model.moveSegments().first().cells, QVector<QPoint>({ QPoint(1, 2), QPoint(1, 1) }));
+    QVERIFY(model.moveSegments().first().stepNumbers.isEmpty());
+    QVERIFY(!model.moveSegments().first().goForIt);
+
+    // Same, but the block FAILS (no push): the go-for-it extra move is a
+    // red TRAIL too, still unnumbered.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue(actor))); // fresh drive
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), defender,
+                          coords(3, 1))); // adjacent to the actor (3,2)
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("block"))));
+    model.applyModelChanges(changes);
+    model.setBlockTargetId(defender);
+    model.noteBlockStep(defender);
+    QCOMPARE(model.blockStepMarks().size(), 0);
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("gameSetDefenderId"), QString(),
+                          QJsonValue())); // the block failed
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("move"))));
+    model.applyModelChanges(changes);
+    model.setGoForItPending(actor);
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(4, 2))); // the GFI extra step
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 1);
+    QVERIFY(model.moveSegments().first().stepNumbers.isEmpty());
+    QVERIFY(model.moveSegments().first().goForIt); // red trail
 }
 
 void GameModelTest::staticHelpers()

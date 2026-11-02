@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLayout>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollArea>
@@ -41,6 +42,168 @@ const QColor kMuted(110, 116, 128);
 // memory -> crash). The label only carries its id in a dynamic property.
 const char kNameIdProp[] = "logNameId";
 const char kNameIsPlayerProp[] = "logNameIsPlayer";
+
+// Round 16 (user: "riga incompleta. Possiamo andare a capo qualche
+// volta"): the middle of a log row is a FLOW, not a single-line HBox — a
+// long action text ("Catch (Inaccurate Pass or Scattered)") used to be
+// CLIPPED mid-word because the scroll area has no horizontal scrollbar.
+// Item 0 is the action text (stretchy, word-wraps); the rest are atomic
+// (dice, "vs N Result"). The flow: the text wraps WORD BY WORD across the
+// available width; the atomics then sit right after the END OF THE LAST
+// LINE (when it fits there) or drop to their own line below (when it
+// doesn't). No item is ever clipped, no matter how narrow the log.
+// The row grows to fit (minimum height, not fixed).
+class LogMidLayout : public QLayout
+{
+public:
+    explicit LogMidLayout(int hSpacing = 3, int vSpacing = 2)
+        : m_h(hSpacing), m_v(vSpacing) {}
+    ~LogMidLayout() override { qDeleteAll(itemList); }
+    void addItem(QLayoutItem *item) override { itemList.append(item); }
+    int count() const override { return itemList.size(); }
+    QLayoutItem *itemAt(int i) const override
+    { return (i >= 0 && i < itemList.size()) ? itemList[i] : nullptr; }
+    QLayoutItem *takeAt(int i) override { return itemList.takeAt(i); }
+    void setGeometry(const QRect &rect) override { doLayout(rect); }
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int width) const override { return measure(width).h; }
+    QSize sizeHint() const override
+    {
+        // The width is dictated by the row (stretch 1): size against the
+        // current width so the wrapped height is right from the start.
+        // (The log's stack height is NOT derived from this — see
+        // ActionLogWidget::contentHeight, which measures the laid-out
+        // rows instead, immune to mid-layout cache staleness.)
+        const int w = parentWidget() ? qMax(40, parentWidget()->width()) : 200;
+        return QSize(0, measure(w).h);
+    }
+    QSize minimumSize() const override { return QSize(0, 0); }
+
+private:
+    struct M {
+        int h = 0;          // total height
+        int textW = 0;      // the text label's width (the full avail)
+        int textH = 0;      // the wrapped text's height
+        int lines = 1;      // the wrapped text's line count
+        int lastLineWidth = 0; // actual width of the text's last line
+        bool atomicsBelow = false; // atomics on their own line under the text
+    };
+    QLabel *stretchyLabel(int i) const
+    {
+        auto *l = dynamic_cast<QLabel *>(itemList[i]->widget());
+        return (l && l->hasHeightForWidth()) ? l : nullptr;
+    }
+    bool hasText() const { return !itemList.isEmpty() && stretchyLabel(0); }
+    int atomicWidth(int from) const
+    {
+        int w = 0;
+        for (int i = from; i < itemList.size(); ++i)
+            w += itemList[i]->sizeHint().width() + m_h;
+        return w;
+    }
+    int atomicHeight(int from) const
+    {
+        int h = 0;
+        for (int i = from; i < itemList.size(); ++i)
+            h = qMax(h, itemList[i]->sizeHint().height());
+        return h;
+    }
+    M measure(int avail) const
+    {
+        M m;
+        if (itemList.isEmpty())
+            return m;
+        avail = qMax(20, avail);
+        if (!hasText()) { // atomics only (dice/tail): never overflow a log
+            m.textW = avail;
+            m.h = qMax(atomicHeight(0), kDice);
+            return m;
+        }
+        // Simulate the QLabel word wrap of the text at width `avail`
+        // (same font, same space width -> same breaks as the label).
+        const QFontMetrics fm(stretchyLabel(0)->font());
+        const int lineH = itemList[0]->sizeHint().height();
+        int x = 0;
+        m.lines = 1;
+        const QStringList words =
+            stretchyLabel(0)->text().split(' ', Qt::SkipEmptyParts);
+        for (const QString &wd : words) {
+            const int ww = fm.horizontalAdvance(wd);
+            const int sp = (x > 0) ? fm.horizontalAdvance(QLatin1String(" ")) : 0;
+            if (x + sp + ww > avail && x > 0) {
+                m.lines++;
+                x = 0;
+            } else {
+                x += sp;
+            }
+            x += qMin(ww, qMax(0, avail - x)); // a word longer than the
+        }                                       // line: clamped (QLabel
+                                                 // char-breaks; log texts
+                                                 // never reach this)
+        m.lastLineWidth = x;
+        m.textW = avail;
+        m.textH = m.lines * lineH + (m.lines - 1) * m_v;
+        const int atW = atomicWidth(1);
+        const int atH = atomicHeight(1);
+        if (m.lastLineWidth + m_h + atW <= avail)
+            m.h = qMax(m.textH, atH); // atomics after the last line's end
+        else {
+            m.atomicsBelow = true;
+            m.h = m.textH + m_v + atH; // atomics on their own line
+        }
+        return m;
+    }
+    static void place(QLayoutItem *it, int x, int y, int w, int h)
+    {
+        if (auto *wg = it->widget())
+            wg->setGeometry(x, y, w, h);
+    }
+    void doLayout(const QRect &r)
+    {
+        if (itemList.isEmpty())
+            return;
+        const M m = measure(r.width());
+        const int y = r.y();
+        if (!hasText()) {
+            int x = r.x();
+            for (int i = 0; i < itemList.size(); ++i) {
+                const QSize sz = itemList[i]->sizeHint();
+                x += m_h;
+                place(itemList[i], x, y + (m.h - sz.height()) / 2,
+                      sz.width(), sz.height());
+                x += sz.width();
+            }
+            return;
+        }
+        const int lineH = itemList[0]->sizeHint().height();
+        // The text block; vertically centered when a die makes the row
+        // taller than the text itself (the single-line dice case).
+        const int textY = y + qMax(0, (m.h - m.textH) / 2);
+        place(itemList[0], r.x(), textY, m.textW, m.textH);
+        if (m.atomicsBelow) {
+            int x = r.x();
+            const int y2 = textY + m.textH + m_v;
+            for (int i = 1; i < itemList.size(); ++i) {
+                const QSize sz = itemList[i]->sizeHint();
+                x += m_h;
+                place(itemList[i], x, y2, sz.width(), sz.height());
+                x += sz.width();
+            }
+        } else {
+            // After the END OF THE LAST LINE, centered on that line.
+            const int lastLineTop = textY + (m.lines - 1) * (lineH + m_v);
+            int x = r.x() + m.lastLineWidth + m_h;
+            for (int i = 1; i < itemList.size(); ++i) {
+                const QSize sz = itemList[i]->sizeHint();
+                place(itemList[i], x, lastLineTop + (lineH - sz.height()) / 2,
+                      sz.width(), sz.height());
+                x += sz.width() + m_h;
+            }
+        }
+    }
+    QVector<QLayoutItem *> itemList;
+    int m_h, m_v;
+};
 
 } // namespace
 
@@ -243,15 +406,38 @@ void ActionLogWidget::settleScroll()
         m_progScroll = true;
         // Manual inner geometry: as wide as the viewport, as tall as the
         // content needs (at least the viewport, so an empty log fills it).
-        m_stackLayout->invalidate(); // force the size cache to recompute
+        //
+        // Round 16 (wrap): a flow row's height DEPENDS ON ITS WIDTH, and
+        // the layout sizeHint caches go stale mid-layout (measured while
+        // a row was still a stub width) — using m_stackLayout->sizeHint()
+        // over-grew the stack until the bottom stretch swallowed the
+        // newest lines. Instead: (1) lay the rows out at the REAL width,
+        // (2) measure the content from the ACTUAL row heights.
         const int w = m_scroll->viewport()->width();
-        const int need = qMax(m_scroll->viewport()->height(),
-                              m_stackLayout->sizeHint().height());
+        m_stack->setGeometry(0, 0, w, qMax(1, m_stack->height()));
+        m_stackLayout->activate(); // synchronous pass at the real width
+        const int need = qMax(m_scroll->viewport()->height(), contentHeight());
         m_stack->setGeometry(0, 0, w, need);
         m_progScroll = false;
         if (m_stick)
             scrollToEnd();
     });
+}
+
+int ActionLogWidget::contentHeight() const
+{
+    if (!m_stackLayout || !m_stack)
+        return 0;
+    const QMargins mg = m_stackLayout->contentsMargins();
+    int h = mg.top() + mg.bottom();
+    const auto rows = m_stack->findChildren<QWidget *>(QString(),
+                                                       Qt::FindDirectChildrenOnly);
+    for (int i = 0; i < rows.size(); ++i) {
+        h += rows[i]->height();
+        if (i + 1 < rows.size())
+            h += m_stackLayout->spacing();
+    }
+    return h;
 }
 
 void ActionLogWidget::scrollToEnd()
@@ -456,16 +642,19 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     // every die is its own QLabel so a hover on ONE block die shows THAT
     // die's tooltip (1 Player Down ... 6 POW). (Rich text <img> cannot
     // carry per-image tooltips.)
+    // Round 16: a FLOW layout (LogMidLayout) — long lines WRAP ("possiamo
+    // andare a capo qualche volta") instead of being clipped mid-word.
     const MidParts parts = splitMiddle(line);
     auto *mid = new QWidget(row);
-    auto *ml = new QHBoxLayout(mid);
+    auto *ml = new LogMidLayout(3, 2);
     ml->setContentsMargins(0, 0, 0, 0);
-    ml->setSpacing(3);
+    mid->setLayout(ml);
     if (!parts.text.isEmpty()) {
         auto *tl = new QLabel(parts.text.toHtmlEscaped(), mid);
         tl->setStyleSheet(style);
         tl->setFont(f);
-        ml->addWidget(tl, 0, Qt::AlignVCenter);
+        tl->setWordWrap(true); // the stretchy item: wraps when it must
+        ml->addWidget(tl);
     }
     const auto dieLabel = [mid, ml, style](const QString &resource, const QString &tip) {
         auto *dl = new QLabel(mid);
@@ -476,7 +665,7 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         dl->setStyleSheet(QStringLiteral("background: transparent;"));
         if (!tip.isEmpty())
             dl->setToolTip(tip);
-        ml->addWidget(dl, 0, Qt::AlignVCenter);
+        ml->addWidget(dl);
         return dl;
     };
     for (const int v : parts.blockFaces)
@@ -489,9 +678,10 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         tl2->setTextFormat(Qt::RichText);
         tl2->setStyleSheet(style);
         tl2->setFont(f);
-        ml->addWidget(tl2, 0, Qt::AlignVCenter);
+        ml->addWidget(tl2);
     }
-    ml->addStretch(1);
+    // (no stretch: LogMidLayout is a flow — the leftover space on the
+    // right stays empty, as the stretch did before)
     rl->addWidget(mid, 1, Qt::AlignVCenter);
 
     if (!defenderName.isEmpty()) {
@@ -515,7 +705,9 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         }
     }
 
-    row->setFixedHeight(kRowH);
+    // Round 16: MINIMUM, not fixed — a wrapped row is taller than kRowH
+    // ("andare a capo"), a short one keeps the classic 30px rhythm.
+    row->setMinimumHeight(kRowH);
     m_stackLayout->insertWidget(m_stackLayout->count() - 1, row); // before the stretch
     settleScroll(); // turn 9: only when the user is (back) at the bottom
 
@@ -547,9 +739,14 @@ void ActionLogWidget::resizeEvent(QResizeEvent *event)
     // Manual inner geometry (turn 9): keep the stack as wide as the
     // viewport and at least as tall as the content.
     if (m_scroll && m_stack && m_stackLayout) {
+        // Round 16 (wrap): same as settleScroll — lay the rows out at the
+        // REAL width first, then measure the content from the actual row
+        // heights (a flow row's height depends on its width; the sizeHint
+        // cache is not trustworthy mid-resize).
         const int w = m_scroll->viewport()->width();
-        const int need = qMax(m_scroll->viewport()->height(),
-                              m_stackLayout->sizeHint().height());
+        m_stack->setGeometry(0, 0, w, qMax(1, m_stack->height()));
+        m_stackLayout->activate();
+        const int need = qMax(m_scroll->viewport()->height(), contentHeight());
         m_stack->setGeometry(0, 0, w, need);
         // Re-layout can move the scrollbar range: if we are following,
         // stay pinned to the newest line (the app re-lays out the log

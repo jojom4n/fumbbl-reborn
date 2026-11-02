@@ -124,6 +124,11 @@ private:
     // Settle the scroll (0ms, coalesced): re-lay out the inner widget and
     // scroll to the end when stick-to-bottom is on.
     void settleScroll();
+    // Round 16: the content height from the ACTUAL laid-out rows (never
+    // the layout sizeHint: a flow row's height depends on its width and
+    // the cached hints go stale mid-layout, inflating the stack until
+    // the bottom stretch swallows the newest lines).
+    int contentHeight() const;
 
     QScrollArea *m_scroll = nullptr;
     QWidget *m_stack = nullptr;

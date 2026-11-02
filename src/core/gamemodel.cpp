@@ -147,6 +147,7 @@ void GameModel::clearMoveTrace()
     m_moveSegments.clear();
     m_blockStepMarks.clear();
     m_nextStepNumber = 1;
+    m_driveUnnumbered = false;
     m_blockResolved = false;
     m_gfiPendingFor.clear();
     m_movePending = false;
@@ -193,6 +194,16 @@ void GameModel::noteBlockStep(const QString &defenderId, const QString &attacker
         return;
     const QPoint from(a->fieldX, a->fieldY);
     const QPoint to(d->fieldX, d->fieldY);
+    // Round 16 (user: "in caso di blocco di giocatore adiacente, basta il
+    // solo trail, non c'è bisogno di contare le caselle"): a PLAIN block
+    // action — the drive STARTED with this block, no movement before it —
+    // is UNNUMBERED for its whole lifetime: no block mark, no follow-step
+    // numbers, just the trail. A BLITZ (a movement before the block) is
+    // numbered: the block takes the next number.
+    if (m_driveUnnumbered || m_moveSegments.isEmpty()) {
+        m_driveUnnumbered = true;
+        return;
+    }
     if (!m_blockResolved && m_blockTargetId == defenderId
         && !m_blockStepMarks.isEmpty()
         && m_blockStepMarks.last().from == from
@@ -558,7 +569,11 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                             && isOnField(player->fieldX, player->fieldY))
                             seg.cells << QPoint(player->fieldX, player->fieldY);
                         seg.cells << QPoint(nx, ny);
-                        seg.stepNumbers << m_nextStepNumber++;
+                        // A drive that STARTED with a block (a plain block
+                        // action) is unnumbered: trail only, no badges
+                        // (user: "basta il solo trail").
+                        if (!m_driveUnnumbered)
+                            seg.stepNumbers << m_nextStepNumber++;
                         seg.goForIt = (m_gfiPendingFor == key);
                         m_gfiPendingFor.clear();
                         m_moveSegments.append(seg);
@@ -583,8 +598,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                         if (cont) {
                             // Next step of the ongoing route.
                             m_moveSegments.last().cells.append(QPoint(nx, ny));
-                            m_moveSegments.last().stepNumbers
-                                .append(m_nextStepNumber++);
+                            if (!m_driveUnnumbered)
+                                m_moveSegments.last().stepNumbers
+                                    .append(m_nextStepNumber++);
                         } else if (!m_blockTargetId.isEmpty() && key == m_blockAttackerId) {
                             // Turn 11 (user): the FOLLOW — after the block
                             // choice the attacker follows the defender

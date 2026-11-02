@@ -24,7 +24,13 @@
 #include <QPainter>
 #include <QThread>
 
+#include <QLabel>
+#include <QMouseEvent>
+#include <QScrollBar>
+#include <QScrollArea>
+
 #include "core/gamemodel.h"
+#include "ui/actionlog.h"
 #include "ui/fieldview.h"
 #include "ui/mainwindow.h"
 
@@ -357,6 +363,126 @@ int main(int argc, char *argv[])
         dumpTrace();
         cropCells(sx - 2, sy - 3, sx + 2, sy + 1,
                  QStringLiteral("round15_gfi.png"));
+    }
+
+    // --- Sequence G: PLAIN BLOCK of an adjacent player (no move in this
+    // drive) + push + follow. Wire flow:
+    //   actingPlayerSetPlayerAction=block
+    //   -> `block` report
+    //   -> push (defender's coordinates)
+    //   -> the follow step (BARE — StepFollowup, no action re-dispatch)
+    //   -> gameSetDefenderId=null
+    // Expected (user: "in caso di blocco di giocatore adiacente, basta il
+    // solo trail, non c'è bisogno di contare le caselle"): ONE segment
+    // (the trail is drawn), NO step numbers, NO block mark.
+    {
+        pump(3000); // out of the report-dedup window (2.5 s)
+        const QString def1 = awayOnField[1];
+        freshTurn(sx, sy);
+        placeDef(def1, sx + 1, sy); // ADJACENT (the block target)
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("block")));
+        QJsonArray rep;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+            r.insert(QStringLiteral("defenderId"), def1);
+            rep.append(r);
+        }
+        w.onModelSync(ch, rep);
+        pump(200);
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), def1,
+               QJsonArray() << (sx + 2) << sy); // push away
+        change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx + 1) << sy); // follow (bare, block open)
+        change(ch2, QStringLiteral("gameSetDefenderId"), QString(), QJsonValue());
+        w.onModelSync(ch2, QJsonArray());
+        pump(900);
+        dumpTrace();
+        cropCells(sx, sy - 1, sx + 2, sy + 1,
+                 QStringLiteral("round16_plainblock.png"));
+    }
+
+    // --- Section H: ACTION LOG WRAP (round 16, user: "riga incompleta.
+    // Possiamo andare a capo qualche volta") — a long line (the reported
+    // one: "Catch (Inaccurate Pass or Scattered)" + dice + result) must
+    // WRAP, not clip. The log's height is fixed (compact), so each shot
+    // carries just the lines it needs: compact width (a short line + the
+    // long one) and a narrow width (the long one alone, wrapped harder).
+    {
+        const auto shootLog = [&](const QString &name, int width,
+                                  bool withShort) {
+            const int height = ActionLogWidget::compactHeight();
+            auto *holder = new QWidget(&w);
+            holder->resize(width + 4, height + 4);
+            holder->move(qMax(0, 1900 - width - 120), 40);
+            auto *log = new ActionLogWidget(holder);
+            log->resize(width, height);
+            holder->show();
+            log->show();
+
+            if (withShort) {
+                DiceLogLine short1;
+                short1.text = QStringLiteral("Ball scattered");
+                short1.blockFaces = QStringList() << QStringLiteral("3");
+                short1.actorIsPlayer = false;
+                log->appendLine(short1, QStringLiteral("Ball"));
+            }
+
+            // The reported line: long action text + block face + d6 roll
+            // with target and result.
+            DiceLogLine long1;
+            long1.text =
+                QStringLiteral("Catch (Inaccurate Pass or Scattered)");
+            long1.actorId = QStringLiteral("18109690");
+            long1.blockFaces = QStringList() << QStringLiteral("6");
+            long1.d6Roll = 3;
+            long1.d6Target = 3;
+            long1.d6Ok = false;
+            long1.d6ShowResult = true;
+            log->appendLine(long1, QStringLiteral("Meelos \"The Hero\" Sizzig (3)"));
+
+            pump(800);
+            // Stick-to-bottom check: after a wrapped row settles, the
+            // view must show the newest line (never a phantom blank
+            // stretch at the bottom of an over-grown stack).
+            if (auto *sc = log->findChild<QScrollArea *>()) {
+                const auto rows = sc->widget()->findChildren<QWidget *>(QString(),
+                                                                        Qt::FindDirectChildrenOnly);
+                const int content = rows.isEmpty() ? 0 : rows.last()->geometry().bottom() + 2;
+                const int vh = sc->viewport()->height();
+                qInfo().noquote() << name << "stackH=" << sc->widget()->height()
+                                  << "content=" << content << "viewport=" << vh;
+                if (auto *sb = sc->verticalScrollBar())
+                    qInfo().noquote() << name << "sb value=" << sb->value()
+                                      << "max=" << sb->maximum();
+            }
+            log->grab().save(outDir + "/" + name);
+            qInfo().noquote() << "saved" << outDir + "/" + name;
+
+            // Expand via a synthetic chevron click (the user's exact path)
+            // and shoot the fully-expanded log (the whole wrapped row).
+            for (auto *lbl : log->findChildren<QLabel *>()) {
+                if (lbl->text() == QString::fromUtf8("\u25b4")) {
+                    const QPoint at = lbl->mapTo(log, lbl->rect().center());
+                    QMouseEvent ev(QEvent::MouseButtonPress, at, QPointF(at),
+                                   Qt::LeftButton, Qt::LeftButton,
+                                   Qt::NoModifier);
+                    QApplication::sendEvent(log, &ev);
+                    break;
+                }
+            }
+            pump(800);
+            log->grab().save(outDir + "/" + name + QStringLiteral("_expanded.png"));
+            qInfo().noquote() << "saved" << outDir + "/" + name + QStringLiteral("_expanded.png");
+            holder->deleteLater();
+        };
+        // 560 = the REAL live width (mainwindow: setFixedWidth(560)).
+        shootLog(QStringLiteral("round16_logwrap_real.png"), 560, true);
+        shootLog(QStringLiteral("round16_logwrap_compact.png"), 360, true);
+        shootLog(QStringLiteral("round16_logwrap_narrow.png"), 240, false);
     }
 
     qInfo() << "round14 preview complete ->" << outDir;

@@ -1070,6 +1070,7 @@ void FieldView::drawMoveTrail(QPainter &p)
             QPointF u;          // unit travel direction (a -> b)
             QPointF perp;       // unit vector ALONG the border, left of travel
             QPoint end;         // endpoint cell (may hold the resting token)
+            bool isBlock = false; // block mark (no closing arrow beside it)
         };
         QVector<Num> nums;
         // Round 15: the numbers come from the MODEL (segment.stepNumbers —
@@ -1121,19 +1122,26 @@ void FieldView::drawMoveTrail(QPainter &p)
             num.u = u;
             num.perp = QPointF(u.y(), -u.x()); // left of the travel
             num.end = mk.to;
+            num.isBlock = true;
             nums.append(num);
         }
-        // The FINAL number's anchor: the penultimate cell's CENTER — beside
-        // the trail's last leg, outside the actor's halo (the halo swallows
-        // the whole shared border of the final cell, see above).
-        const auto finalAnchor = [](const Num &num) { return num.cStart; };
+        // Round 16 (user: "il numero del movimento finale deve essere messo
+        // più vicino alla freccia che chiude il trail"): the FINAL number's
+        // anchor is 0.35 ALONG the last leg from its start — beside the
+        // MIDDLE of the closing arrowhead (which spans the first 0.72 of
+        // the leg), not beside its base. Block marks (no arrow) stay at the
+        // attacker cell's center.
+        const auto finalAnchor = [minDim](const Num &num) {
+            return num.isBlock ? num.cStart
+                               : num.cStart + num.u * (minDim * 0.35);
+        };
         // Pass 1: the default side (left of travel) at the tiered distance.
         QVector<QPointF> pos(nums.size());
         for (int k = 0; k < nums.size(); ++k) {
             const bool occupied =
                 occupantAt(nums[k].end.x(), nums[k].end.y()) != nullptr;
             if (occupied)
-                pos[k] = finalAnchor(nums[k]) + nums[k].perp * minDim * 0.30;
+                pos[k] = finalAnchor(nums[k]) + nums[k].perp * minDim * 0.28;
             else
                 pos[k] = nums[k].mid + nums[k].perp * minDim * 0.26;
         }
@@ -1156,13 +1164,13 @@ void FieldView::drawMoveTrail(QPainter &p)
                         continue;
                     m = qMin(m, std::hypot(pos[j].x() - c.x(),
                                            pos[j].y() - c.y())
-                               - minDim * 0.26); // two badges (r 0.13 each)
+                               - minDim * 0.33); // two badges (r 0.165 each)
                 }
                 return m;
             };
             const QPointF anchor = finalAnchor(nums[k]);
-            const QPointF candA = anchor + nums[k].perp * minDim * 0.30;
-            const QPointF candB = anchor - nums[k].perp * minDim * 0.30;
+            const QPointF candA = anchor + nums[k].perp * minDim * 0.28;
+            const QPointF candB = anchor - nums[k].perp * minDim * 0.28;
             if (clearance(candB) > clearance(candA))
                 pos[k] = candB;
         }
@@ -1174,7 +1182,9 @@ void FieldView::drawMoveTrail(QPainter &p)
                         n, at.x(), at.y(), nums[k].end.x(), nums[k].end.y(),
                         occupantAt(nums[k].end.x(), nums[k].end.y())
                             ? 1 : 0);
-            const qreal br = minDim * 0.13;
+            // Round 16 (user: "fai il tondino leggermente più grande (meglio)")
+            // — the digit used to kiss the rim at r 0.13.
+            const qreal br = minDim * 0.165;
             QFont nf = p.font();
             nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
             nf.setBold(true);

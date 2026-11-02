@@ -396,6 +396,10 @@ private:
     QVector<MoveSegment> m_moveSegments;   // one entry per move route
     QVector<BlockStepMark> m_blockStepMarks; // blocks that cost a movement
     int m_nextStepNumber = 1;              // next number of the drive
+    bool m_driveUnnumbered = false;        // the drive STARTED with a block
+                                           // (plain block of an adjacent
+                                           // player): trail only, no numbers
+                                           // (user: "basta il solo trail")
     bool m_blockResolved = false;          // gameSetDefenderId null landed
                                            // since the last block opened
     QString m_gfiPendingFor;               // player with a successful GFI
