@@ -43,8 +43,30 @@ class QEvent;
 class QScrollArea;
 class QVBoxLayout;
 class QLabel;
-class QCheckBox;
 class QScrollBar;
+
+// Turn 16 (user): the auto-scroll toggle is a visible WHITE SQUARE with a
+// check inside, so it reads as a clickable checkbox at a glance (the plain
+// text-only tick was easy to miss).
+class AutoScrollToggle : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit AutoScrollToggle(QWidget *parent = nullptr);
+    bool checked() const { return m_on; }
+    void setChecked(bool on);
+
+signals:
+    void toggled(bool on);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+
+private:
+    bool m_on = true;
+};
 
 class ActionLogWidget : public QWidget
 {
@@ -89,8 +111,6 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    // The middle part of a row: action text + dice + vs/result (rich text).
-    QString renderMiddle(const DiceLogLine &line) const;
     void addEntry(const DiceLogLine &line, const QString &actorName,
                   const QString &defenderName, const QString &actorId,
                   const QString &defenderId, const QColor &actorColor,
@@ -112,8 +132,8 @@ private:
     QLabel *m_chevron = nullptr;
     // Round 13 turn 9 (user): autoscroll is LIVE — it re-arms the moment
     // the user brings the log back to the bottom (stick-to-bottom), and a
-    // tiny "auto" checkbox in the title bar shows/controls it.
-    QCheckBox *m_autoCheck = nullptr;
+    // tiny "auto-scroll" checkbox (white square + check) shows/controls it.
+    AutoScrollToggle *m_autoCheck = nullptr;
     bool m_stick = true;      // follow the newest line
     bool m_progScroll = false; // value changes we caused (not user scrolls)
     bool m_settlePending = false; // one settle pass per event-loop iteration

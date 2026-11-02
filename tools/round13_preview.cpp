@@ -190,19 +190,48 @@ int main(int argc, char *argv[])
     }
 
     // --- Turn 11: the block CHOICE -> the between-the-two marker switches
-    //     helmet -> the chosen die's SYMBOL (transparent). Face 2 = skull+arrow.
+    //     helmet -> the chosen die's SYMBOL (transparent).
+    //     Turn 16 (user: "se il risultato è un block skull, il simbolo non
+    //     compare"): simulate the SKULL (face 1) case — and the defender
+    //     going prone (the live resolution changes) — the marker must
+    //     survive both and show the skull.
     {
         QJsonArray rep;
         QJsonObject r;
         r.insert("reportId", "blockChoice");
         r.insert("defenderId", awayPid);
         QJsonArray fr;
-        fr << 6 << 2;
+        fr << 1 << 6;
         r.insert("blockRoll", fr);
-        r.insert("diceIndex", 1);
+        r.insert("diceIndex", 0); // face 1 = skull
+        r.insert("blockResult", QStringLiteral("SKULL"));
         rep.append(r);
         w.onModelSync(QJsonArray(), rep);
         QApplication::processEvents();
+        // The resolution: the defender goes prone (live: same frame class).
+        QJsonArray ch;
+        change(ch, QStringLiteral("fieldModelSetPlayerState"), awayPid, 3);
+        w.onModelSync(ch, QJsonArray());
+        for (int i = 0; i < 8; ++i) {
+            QThread::msleep(100);
+            QApplication::processEvents();
+        }
+    }
+
+    // Crop the SKULL marker (face 1) while armed — the user report: "se il
+    // risultato è un block skull, il simbolo non compare".
+    {
+        const FFBPlayer *att = w.model()->findPlayerById(homePid);
+        const FFBPlayer *def = w.model()->findPlayerById(awayPid);
+        if (att && def && att->hasCoords && def->hasCoords) {
+            const QPoint a = field->cellCenterPx(att->fieldX, att->fieldY);
+            const QPoint b = field->cellCenterPx(def->fieldX, def->fieldY);
+            const int pad = 60;
+            QRect r(qMin(a.x(), b.x()) - pad, qMin(a.y(), b.y()) - pad,
+                    qAbs(a.x() - b.x()) + pad * 2, qAbs(a.y() - b.y()) + pad * 2);
+            saveCrop(*field, r.intersected(field->rect()),
+                     outDir + "/round13_blockskull.png");
+        }
     }
 
     // --- Turn 13: the green CHECK — switch the actor away and back so the
@@ -227,7 +256,8 @@ int main(int argc, char *argv[])
         r2.insert("reportId", "blockRoll");
         r2.insert("choosingTeamId", w.model()->teamHomeId());
         QJsonArray faces2;
-        faces2 << 6 << 2;
+        faces2 << 6 << 3; // turn 16: re-arm with a PUSHBACK (face 3) so the
+                          // final crop shows the straight die-like push arrow
         r2.insert("blockRoll", faces2);
         r2.insert("defenderId", awayPid);
         rep2.append(r2);
@@ -237,9 +267,10 @@ int main(int argc, char *argv[])
         r3.insert("reportId", "blockChoice");
         r3.insert("defenderId", awayPid);
         QJsonArray fr3;
-        fr3 << 6 << 2;
+        fr3 << 6 << 3;
         r3.insert("blockRoll", fr3);
         r3.insert("diceIndex", 1);
+        r3.insert("blockResult", QStringLiteral("PUSHBACK"));
         rep3.append(r3);
         w.onModelSync(QJsonArray(), rep3);
         for (int i = 0; i < 8; ++i) {
@@ -248,8 +279,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Crop the marker with the CHOSEN die (face 2 = both down: skull +
-    // burst) while it is still armed — before the trail move clears it.
+    // Crop the marker with the CHOSEN die (turn 16 re-arm: face 3 =
+    // PUSHBACK, the straight die-like arrow) while it is still armed —
+    // before the trail move clears it.
     {
         const FFBPlayer *att = w.model()->findPlayerById(homePid);
         const FFBPlayer *def = w.model()->findPlayerById(awayPid);
@@ -336,6 +368,40 @@ int main(int argc, char *argv[])
             }
         w.onModelSync(ch, QJsonArray());
         QApplication::processEvents();
+    }
+
+    // --- Move trail crop: the area the actor moved through ------------------------
+    // (Turn 16: the crop must happen BEFORE the kickoff simulation below —
+    // gameSetTurnMode=kickoff is a turn-start mode and clears the trace,
+    // which used to erase the trail before this crop was taken.)
+    {
+        // Let the glide animation settle first so the crops show the RESTING
+        // layout (final token in its cell, badges un-occluded).
+        for (int i = 0; i < 40; ++i) { // 40 x 10ms = 400ms > 4 legs x 85ms
+            QThread::msleep(10);
+            QApplication::processEvents();
+        }
+        // One crop covering the WHOLE route (cells 7..10, 11..14): trail
+        // arrows + the corner track-number badges + the resting actor.
+        {
+            const QRectF fr = field->fieldRect();
+            const qreal cw2 = fr.width() / 26.0, ch2 = fr.height() / 15.0;
+            const QPoint c0 = field->cellCenterPx(7, 11);
+            const QPoint c1 = field->cellCenterPx(10, 14);
+            saveCrop(*field,
+                     QRect(c0.x() - cw2 / 2, c0.y() - ch2 / 2,
+                           (c1.x() - c0.x()) + cw2, (c1.y() - c0.y()) + ch2)
+                         .intersected(field->rect()),
+                     outDir + "/round13_routecells.png");
+        }
+        const qreal cell = field->fieldRect().width() / 26.0;
+        const QPoint a = field->cellCenterPx(trailX, trailY);
+        const QPoint b = field->cellCenterPx(trailX - 2, trailY - 2);
+        QRect r(qMin(a.x(), b.x()), qMin(a.y(), b.y()),
+                qAbs(a.x() - b.x()), qAbs(a.y() - b.y()));
+        const int pad = int(cell * 3);
+        r.adjust(-pad, -pad, pad, pad);
+        saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_trail.png");
     }
 
     // Ball flight: the throw steps through the grid; the ball GROWS with
@@ -483,19 +549,6 @@ int main(int argc, char *argv[])
         }
     QApplication::processEvents();
     saveCrop(*log, log->rect(), outDir + "/round13_actionlog.png");
-
-    // --- Move trail crop: the area the actor moved through ------------------------
-    // The actor moved from (trailX,trailY) left 2 and down 2: cover that box.
-    {
-        const qreal cell = field->fieldRect().width() / 26.0;
-        const QPoint a = field->cellCenterPx(trailX, trailY);
-        const QPoint b = field->cellCenterPx(trailX - 2, trailY - 2);
-        QRect r(qMin(a.x(), b.x()), qMin(a.y(), b.y()),
-                qAbs(a.x() - b.x()), qAbs(a.y() - b.y()));
-        const int pad = int(cell * 3);
-        r.adjust(-pad, -pad, pad, pad);
-        saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_trail.png");
-    }
 
     // --- Rain: switch to pouring rain, let drops + dynamic puddles build up -------
     // (round 13: top-down rain over the WHOLE field, puddles appear over time).

@@ -945,23 +945,72 @@ void FieldView::drawMoveTrail(QPainter &p)
     //     this is the "clean" spot for the final cell number too.
     if (!m_trackNumbers.isEmpty()) {
         const qreal cellH = f.height() / kFieldHeight;
-        QFont nf = p.font();
-        nf.setPointSizeF(qMax(5.0, qMin(cellW, cellH) * 0.40));
-        nf.setBold(true);
-        p.setFont(nf);
+        const qreal minDim = qMin(cellW, cellH);
+        // Turn 16 (user: "i numeri cella ancora intersecano spesso il trail
+        // e non sono chiari nel riferirsi alla cella, sono spostati da
+        // essa. Ancora, non appare il numero della cella finale"):
+        //   - the old bare text in the corner was covered by the resting
+        //     token (dark disc r = 0.46*minDim reaches into the corner) —
+        //     the FINAL cell's number vanished under the token;
+        //   - bare white text on the grass/trail read as "floating",
+        //     detached from its cell.
+        // Now each number is a small OPAQUE white badge with a black digit
+        // (the same language as the approved token-number badge): it sits
+        // tight in the cell's top-left corner, clearly inside its own cell,
+        // covers any trail that bends into the corner (the trail never
+        // crosses the digit), and stays visible on the final cell because
+        // it is opaque and outside the token disc (badge nearest point
+        // 0.54*minDim from center vs token radius 0.46*minDim).
+        const auto nfFor = [this, &p, minDim](int n) {
+            QFont nf = p.font();
+            // Same visual family as the token-number badge (turn 16, user:
+            // numbers at badge scale): 1.3x the old bare text.
+            nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
+            nf.setBold(true);
+            return nf;
+        };
+        // The resting token's OWN corner badges (check top-right, lightning
+        // top-left, "?" bottom-left, ball-in-hand top-left, number
+        // bottom-right) can sit on a numbered cell (the FINAL cell is the
+        // actor's cell). The track badge picks the first FREE corner.
+        const auto occupantAt = [this](int x, int y) -> const PlayerToken * {
+            for (const auto &team : { m_homePlayers, m_awayPlayers })
+                for (const PlayerToken &t : team)
+                    if (t.x == x && t.y == y)
+                        return &t;
+            return nullptr;
+        };
         for (auto it = m_trackNumbers.constBegin(); it != m_trackNumbers.constEnd(); ++it) {
             const int n = it.value();
             if (n == 0)
                 continue; // the starting square keeps its cell clean
             const QPoint cell = it.key();
             const QPointF cc = cellCenter(cell.x(), cell.y());
-            const QPointF at(cc.x() - cellW * 0.36, cc.y() - cellH * 0.34); // top-left corner
+            const PlayerToken *occ = occupantAt(cell.x(), cell.y());
+            const bool occBlitz = occ && occ->playerId == m_blitzingPlayer;
+            const bool occActed = occ && m_actedPlayers.contains(occ->playerId);
+            const bool occConf = occ && (occ->state & 0x00200);
+            // top-left -> bottom-left -> top-right -> bottom-right.
+            // The offsets hug the corner close enough that the DIGIT always
+            // stays outside the resting token disc (token r = 0.46, digit
+            // nearest point = 0.55 - 0.08 = 0.47 > 0.46).
+            QPointF off(-0.40, -0.375);
+            if (occBlitz || (occ && occ->hasBall))
+                off = occConf ? QPointF(0.40, 0.375) : QPointF(-0.40, 0.375);
+            else if (occConf)
+                off = occActed ? QPointF(0.40, 0.375) : QPointF(0.40, -0.375);
+            const QPointF at(cc.x() + off.x() * minDim, cc.y() + off.y() * minDim);
+            const qreal br = minDim * 0.13;
+            p.setFont(nfFor(n));
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(250, 250, 246, 240));
+            p.drawEllipse(at, br, br);
+            p.setPen(QPen(QColor(46, 40, 34, 200), qMax(1.0, minDim * 0.02)));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(at, br, br);
             const QString num = QString::number(n);
-            QRectF box(at.x() - cellW * 0.20, at.y() - cellH * 0.30,
-                       cellW * 0.40, cellH * 0.42);
-            p.setPen(QPen(QColor(24, 24, 30, 220), qMax(2.0, cellW * 0.09)));
-            p.drawText(box, Qt::AlignCenter, num);
-            p.setPen(QColor(255, 255, 255, 240));
+            QRectF box(at.x() - br, at.y() - br, br * 2, br * 2);
+            p.setPen(QColor(20, 20, 24, 255));
             p.drawText(box, Qt::AlignCenter, num);
         }
     }
@@ -1464,6 +1513,22 @@ inline void markerDisc(QPainter &p, const QPointF &c, qreal r)
     p.drawEllipse(c, r - rim / 2, r - rim / 2);
 }
 
+// Turn 16 (user: "la palla dovrebbe essere un poco più visibile ... Falla
+// gloware oro"): a soft GOLD halo under the ball (field + carrier), so it
+// pops on the grass and on the token alike.
+inline void drawBallGlow(QPainter &p, const QPointF &c, qreal radius)
+{
+    QRadialGradient g(c, radius);
+    g.setColorAt(0.0, QColor(255, 190, 40, 150));
+    g.setColorAt(0.55, QColor(255, 190, 40, 70));
+    g.setColorAt(1.0, QColor(255, 190, 40, 0));
+    p.save();
+    p.setPen(Qt::NoPen);
+    p.setBrush(g);
+    p.drawEllipse(c, radius, radius);
+    p.restore();
+}
+
 // Turn 15 (user, point 1): the vector american football, shared by the
 // ball on the field AND the ball-in-hand indicator on the token (the old
 // carrier marker was a plain ugly ellipse — the "versione brutta").
@@ -1524,35 +1589,32 @@ inline void goldFill(QPainter &p, const QPolygonF &path)
 
 // Face 3/4 arrows: the bent two-segment arrow. `dir` 1 = face 3, -1 = face 4
 // (same geometry as the official faces, now gold on the shared disc).
-// Turn 15 (user, point 2: "la freccia dovrebbe essere PIENA e gialla, si
-// vedono solo i bordi"): the push symbol is now a SOLID arrow — a filled
-// shaft and a filled head with a thin dark rim, not an outline-only glyph.
-void drawBentArrow(QPainter &p, const QPointF &c, qreal k, int dir)
+// Turn 16 (user: "deve essere una freccia come quella del dado, perché la
+// fai storta e tutta piegata?"): the push symbol is the die's STRAIGHT
+// chunky arrow — one filled polygon (shaft + big triangular head), a thin
+// dark rim, rotated to the actual push direction. It used to be an L-shape
+// (bent), which had nothing to do with the die glyph.
+void drawPushArrow(QPainter &p, const QPointF &c, qreal k, qreal angleDeg)
 {
     p.save();
     p.translate(c);
+    p.rotate(angleDeg);
     p.setRenderHint(QPainter::Antialiasing, true);
-    const qreal s = k * dir; // flip vertically
-    const qreal w = k * 0.17; // half-width of the shaft
-    // Filled shaft: horizontal bar (left -> right) then vertical bar down.
-    QPolygonF hbar;
-    hbar << QPointF(-0.48 * k, -0.30 * s - w) << QPointF(0.02 * k, -0.30 * s - w)
-         << QPointF(0.02 * k, -0.30 * s + w)  << QPointF(-0.48 * k, -0.30 * s + w);
-    QPolygonF vbar;
-    vbar << QPointF(-0.02 * k - w, -0.30 * s) << QPointF(0.02 * k + w, -0.30 * s)
-         << QPointF(0.02 * k + w, 0.26 * s)   << QPointF(-0.02 * k - w, 0.26 * s);
-    // Filled head: a down-pointing triangle at the shaft's end.
-    QPolygonF head;
-    head << QPointF(0.02 * k - 0.34 * k, 0.22 * s)
-         << QPointF(0.02 * k + 0.34 * k, 0.22 * s)
-         << QPointF(0.02 * k, 0.56 * s);
+    const qreal w = k * 0.15; // half-width of the shaft
+    // Single closed outline: shaft left end -> head base -> head tip -> back.
+    QPolygonF arrow;
+    arrow << QPointF(-0.46 * k, -w)
+          << QPointF(0.16 * k, -w)
+          << QPointF(0.16 * k, -0.38 * k)
+          << QPointF(0.54 * k, 0)
+          << QPointF(0.16 * k, 0.38 * k)
+          << QPointF(0.16 * k, w)
+          << QPointF(-0.46 * k, w);
     QPen rim(kMarkInk, k * 0.07);
     rim.setJoinStyle(Qt::RoundJoin);
     p.setPen(rim);
     p.setBrush(kMarkGold);
-    p.drawPolygon(hbar);
-    p.drawPolygon(vbar);
-    p.drawPolygon(head);
+    p.drawPolygon(arrow);
     p.restore();
 }
 
@@ -1598,9 +1660,13 @@ QPolygonF burstPolygon(const QPointF &c, qreal k, qreal scale)
     return burst;
 }
 
-void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
+void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face,
+                        qreal arrowAngleDeg = -45)
 {
     // k = marker radius. WHITE DISC + gold symbol, every face.
+    // arrowAngleDeg: where the push arrow (faces 3/4) points — on the FIELD
+    // marker it is the actual attacker -> defender direction; the bare
+    // default matches the die faces (3 up-right, 4 down-right).
     p.save();
     markerDisc(p, c, 0.62 * k);
     // GROUND TRUTH — official GW block die (BB2025, verified on official
@@ -1628,20 +1694,27 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face)
     case 6: // burst (POW)
         goldFill(p, burstPolygon(c, k, 1.0));
         break;
-    case 3: // push arrow (official faces 3/4)
-    case 4:
-        drawBentArrow(p, c, k, face == 3 ? 1 : -1);
+    case 3: // push arrow (official faces 3/4) — on the field marker both
+    case 4: // faces point along the real push (attacker -> defender); the
+            // parameter default only matters for a bare die-face replica.
+        drawPushArrow(p, c, k, arrowAngleDeg);
         break;
-    case 1: // skull (player down)
-        drawSkull(p, c, 0.34 * k, kMarkGold, kMarkDisc, true);
+    case 1: { // skull (player down). Turn 16 (user: "se il risultato è un
+              // block skull, il simbolo non compare"): the skull was a third
+              // of the disc — on the official die face 1 the skull fills the
+              // face. Enlarged to match.
+        drawSkull(p, c, 0.46 * k, kMarkGold, kMarkDisc, true);
         break;
+    }
     case 2: { // BOTH DOWN — turn 12 user report: the old skull+ARROW glyph
               // was the "odd symbol". Official face (block2 asset): skull
-              // + explosion burst, both gold on the white disc.
-        drawSkull(p, QPointF(c.x() - 0.18 * k, c.y() + 0.06 * k), 0.26 * k,
+              // + explosion burst, both gold on the white disc. Turn 16:
+              // the glyph was a third the size of the other faces (barely
+              // visible at 24px cells) — scaled up to match face 1/6.
+        drawSkull(p, QPointF(c.x() - 0.20 * k, c.y() + 0.08 * k), 0.30 * k,
                   kMarkGold, kMarkDisc, true);
-        goldFill(p, burstPolygon(QPointF(c.x() + 0.20 * k, c.y() - 0.16 * k),
-                                 k * 0.70, 1.0));
+        goldFill(p, burstPolygon(QPointF(c.x() + 0.22 * k, c.y() - 0.18 * k),
+                                 k * 0.80, 1.0));
         break;
     }
     default:
@@ -2118,6 +2191,10 @@ void FieldView::paintEvent(QPaintEvent *)
         // marker — turn 15 point 1).
         const qreal bw = cellW * 0.52 * ballScale;
         const qreal bh = cellH * 0.34 * ballScale;
+        // Turn 16 (user: "la palla dovrebbe essere un poco più visibile,
+        // sia che stia sul campo sia che stia sul token. Falla gloware
+        // oro"): a soft GOLD halo under the ball, at rest and in flight.
+        drawBallGlow(p, bctr, qMax(bw, bh) * 1.15);
         drawFootball(p, bctr, bw, bh, -18);
     }
 
@@ -2269,22 +2346,23 @@ void FieldView::paintEvent(QPaintEvent *)
             }
 
             // Number badge (bottom-right of the token — follows it while it
-            // glides, not the model cell).
-            const qreal br = qMin(cellW, cellH) * 0.24;
-            const QPointF bc(ctr.x() + s * 0.28, ctr.y() + s * 0.30);
-            p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.2));
-            p.setBrush(QColor(0x1e, 0x1e, 0x26));
+            // glides, not the model cell). Turn 16 (user: "numero del token
+            // nero su sfondo bianco" + "parecchio più piccoli, diciamo la
+            // grandezza dei vari simboli che appaiono sul token in altre
+            // posizioni"): the badge joins the badge family — SAME size as
+            // the check/lightning/'?' ring badges (0.15 minDim), WHITE disc
+            // with a dark rim, DARK (black) number.
+            const qreal br = qMin(cellW, cellH) * 0.15;
+            const QPointF bc(ctr.x() + s * 0.30, ctr.y() + s * 0.32);
+            p.setPen(QPen(QColor(0x2a, 0x28, 0x22), qMax(1.0, br * 0.16)));
+            p.setBrush(QColor(0xf6, 0xf4, 0xee, 245));
             p.drawEllipse(bc, br, br);
-            p.setPen(Qt::white);
-            // Turn 15 (user, point 12: "i numeri dei giocatori appaiono
-            // un poco sproporzionati"): two-digit numbers need a smaller
-            // font to sit in the same badge (12pt 1-digit vs 9pt 2-digit,
-            // scaled with the badge radius).
             QFont numFont = p.font();
             const int ndigits = t.number > 99 ? 3 : (t.number > 9 ? 2 : 1);
-            numFont.setPointSizeF(qMax(5.0, br * (ndigits == 1 ? 1.5 : 1.12)));
+            numFont.setPointSizeF(qMax(3.5, br * (ndigits == 1 ? 1.5 : 1.05)));
             numFont.setBold(true);
             p.setFont(numFont);
+            p.setPen(QColor(0x14, 0x12, 0x10));
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
@@ -2293,8 +2371,12 @@ void FieldView::paintEvent(QPaintEvent *)
             // ellipse — now the SAME vector football as the ball on the
             // field, at badge scale.
             if (t.hasBall) {
-                drawFootball(p, QPointF(ctr.x() - s * 0.34, ctr.y() - s * 0.38),
-                             cellW * 0.30, cellH * 0.20, -18);
+                // Turn 16 (user): the carrier ball GLOWS GOLD on the token
+                // too ("sia che stia sul campo sia che stia sul token").
+                const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
+                const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
+                drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25);
+                drawFootball(p, bc2, bw2, bh2, -18);
             }
         }
     };
@@ -2499,10 +2581,16 @@ void FieldView::paintEvent(QPaintEvent *)
             const QPointF mid(f.x() + (va.x() + vd.x()) * 0.5 * cellW,
                               f.y() + (va.y() + vd.y()) * 0.5 * cellH);
             const qreal k = qMin(cellW, cellH) * 0.45;
-            if (m_blockDieFace >= 1 && m_blockDieFace <= 6)
-                drawBlockDieSymbol(p, mid, k, m_blockDieFace);
-            else
+            if (m_blockDieFace >= 1 && m_blockDieFace <= 6) {
+                // Turn 16 (user): the push arrow must point ALONG THE REAL
+                // PUSH (attacker -> defender), like the die's straight arrow.
+                const qreal ang =
+                        qRadiansToDegrees(std::atan2(vd.y() - va.y(),
+                                                     vd.x() - va.x()));
+                drawBlockDieSymbol(p, mid, k, m_blockDieFace, ang);
+            } else {
                 drawFootballHelmet(p, mid, k, va.x() < vd.x());
+            }
         }
     }
 

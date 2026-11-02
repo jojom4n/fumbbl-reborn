@@ -540,12 +540,34 @@ void GameModelTest::turnMarksAndBlockMarkerLifecycle()
     model.applyModelChanges(ch);
     QVERIFY(model.blitzingPlayerId().isEmpty());
 
-    // --- acted this turn: the previous actor gets the green check --------
+    // --- acted this turn (turn 16, user bug): the green check appears on
+    // DEFINITIVE activation (actingPlayerSetPlayerAction), NOT when the
+    // actor leaves. Select -> deselect must NOT mark.
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue(QStringLiteral("18109690"))));
+    model.applyModelChanges(ch);
+    QVERIFY(!model.actedThisTurn().contains(QStringLiteral("18109690")));
+    // Deselect: the human wants to think — the actor goes null, no action
+    // was taken. Old (buggy) behavior marked here; now: still unmarked.
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue())); // null: deselection
+    model.applyModelChanges(ch);
+    QVERIFY(!model.actedThisTurn().contains(QStringLiteral("18109690")));
+    // Reselect + ACTIVATE: now — and only now — the green check appears.
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                     QJsonValue(QStringLiteral("18109690"))));
+    ch.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                     QJsonValue(QStringLiteral("move"))));
+    model.applyModelChanges(ch);
+    QVERIFY(model.actedThisTurn().contains(QStringLiteral("18109690")));
+    // The next selected actor is NOT acted just from being selected.
     ch = QJsonArray();
     ch.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
                      QJsonValue(QStringLiteral("18109691"))));
     model.applyModelChanges(ch);
-    QVERIFY(model.actedThisTurn().contains(QStringLiteral("18109690")));
     QVERIFY(!model.actedThisTurn().contains(QStringLiteral("18109691")));
 
     // --- block marker lifecycle -----------------------------------------

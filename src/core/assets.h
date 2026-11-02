@@ -104,12 +104,6 @@ QPixmap dugoutPanel();
 // field view on a white disc BETWEEN attacker and defender while the block
 // die is pending. Null pixmap when missing (vector fallback helmet).
 QPixmap blockHelmet();
-// The FANTASY STADIUM backdrop (assets/stadium/stands.png, Qwen top-down:
-// packed medieval stands, inspired by Blood Bowl 3 — round 13, user). Fills
-// the widget behind the field scene (replaces the flat grey apron). Null
-// pixmap when missing (FieldView falls back to the flat stadium fill).
-QPixmap stadiumTexture();
-
 // True when the face set is available.
 bool isAvailable();
 

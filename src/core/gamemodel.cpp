@@ -132,6 +132,7 @@ void GameModel::clearState()
     m_movePending = false;
     m_trackNumbers.clear();
     m_actedThisTurn.clear();
+    m_actorActivated = false;
     m_passTargetId.clear();
     m_blitzingPlayerId.clear();
 }
@@ -546,8 +547,16 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     // marker must be gone in both cases). The red glow keeps living until
     // the attacker's actor glow dies (turn 8 rule).
     if (id == QLatin1String("gameSetDefenderId")) {
-        if (value.isNull())
+        if (value.isNull()) {
+            const bool glowOnly = m_blockGlowOnly;
             clearBlockMarker();
+            // Turn 16: for a FOUL the null defender id is the foul's
+            // resolution (ffb-server StepEndFouling does exactly this) —
+            // the glow-only mark dies with it. A block's red glow keeps
+            // its turn-8 lifecycle (dies with the attacker's actor glow).
+            if (glowOnly)
+                m_blockTargetId.clear();
+        }
         return;
     }
 
@@ -599,6 +608,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         clearMoveTrace(); // a new half: the trace dies with the old turn
         m_blockTargetId.clear(); // round 13 turn 4: a new half kills the glow
         m_actedThisTurn.clear();
+        m_actorActivated = false;
         m_blitzingPlayerId.clear();
         m_trackNumbers.clear();
         m_passTargetId.clear();
@@ -665,6 +675,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // but a new turn starts a fresh numbering anyway). The block
         // marker dies with the turn too.
         m_actedThisTurn.clear();
+        m_actorActivated = false;
         m_blitzingPlayerId.clear();
         m_trackNumbers.clear();
         clearBlockMarker();
@@ -748,23 +759,44 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // missing (user: "non sempre c'è il glow rosso").
         if (!m_blockTargetId.isEmpty() && m_activePlayerId != m_blockAttackerId)
             m_blockTargetId.clear();
-        // Turn 13 (user, "come su FUMBBL"): the moment a player STOPS
-        // being the actor, they have acted this turn — the green check.
-        // (A -> null and A -> B both count; A -> A is the same action
-        // continuing, no mark.)
-        if (!oldActor.isEmpty() && oldActor != newActor)
-            m_actedThisTurn.insert(oldActor);
+        // Turn 16 (user, second logic bug): the old code marked the
+        // previous actor as "acted" the moment the actor changed (A -> null
+        // or A -> B). That was WRONG for the select -> DESELECT -> reselect
+        // flow: the human selects a player to think, cancels (actor -> null,
+        // no action taken), selects them again and only THEN activates them
+        // — the green check appeared after the FIRST selection, before the
+        // real action.
+        //
+        // Server ground truth (ffb-server StepInitMoving +
+        // UtilActingPlayer.changeActingPlayer, capture-verified pattern
+        // "Id=None, Id=X, Action=move, Id=None"):
+        //   - SELECTION  = actingPlayerSetPlayerId=X, playerAction still null
+        //   - ACTIVATION = actingPlayerSetPlayerAction=<action> (the human
+        //                  definitively chose an action)
+        //   - DESELECT / action end = actingPlayerSetPlayerId=null
+        // Only ACTIVATION is definitive. The mark moves to the
+        // actingPlayerSetPlayerAction handler below; here the activation
+        // window simply resets for any new actor (X -> null and X -> Y).
+        if (newActor != m_activePlayerId)
+            m_actorActivated = false;
         return;
     }
 
     if (id == QLatin1String("actingPlayerSetPlayerAction")) {
         // Value: a plain PlayerAction name on the wire ("move", "standUp",
-        // "blitzMove", ... — verified in the live capture). A MOVING action
-        // arms the trace: the actor's next coordinate change starts a NEW
-        // path (its own arrow).
+        // "blitzMove", ... — verified in the live capture; null = a bare
+        // selection, no action yet).
         const QString an = enumNameValue(value);
         if (isMovingActionName(an))
             m_movePending = true;
+        // Turn 16: the GREEN CHECK ("acted this turn") appears exactly when
+        // the acting player is DEFINITIVELY activated — the human chose an
+        // action. A select-then-deselect (no action on the wire) never
+        // marks; a reselected player marks only when they finally act.
+        if (!an.isEmpty() && !m_activePlayerId.isEmpty()) {
+            m_actedThisTurn.insert(m_activePlayerId);
+            m_actorActivated = true;
+        }
         return;
     }
 

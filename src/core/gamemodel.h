@@ -178,6 +178,7 @@ public:
     void setBlockTargetId(const QString &playerId, const QString &attacker = QString())
     {
         m_blockTargetId = playerId;
+        m_blockGlowOnly = false; // a block is not glow-only
         if (!m_blockTargetId.isEmpty())
             m_blockAttackerId = attacker.isEmpty() ? m_activePlayerId : attacker;
     }
@@ -186,13 +187,31 @@ public:
     QString blockAttackerId() const { return m_blockAttackerId; }
     int blockDieFace() const { return m_blockDieFace; }
     void setBlockDieFace(int face) { m_blockDieFace = face; }
+    // Turn 16 (user: "il target del blitz fallo gloware di rosso"): a FOUL
+    // target gets the same red glow as a block defender — but WITHOUT the
+    // marker pair (there is no die). The glow's lifecycle is the block
+    // glow's: it dies when the fouler (the actor) stops being the actor,
+    // on a new turn or half, or when the target is replaced.
+    void setFoulTargetId(const QString &playerId)
+    {
+        m_blockTargetId = playerId;
+        m_blockAttackerId = m_activePlayerId; // lifecycle anchor = the fouler
+        m_blockDieFace = 0;
+        m_blockGlowOnly = true;
+    }
+    bool blockGlowOnly() const { return m_blockGlowOnly; }
     // Turn 12 (user): the marker (helmet / chosen die) between attacker
     // and defender dies as soon as the ATTACKER acts on the follow
     // decision — it must not stay attached to the player. The RED GLOW on
     // the defender keeps its own (turn 8) lifecycle and is NOT touched
     // here.
     bool blockMarkerActive() const { return !m_blockAttackerId.isEmpty(); }
-    void clearBlockMarker() { m_blockAttackerId.clear(); m_blockDieFace = 0; }
+    void clearBlockMarker()
+    {
+        m_blockAttackerId.clear();
+        m_blockDieFace = 0;
+        m_blockGlowOnly = false;
+    }
 
     // Turn 13 (user, "come su FUMBBL"): the numbered cells of the current
     // movement trail. GROUND TRUTH (game_1957772 capture): the server sends
@@ -304,6 +323,8 @@ private:
     int m_turnReRollsAway = 0;
     QHash<QPoint, int> m_trackNumbers; // turn 13: server trail cell numbers
     QSet<QString> m_actedThisTurn;    // turn 13: players already acted
+    bool m_actorActivated = false;    // turn 16: the current actor chose an
+                                      // action (green-check gate)
     QString m_passTargetId;           // turn 14: pass receiver (white glow)
     QString m_blitzingPlayerId;       // turn 13: this turn's blitzer
 
@@ -338,6 +359,7 @@ private:
     // Acting player (turn holder).
     QString m_activePlayerId;
     QString m_blockTargetId; // round 13 turn 4: the player being blocked
+    bool m_blockGlowOnly = false; // turn 16: foul target (red glow, no marker)
     QString m_blockAttackerId; // turn 8: whose actor glow holds the block open
     int m_blockDieFace = 0; // turn 11: chosen block die (0 = pending)
 

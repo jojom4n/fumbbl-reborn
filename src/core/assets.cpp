@@ -276,11 +276,6 @@ QPixmap blockHelmet()
     return loadPixmap(QStringLiteral("markers/helmet.png"));
 }
 
-QPixmap stadiumTexture()
-{
-    return loadPixmap(QStringLiteral("stadium/stands.png"));
-}
-
 QPixmap stadiumImage(const QString &name)
 {
     // Round 13 turn 5 (user: the stadium must be 4K-beautiful like the

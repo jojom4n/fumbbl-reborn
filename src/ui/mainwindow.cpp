@@ -160,10 +160,10 @@ void MainWindow::createMenus()
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
     // Round 8: rosters gone (field box strips cover box/KO/reserve), action
     // log and chat are pinned overlays (always visible, not toggleable).
-    const QStringList panelOrder = { QStringLiteral("player_info"),
-                                     QStringLiteral("protocol") };
-    for (const QString &name : panelOrder)
-        viewMenu->addAction(m_panelViewActions.value(name));
+    // Turn 16 (user): "Player info" is NOT in the menu anymore — the human
+    // player must not be able to toggle it: the card works (and must work)
+    // on HOVER over a player, and only the hover drives it.
+    viewMenu->addAction(m_panelViewActions.value(QStringLiteral("protocol")));
     viewMenu->addSeparator();
     viewMenu->addAction(m_resetLayoutAction);
 
@@ -632,8 +632,13 @@ void MainWindow::applyModelToUi()
     // Round 13 turn 4 (user): the RED glow on the player being blocked
     // (armed by the blockRoll/block report, cleared by the model when the
     // block resolves).
-    m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
-                            m_model->blockDieFace());
+    // Turn 16 (user): a FOUL target is red-glow-only (no helmet/die marker
+    // between the pair — there is no die in a foul).
+    if (m_model->blockGlowOnly())
+        m_field->setBlockMarker(QString(), m_model->blockTargetId(), 0);
+    else
+        m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
+                                m_model->blockDieFace());
 
     // Turn 13 (user, "come su FUMBBL"): the per-turn token marks + the
     // numbered trail cells, straight from the model.
@@ -748,6 +753,18 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         // replaces the glow — one red glow at a time, no stacking (user:
         // multiple blocks per turn must not stack glows).
         const QString rid = report.value(QStringLiteral("reportId")).toString();
+        // Turn 16 (user: "il target del blitz fallo gloware di rosso"): the
+        // foul's VICTIM (the report's defenderId — see ReportFoul ground
+        // truth) gets the block-defender's red glow, glow-only (no marker).
+        if (rid == QLatin1String("foul")) {
+            const QString victim =
+                report.value(QStringLiteral("defenderId")).toString();
+            if (!victim.isEmpty()) {
+                m_model->setFoulTargetId(victim);
+                if (m_field)
+                    m_field->setBlockMarker(QString(), victim, 0);
+            }
+        }
         if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
             || rid == QLatin1String("blockChoice")) {
             const QString victim = report.value(QStringLiteral("defenderId")).toString();
@@ -793,15 +810,26 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         // report carries only the defender; the attacker is the current
         // actor (the block reports arrive while the attacker is the actor).
         QVector<DiceLogLine> lines = parseReport(report);
-        if (rid == QLatin1String("block")) {
+        // Turn 16 (user): the WHOLE block sequence is titled with the acting
+        // player — the blitzer for a blitz block ("la riga con il risultato
+        // dei dadi di blocco ... intitolata con il nome del giocatore che
+        // blitza"), the attacker for a regular block. The `block`/`blockRoll`/
+        // `blockChoice` reports carry the choosing TEAM (or nothing); the
+        // `foul` report carries only the VICTIM. In all cases the acting
+        // player is filled from the model (the reports arrive while the
+        // actor is the one performing the action).
+        if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
+            || rid == QLatin1String("blockChoice") || rid == QLatin1String("foul")) {
             const QString attacker = m_model->activePlayerId();
-            for (DiceLogLine &l : lines)
-                if (l.actorId.isEmpty() && !l.defenderId.isEmpty()) {
-                    l.actorId = attacker;
+            for (DiceLogLine &l : lines) {
+                if (!l.actorId.isEmpty())
+                    continue;
+                l.actorId = attacker;
+                if (rid == QLatin1String("block"))
                     l.text = (attacker == m_model->blitzingPlayerId())
                                  ? QStringLiteral("blitzes")
                                  : QStringLiteral("blocks");
-                }
+            }
         }
         for (const DiceLogLine &line : lines)
             appendDiceLog(line);

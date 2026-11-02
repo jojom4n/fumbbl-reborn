@@ -309,10 +309,14 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     } else if (id == QLatin1String("blockRoll")) {
         // ReportBlockRoll: choosingTeamId + blockRoll[6] + defenderId.
         // The six block dice — the star of the action log.
+        // Turn 16 (user: after a BLITZ the dice line was titled with the
+        // blitzer's TEAM, not the blitzer): the actor is the ACTING PLAYER
+        // (the blitzer / the blocking attacker) — actorId left empty, like
+        // the `block` report; MainWindow fills it from the model.
         DiceLogLine l;
         l.text = QStringLiteral("Block roll");
         l.color = kYellow;
-        l.actorId = teamId;
+        l.actorId = QString();
         l.defenderId = defenderId;
         fillBlockFaces(l, arr(report, "blockRoll"));
         out.append(l);
@@ -329,7 +333,9 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         l.color = brU.startsWith(QLatin1String("SKULL")) ? kRed
                   : brU.contains(QLatin1String("BOTH")) ? kYellow
                   : kGreen;
-        l.actorId = teamId; // team chose the die
+        // Turn 16: same rule as blockRoll — the line is titled with the
+        // acting player (blitzer / attacker), not the choosing team.
+        l.actorId = QString();
         l.defenderId = defenderId;
         // Show the chosen die (blockRoll[diceIndex]) as a block face.
         const QJsonArray d = arr(report, "blockRoll");
@@ -379,8 +385,14 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         // ReportHandOver: catcherId (the player receiving the ball).
         push(QStringLiteral("Hand Over"), kLightGray, actorId, str(report, "catcherId"));
     } else if (id == QLatin1String("foul")) {
-        // ReportFoul: defenderId = the player committing the foul.
-        push(QStringLiteral("commits a Foul!"), kOrange, defenderId);
+        // ReportFoul: defenderId = the player WHO GOT FOULED (the victim —
+        // server StepInitFouling sets the game defender to the foul target
+        // and the report carries game.getDefenderId()). The FOULER is the
+        // current acting player, not in the report: actorId left empty and
+        // filled from the model by MainWindow (same pattern as `block`).
+        // Turn 16 user report: the old code titled the line with the victim
+        // ("il fallatore era il giocatore fallato").
+        push(QStringLiteral("commits a Foul!"), kOrange, QString(), defenderId);
     } else if (id == QLatin1String("pushback")) {
         // ReportPushback: defenderId + pushbackMode.
         push(QStringLiteral("is pushed back (%1)")

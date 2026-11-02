@@ -3,7 +3,6 @@
 // =============================================================================
 #include "ui/actionlog.h"
 
-#include <QCheckBox>
 #include <QEnterEvent>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -45,6 +44,64 @@ const char kNameIsPlayerProp[] = "logNameIsPlayer";
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// AutoScrollToggle — white square + check (turn 16, user: "fai un
+// quadratino bianco dove si posiziona il segno di spunta ... così che il
+// giocatore umano percepisca subito che può disattivare o attivare
+// l'opzione").
+// ---------------------------------------------------------------------------
+AutoScrollToggle::AutoScrollToggle(QWidget *parent)
+    : QWidget(parent)
+{
+    setCursor(Qt::PointingHandCursor);
+    setFixedHeight(18);
+    setFixedWidth(88);
+}
+
+void AutoScrollToggle::setChecked(bool on)
+{
+    if (m_on == on)
+        return;
+    m_on = on;
+    update();
+    emit toggled(on);
+}
+
+void AutoScrollToggle::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton)
+        setChecked(!m_on);
+    QWidget::mousePressEvent(event);
+}
+
+void AutoScrollToggle::paintEvent(QPaintEvent *)
+{
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const int bs = 12; // the white square
+    const QRectF box(1, (height() - bs) / 2.0, bs, bs);
+    p.setPen(QPen(QColor(0x55, 0x5c, 0x68), 1));
+    p.setBrush(QColor(255, 255, 255));
+    p.drawRoundedRect(box, 2, 2);
+    if (m_on) {
+        QPen ck(QColor(0x1f, 0x6b, 0x2a), 2.0);
+        ck.setCapStyle(Qt::RoundCap);
+        ck.setJoinStyle(Qt::RoundJoin);
+        p.setPen(ck);
+        QPolygonF tick;
+        tick << box.topLeft() + QPointF(2.4, 6.2)
+             << box.topLeft() + QPointF(4.8, 8.6)
+             << box.topRight() + QPointF(-2.6, -3.2);
+        p.drawPolyline(tick);
+    }
+    QFont f = font();
+    f.setPointSizeF(8);
+    p.setFont(f);
+    p.setPen(QColor(0x22, 0x28, 0x32));
+    p.drawText(QRectF(box.right() + 5, 0, width() - box.right() - 3, height()),
+               Qt::AlignVCenter | Qt::AlignLeft, QStringLiteral("auto-scroll"));
+}
+
 ActionLogWidget::ActionLogWidget(QWidget *parent)
     : QWidget(parent)
 {
@@ -72,18 +129,15 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_chevron->setCursor(Qt::PointingHandCursor);
     m_chevron->setStyleSheet(QStringLiteral("color: #222832; font-size: 13px; font-weight: bold;"));
     m_chevron->setFixedWidth(16);
-    // Round 13 turn 9 (user): the tiny "auto" autoscroll checkbox in the
-    // title bar (small font). It reflects the live stick-to-bottom state:
-    // unchecks when the user scrolls up, re-checks when the user brings the
-    // log back to the bottom; the user can also tick it to force following.
-    // Turn 15 (user): the label was "auto" — now "auto-scroll".
-    m_autoCheck = new QCheckBox(QStringLiteral("auto-scroll"), header);
-    m_autoCheck->setStyleSheet(QStringLiteral("color: #222832; background: transparent;"));
-    QFont cf = m_autoCheck->font();
-    cf.setPointSizeF(8);
-    m_autoCheck->setFont(cf);
+    // Round 13 turn 9 (user): the autoscroll toggle in the title bar.
+    // It reflects the live stick-to-bottom state: unchecks when the user
+    // scrolls up, re-checks when the user brings the log back to the
+    // bottom; the user can also tick it to force following.
+    // Turn 16 (user): a visible WHITE SQUARE checkbox so it reads as a
+    // toggle at a glance.
+    m_autoCheck = new AutoScrollToggle(header);
     m_autoCheck->setChecked(true);
-    connect(m_autoCheck, &QCheckBox::toggled, this, [this](bool on) {
+    connect(m_autoCheck, &AutoScrollToggle::toggled, this, [this](bool on) {
         m_stick = on;
         if (on)
             scrollToEnd();
@@ -244,72 +298,67 @@ bool ActionLogWidget::atBottom() const
     return sb->maximum() - sb->value() <= 8;
 }
 
-QString ActionLogWidget::renderMiddle(const DiceLogLine &line) const
+// Turn 16 (user): HOVER ON A SINGLE BLOCK DIE shows its official meaning —
+// so each die is its OWN widget (a rich-text <img> cannot carry a
+// per-image tooltip). The row's middle is rebuilt as a small layout:
+// [action text] [block dice... with tooltips] [d6 dice...] [result tail].
+//
+// Official BB2025 block die face names (user-provided, match the GW die).
+const char *const kBlockDieTip[7] = {
+    "",                // 0: unused
+    "Player Down",     // 1: skull
+    "Both Down",       // 2: skull + burst
+    "Pushback",        // 3: arrow
+    "Pushback",        // 4: arrow
+    "Stumble",         // 5: '!' in a burst
+    "POW"              // 6: burst
+};
+
+// One middle row split into renderable parts (dice become widgets, the
+// text/tail stay rich text). NOTE (round 9, user rule): a participant the
+// UI could not resolve is DROPPED, never shown as raw ids — "MAI id
+// numerici a schermo". Dice assets: the PRE-SCALED *_s.png (96px),
+// downscaled to kDice when the widget paints them (4K-ready).
+struct MidParts {
+    QString text;
+    QList<int> blockFaces;
+    QList<int> d6Faces;
+    QString tailHtml;
+};
+
+static MidParts splitMiddle(const DiceLogLine &line)
 {
-    // NOTE (round 9, user rule): a participant the UI could not resolve is
-    // DROPPED, never shown as raw ids — "MAI id numerici a schermo".
-    QString html = line.text.toHtmlEscaped();
-
-    // Dice: the PRE-SCALED assets (*_s.png, 96px) rendered at kDice —
-    // downscaling stays crisp at any DPI (4K-ready). Spacing between
-    // consecutive dice is an explicit thin gap element (Qt rich text does
-    // NOT honor `hspace` on <img>).
-    // Round 13 turn 8: NO QString::arg here. The triple .arg() chain on a
-    // template with a REPEATED %2 placeholder made Qt 6.12 emit
-    // "QString::arg: Argument missing" warnings (visible in the user's crash
-    // log — harmless to the render, but noise where the real crash lived).
-    // Plain concatenation: zero placeholders, zero arg calls, zero warnings.
-    // Turn 12 BUG (user: "TUTTI i dadi non appaiono"): the opening quotes
-    // of the attribute VALUES were missing (`src=:/dice/x.png"` instead of
-    // `src=":/dice/x.png"`) — the HTML parser swallowed the whole
-    // `:/dice/x.png"` as the unquoted value, the resource never resolved
-    // and every die rendered as an empty broken-image box.
-    const auto dieImg = [](const QString &src) {
-        const QString sz = QString::number(kDice);
-        return QStringLiteral(" <img src=\"") + src
-             + QStringLiteral("\" width=\"") + sz
-             + QStringLiteral("\" height=\"") + sz
-             + QStringLiteral("\"><span style=\"color:#ffffff\">&nbsp;</span>");
-    };
-    if (!line.blockFaces.isEmpty()) {
-        for (const QString &face : line.blockFaces) {
-            const int v = face.toInt();
-            if (v < 1 || v > 6)
-                continue;
-            html += dieImg(QStringLiteral(":/dice/block%1_s.png").arg(v));
-        }
-    }
-
+    MidParts parts;
+    parts.text = line.text;
+    for (const QString &face : line.blockFaces)
+        if (const int v = face.toInt(); v >= 1 && v <= 6)
+            parts.blockFaces << v;
     // d6 rolls: red die faces + target + result. d6Rolls covers multi-die
     // reports (throw-in, scatter, injury rolls, ...); d6Roll alone the
     // single-die skill rolls (round 9: every roll shows the DIE, never a
     // number).
     if (!line.d6Rolls.isEmpty()) {
-        for (const QString &face : line.d6Rolls) {
-            const int v = face.toInt();
-            if (v < 1 || v > 6)
-                continue;
-            html += dieImg(QStringLiteral(":/dice/d6_%1_s.png").arg(v));
-        }
+        for (const QString &face : line.d6Rolls)
+            if (const int v = face.toInt(); v >= 1 && v <= 6)
+                parts.d6Faces << v;
     } else if (line.d6Roll > 0) {
-        html += dieImg(QStringLiteral(":/dice/d6_%1_s.png").arg(line.d6Roll));
+        parts.d6Faces << line.d6Roll;
     }
-    if (line.d6Roll > 0 || !line.d6Rolls.isEmpty()) {
+    if (!parts.d6Faces.isEmpty()) {
         if (line.d6Target > 0)
-            html += QStringLiteral(" <span style=\"color:%1\">vs %2</span>")
-                        .arg(kMuted.name())
-                        .arg(line.d6Target);
+            parts.tailHtml += QStringLiteral(" <span style=\"color:%1\">vs %2</span>")
+                                  .arg(kMuted.name())
+                                  .arg(line.d6Target);
         // Round 13 turn 4 (BB3): the RESULT is emphasized — green SUCCESS /
         // red Failure, bold, like Blood Bowl 3's log.
         if (line.d6ShowResult)
-            html += line.d6Ok
-                        ? QStringLiteral(" <b style=\"color:%1\">SUCCESS</b>").arg(kOkGreen.name())
-                        : QStringLiteral(" <b style=\"color:%1\">Failure</b>").arg(kFailRed.name());
+            parts.tailHtml += line.d6Ok
+                                  ? QStringLiteral(" <b style=\"color:%1\">SUCCESS</b>").arg(kOkGreen.name())
+                                  : QStringLiteral(" <b style=\"color:%1\">Failure</b>").arg(kFailRed.name());
         if (line.d6ReRolled)
-            html += QStringLiteral(" <span style=\"color:%1\">[RR]</span>").arg(kMuted.name());
+            parts.tailHtml += QStringLiteral(" <span style=\"color:%1\">[RR]</span>").arg(kMuted.name());
     }
-
-    return html;
+    return parts;
 }
 
 void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName,
@@ -403,10 +452,46 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         rl->addWidget(colon, 0, Qt::AlignVCenter);
     }
 
-    auto *mid = new QLabel(renderMiddle(line), row);
-    mid->setTextFormat(Qt::RichText);
-    mid->setStyleSheet(style);
-    mid->setFont(f);
+    // Turn 16 (user): the middle is a LAYOUT, not one rich-text label —
+    // every die is its own QLabel so a hover on ONE block die shows THAT
+    // die's tooltip (1 Player Down ... 6 POW). (Rich text <img> cannot
+    // carry per-image tooltips.)
+    const MidParts parts = splitMiddle(line);
+    auto *mid = new QWidget(row);
+    auto *ml = new QHBoxLayout(mid);
+    ml->setContentsMargins(0, 0, 0, 0);
+    ml->setSpacing(3);
+    if (!parts.text.isEmpty()) {
+        auto *tl = new QLabel(parts.text.toHtmlEscaped(), mid);
+        tl->setStyleSheet(style);
+        tl->setFont(f);
+        ml->addWidget(tl, 0, Qt::AlignVCenter);
+    }
+    const auto dieLabel = [mid, ml, style](const QString &resource, const QString &tip) {
+        auto *dl = new QLabel(mid);
+        const QPixmap big(resource); // 96px pre-scaled asset
+        dl->setPixmap(big.scaled(kDice, kDice, Qt::KeepAspectRatio,
+                                 Qt::SmoothTransformation));
+        dl->setFixedSize(kDice, kDice);
+        dl->setStyleSheet(QStringLiteral("background: transparent;"));
+        if (!tip.isEmpty())
+            dl->setToolTip(tip);
+        ml->addWidget(dl, 0, Qt::AlignVCenter);
+        return dl;
+    };
+    for (const int v : parts.blockFaces)
+        dieLabel(QStringLiteral(":/dice/block%1_s.png").arg(v),
+                 QString::fromUtf8(kBlockDieTip[v]));
+    for (const int v : parts.d6Faces)
+        dieLabel(QStringLiteral(":/dice/d6_%1_s.png").arg(v), QString());
+    if (!parts.tailHtml.isEmpty()) {
+        auto *tl2 = new QLabel(parts.tailHtml, mid);
+        tl2->setTextFormat(Qt::RichText);
+        tl2->setStyleSheet(style);
+        tl2->setFont(f);
+        ml->addWidget(tl2, 0, Qt::AlignVCenter);
+    }
+    ml->addStretch(1);
     rl->addWidget(mid, 1, Qt::AlignVCenter);
 
     if (!defenderName.isEmpty()) {

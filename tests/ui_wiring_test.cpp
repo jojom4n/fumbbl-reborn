@@ -873,6 +873,18 @@ void UiWiringTest::blockReportsShowDiceAndNames()
     const QString homeTeamId = w.model()->teamHomeId();
     const QString homeTeamName = w.model()->teamHomeName();
 
+    // Turn 16 (user: the dice line after a BLITZ was titled with the team,
+    // not the blitzer): the whole block sequence is titled with the ACTING
+    // player. Set the actor (the attacking home player) first.
+    const QVector<FFBPlayer> home = w.model()->rosterHome();
+    QVERIFY(!home.isEmpty());
+    const QString attackerId = home.first().playerId;
+    const QString attackerName = home.first().name;
+    QJsonArray actorCh;
+    actorCh.append(makeChange(QStringLiteral("actingPlayerSetPlayerId"),
+                              QString(), QJsonValue(attackerId)));
+    w.onModelSync(actorCh, QJsonArray());
+
     QJsonObject blk;
     blk.insert(QStringLiteral("reportId"), QStringLiteral("block"));
     blk.insert(QStringLiteral("defenderId"), defenderId);
@@ -888,19 +900,21 @@ void UiWiringTest::blockReportsShowDiceAndNames()
     reports.append(blkRoll);
     w.onModelSync(QJsonArray(), reports);
 
-    // Names (never raw ids)...
+    // Names (never raw ids)... BOTH lines carry the acting player's name.
     const QString text = log->toPlainText();
     QVERIFY2(text.contains(defenderName), qPrintable(text));
     QVERIFY2(!text.contains(defenderId), qPrintable(text));
-    QVERIFY2(text.contains(homeTeamName), qPrintable(text));
-    // ...and the block dice are rendered as die-face images (HTML <img>).
-    const auto labels = log->findChildren<QLabel *>();
-    bool sawDice = false;
-    for (QLabel *l : labels)
-        if (l->text().contains(QStringLiteral(":/dice/block6_s.png"))
-            && l->text().contains(QStringLiteral(":/dice/block2_s.png")))
-            sawDice = true;
-    QVERIFY2(sawDice, "block dice not rendered as die face images");
+    QVERIFY2(text.contains(attackerName), qPrintable(text));
+    // Turn 16: the choosing team is no longer the line title.
+    QVERIFY2(!text.contains(homeTeamName), qPrintable(text));
+    // ...and the block dice render as die-face widgets (turn 16: one
+    // QLabel per die, pixmap + official tooltip — no more rich-text <img>).
+    int diceWithTip = 0;
+    for (QLabel *l : log->findChildren<QLabel *>())
+        if (!l->pixmap().isNull() && !l->toolTip().isEmpty())
+            ++diceWithTip;
+    QVERIFY2(diceWithTip >= 6,
+             "the six block dice render as die-face widgets with tooltips");
 }
 
 // Round 9 point 5 (user rule "MAI id numerici a schermo"): a report whose
@@ -1883,15 +1897,19 @@ void UiWiringTest::actionLogDiceImagesRender()
     log.resize(420, log.height());
     QApplication::processEvents();
 
-    // The mid label of the row carries the dice <img>; grab it and look
-    // for the die's RED pixels (a broken-image placeholder has none).
-    QLabel *mid = nullptr;
+    // Turn 16: the dice are their OWN widgets (per-die tooltips) — the
+    // label with the text is the first child of the row's middle layout.
+    // Grab the MIDDLE container (text + dice) and look for the die's RED
+    // pixels (a missing pixmap has none).
+    QLabel *textLabel = nullptr;
     for (QLabel *l2 : log.findChildren<QLabel *>())
         if (l2->text().contains("Block roll")) {
-            mid = l2;
+            textLabel = l2;
             break;
         }
-    QVERIFY2(mid, "the row has its middle label");
+    QVERIFY2(textLabel, "the row has its text label");
+    QWidget *mid = textLabel->parentWidget();
+    QVERIFY2(mid, "the text label lives in the row's middle container");
     const QImage im = mid->grab().toImage();
     int redPx = 0, totalPx = 0;
     for (int y = 0; y < im.height(); ++y)
@@ -1906,7 +1924,30 @@ void UiWiringTest::actionLogDiceImagesRender()
     QVERIFY2(totalPx > 100, "the label actually painted something");
     QVERIFY2(redPx > 30,
              "the d6 die image rendered (red face pixels found) — "
-             "if this fails the <img> src quotes are broken again");
+             "if this fails the die pixmaps are broken again");
+
+    // Turn 16 (user): hover on a SINGLE block die shows its official
+    // meaning. Regression: every block-die widget carries its tooltip.
+    DiceLogLine b;
+    b.text = "Block roll";
+    b.blockFaces = { QStringLiteral("1"), QStringLiteral("2"),
+                     QStringLiteral("3"), QStringLiteral("5"),
+                     QStringLiteral("6") };
+    log.appendLine(b, QStringLiteral("Gorker"));
+    QApplication::processEvents();
+    const QStringList wanted = {
+        QStringLiteral("Player Down"), QStringLiteral("Both Down"),
+        QStringLiteral("Pushback"),    QStringLiteral("Stumble"),
+        QStringLiteral("POW")
+    };
+    int tips = 0;
+    for (QLabel *l2 : log.findChildren<QLabel *>())
+        if (!l2->pixmap().isNull() && !l2->toolTip().isEmpty()) {
+            QVERIFY2(wanted.contains(l2->toolTip()),
+                     "block die tooltip is an official face name");
+            ++tips;
+        }
+    QCOMPARE(tips, wanted.size());
 }
 
 void UiWiringTest::actionLogAutoscrollStickToBottom()
@@ -1919,8 +1960,10 @@ void UiWiringTest::actionLogAutoscrollStickToBottom()
     QVERIFY2(scroll, "the log has a scroll area");
     auto *sb = scroll->verticalScrollBar();
     QVERIFY2(sb, "the log has a vertical scrollbar");
-    QCheckBox *check = log.findChild<QCheckBox *>();
-    QVERIFY2(check, "the log title bar has the small 'auto' checkbox");
+    // Turn 16: the toggle is the custom white-square AutoScrollToggle
+    // (no more QCheckBox).
+    AutoScrollToggle *check = log.findChild<AutoScrollToggle *>();
+    QVERIFY2(check, "the log title bar has the 'auto-scroll' toggle");
 
     const auto line = [](int i) {
         DiceLogLine l;
@@ -1941,14 +1984,14 @@ void UiWiringTest::actionLogAutoscrollStickToBottom()
 
     sb->setValue(0);
     QApplication::processEvents();
-    QVERIFY2(!check->isChecked(), "scrolled up: the 'auto' checkbox unchecks");
+    QVERIFY2(!check->checked(), "scrolled up: the 'auto-scroll' toggle unchecks");
     log.appendLine(line(41), QStringLiteral("Coach"));
     QApplication::processEvents();
     QCOMPARE(sb->value(), 0);
 
     sb->setValue(sb->maximum());
     QApplication::processEvents();
-    QVERIFY2(check->isChecked(), "back at the bottom: 'auto' re-checks");
+    QVERIFY2(check->checked(), "back at the bottom: 'auto-scroll' re-checks");
     log.appendLine(line(42), QStringLiteral("Coach"));
     QApplication::processEvents();
     QCOMPARE(sb->value(), sb->maximum());
@@ -1976,7 +2019,6 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     const QPoint col10 = QPoint(int(c00.x() + 10.5 * (c10.x() - c00.x())),
                                 int(c00.y() + 7.5 * (c01.y() - c00.y())));
     const int cell = qMax(1, c10.x() - c00.x());
-    fprintf(stderr, "DBG box: col10=%d,%d cell=%d\n", col10.x(), col10.y(), cell);
     // The marker colors (turn 12): the unified marker is a WHITE DISC with
     // a dark-ink rim (46,40,34) and either the GREY Qwen helmet
     // (96,100,108) or a GOLD symbol (224,158,0). Detect helmet-grey, gold
@@ -2020,7 +2062,11 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     const QRect mbox(mid.x() - mr, mid.y() - mr, mr * 2, mr * 2);
     const QPoint tokA = field.cellCenterPx(10, 6);
     const QPoint tokD = field.cellCenterPx(10, 8);
-    const int d2 = int(0.2 * cell * cell); // ~token disc radius, squared
+    // Exclude the WHOLE token (disc radius 0.46 cell + the number badge at
+    // ~0.55 cell): turn 16 changed the badge from gold-rim to white/black —
+    // the old 0.2-cell radius "excluded" nothing, and the test used to pass
+    // on the badge's gold rim pixels, not on the marker.
+    const int d2 = int(0.55 * cell * 0.55 * cell);
     const auto inTokDisc = [&](int x, int y) {
         const auto d = [&](const QPoint &c) {
             const int dx = x - c.x(), dy = y - c.y();
