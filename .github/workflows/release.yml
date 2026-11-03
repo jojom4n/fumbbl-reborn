@@ -174,7 +174,10 @@ jobs:
       - name: Stage + windeployqt + qt.conf
         run: |
           cmake --install build --prefix staging
-          & "$env:QT_PREFIX\bin\windeployqt.exe" --release --no-translations --compiler-runtime staging\FUMBBL-Reborn.exe
+          # source builds put the tools in libexec, official installs in bin
+          $wdq = "$env:QT_PREFIX\bin\windeployqt.exe"
+          if (-not (Test-Path $wdq)) { $wdq = "$env:QT_PREFIX\libexec\windeployqt.exe" }
+          & $wdq --release --no-translations --compiler-runtime staging\FUMBBL-Reborn.exe
           # pin the flat layout (plugins next to the exe)
           Set-Content -Path "staging\qt.conf" -Value "[Paths]`nPrefix = .`nPlugins = plugins`n"
 

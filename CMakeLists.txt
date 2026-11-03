@@ -35,9 +35,11 @@ set(DICE_RCC ${CMAKE_CURRENT_BINARY_DIR}/qrc_dice.cpp)
 # first the Qt install's own bin (Qt6_DIR is <qt>/lib/cmake/Qt6, so the
 # tools are at <qt>/bin = three levels up), then the system paths.
 if(NOT Qt6_rcc_EXECUTABLE)
+    # Qt6_DIR is <qt>/lib/cmake/Qt6. The tools live in <qt>/bin for
+    # official/aqt installs and in <qt>/libexec for source builds.
     find_program(DICE_RCC_EXECUTABLE
         NAMES rcc rcc.exe
-        HINTS "${Qt6_DIR}/../../../bin"
+        HINTS "${Qt6_DIR}/../../../bin" "${Qt6_DIR}/../../../libexec"
         PATHS /usr/lib/qt6 /usr/lib/qt6/bin /usr/bin
     )
     if(NOT DICE_RCC_EXECUTABLE)
