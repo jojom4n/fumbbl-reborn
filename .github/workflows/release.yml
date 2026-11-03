@@ -51,17 +51,39 @@ jobs:
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
 
+      # Cache the configured + built qtbase tree. The runner workspace path
+      # is stable, so the cached CMake tree stays valid between runs.
+      - name: Qt cache
+        uses: actions/cache@v4
+        id: qtcache
+        with:
+          path: |
+            qtbase
+            qt
+          key: qt6120-ubuntu2404-1
+
       - name: Build qtbase
         working-directory: qtbase
         run: |
-          ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
-            -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib \
-            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-            -no-sql-oci -no-sql-mimer \
-            -system-zlib -system-freetype
+          if [ "${{ steps.qtcache.outputs.cache-hit }}" != "true" ]; then
+            ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
+              -nomake examples -nomake tests \
+              -no-opengl -no-icu -no-glib \
+              -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+              -no-sql-oci -no-sql-mimer \
+              -system-zlib -system-freetype
+          fi
           cmake --build . -j"$(nproc)"
           cmake --install .
+
+      - name: Qt diagnostics (XCB detection)
+        working-directory: qtbase
+        run: |
+          grep -iE "xcb|x11|xkb" config.summary | head -25
+          ls ../qt/plugins/platforms/ 2>/dev/null || echo "no plugins dir"
+          for pc in xcb xcb-util xcb-image xcb-keysyms xcb-cursor xcb-icccm xcb-render xcb-render-util xcb-randr xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xkb xkbcommon-x11; do
+            pkg-config --exists "$pc" && echo "pc ok: $pc" || echo "pc MISSING: $pc"
+          done
 
       - name: Build qtwebsockets
         run: |
@@ -149,18 +171,35 @@ jobs:
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
 
+      - name: Qt cache
+        uses: actions/cache@v4
+        id: qtcache
+        with:
+          path: |
+            qtbase
+            qt6120
+          key: qt6120-windows-1
+
       - name: Build qtbase (MinGW)
         shell: bash
         run: |
           cd qtbase
           QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
-          ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
-            -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib \
-            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-            -no-sql-oci -no-sql-mimer
+          if [ "${{ steps.qtcache.outputs.cache-hit }}" != "true" ]; then
+            ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
+              -nomake examples -nomake tests \
+              -no-opengl -no-icu -no-glib \
+              -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+              -no-sql-oci -no-sql-mimer
+          fi
           cmake --build . -j4
           cmake --install .
+
+      - name: Qt diagnostics (tools + plugins)
+        shell: bash
+        run: |
+          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/libexec" 2>/dev/null | head
+          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/plugins/platforms" 2>/dev/null || echo "no platforms"
 
       - name: Build qtwebsockets (MinGW)
         shell: bash
