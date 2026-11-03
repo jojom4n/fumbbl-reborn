@@ -83,7 +83,7 @@ jobs:
           path: |
             qtbase
             qt
-          key: qt6120-ubuntu2404-1
+          key: qt6120-ubuntu2404-2
 
       - name: Build qtbase
         working-directory: qtbase
