@@ -36,7 +36,7 @@ jobs:
             ninja-build pkg-config git \
             zlib1g-dev libfreetype-dev libpng-dev libjpeg-dev \
             libfontconfig1-dev libdbus-1-dev libssl-dev \
-            libx11-dev libxkbcommon-dev libxcb1-dev \
+            libx11-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb1-dev \
             libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-shm0-dev \
@@ -51,8 +51,31 @@ jobs:
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
 
+      # Debian/Ubuntu never shipped xkbcommon-x11.pc (Arch does) — qtbase's
+      # FindXKB_COMMON_X11 is pkg-config based and silently disables the whole
+      # xcb platform plugin without it. Provide the .pc by hand.
+      - name: Provide missing xkbcommon-x11.pc
+        run: |
+          if ! pkg-config --exists xkbcommon-x11; then
+            sudo mkdir -p /usr/local/lib/pkgconfig
+            VER=$(pkg-config --modversion xkbcommon)
+            sudo tee /usr/local/lib/pkgconfig/xkbcommon-x11.pc > /dev/null <<EOF
+            prefix=/usr
+            libdir=${prefix}/lib/x86_64-linux-gnu
+            includedir=${prefix}/include
+            Name: xkbcommon-x11
+            Description: X11-specific functions for xkbcommon
+            Version: ${VER}
+            Requires: xkbcommon
+            Libs: -L${libdir} -lxkbcommon-x11
+            Cflags: -I${includedir}
+            EOF
+            pkg-config --exists xkbcommon-x11 && echo "xkbcommon-x11.pc shim OK"
+          fi
+
       # Cache the configured + built qtbase tree. The runner workspace path
-      # is stable, so the cached CMake tree stays valid between runs.
+      # is stable, so the cached CMake tree stays valid between runs. Bump the
+      # key suffix when the configure arguments change.
       - name: Qt cache
         uses: actions/cache@v4
         id: qtcache
@@ -198,8 +221,8 @@ jobs:
       - name: Qt diagnostics (tools + plugins)
         shell: bash
         run: |
-          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/libexec" 2>/dev/null | head
-          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/plugins/platforms" 2>/dev/null || echo "no platforms"
+          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/bin" | grep -E "windeployqt|rcc" 
+          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/plugins/platforms"
 
       - name: Build qtwebsockets (MinGW)
         shell: bash
