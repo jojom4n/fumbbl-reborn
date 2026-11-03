@@ -56,7 +56,9 @@ jobs:
         run: |
           ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
             -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib -no-sql \
+            -no-opengl -no-icu -no-glib \
+            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+            -no-sql-oci -no-sql-mimer \
             -system-zlib -system-freetype
           cmake --build . -j"$(nproc)"
           cmake --install .
@@ -154,7 +156,9 @@ jobs:
           QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
           ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
             -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib -no-sql
+            -no-opengl -no-icu -no-glib \
+            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+            -no-sql-oci -no-sql-mimer
           cmake --build . -j4
           cmake --install .
 
