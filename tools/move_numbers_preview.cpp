@@ -1,18 +1,18 @@
 // =============================================================================
-// round14_preview — offscreen visual verification of the BETWEEN-CELLS move
-// numbers (user: "li mettiamo tra casella e casella ... ben leggibili"):
+// move_numbers_preview — offscreen visual verification of the
+// BETWEEN-CELLS move numbers:
 //
-//   round14_move3.png      a 3-step L move: numbers 1,2,3 BETWEEN the cells
+//   movenum_move3.png      a 3-step L move: numbers 1,2,3 BETWEEN the cells
 //                          (3 between the second-to-last and the LAST cell,
 //                          none on a cell, none on the trail line)
-//   round14_move1.png      a 1-SQUARE move: its "1" appears between the two
+//   movenum_move1.png      a 1-SQUARE move: its "1" appears between the two
 //                          cells (before: nothing at all)
-//   round14_blitz.png      a BLITZ (2 squares): numbers 1,2 between the cells
+//   movenum_blitz.png      a BLITZ (2 squares): numbers 1,2 between the cells
 //
 // The numbers are derived from the move trace itself (path index + 1), so
 // they share the trail's lifecycle exactly.
 //
-// Run: QT_QPA_PLATFORM=offscreen ./build/round14_preview [out_dir]
+// Run: QT_QPA_PLATFORM=offscreen ./build/move_numbers_preview [out_dir]
 // =============================================================================
 #include <QApplication>
 #include <QDir>
@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     const QString outDir = argc > 1 ? QString::fromLocal8Bit(argv[1])
-                                    : QStringLiteral("/tmp/round14");
+                                    : QStringLiteral("/tmp/movenum");
     QDir().mkpath(outDir);
 
     QFile f(QStringLiteral("tests/liveGameState_fixture.json"));
@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
         w.onModelSync(ch, QJsonArray());
         pump(900); // let the glide settle
         dumpTrace();
-        cropCells(sx - 2, sy - 1, sx, sy, QStringLiteral("round14_move3.png"));
+        cropCells(sx - 2, sy - 1, sx, sy, QStringLiteral("movenum_move3.png"));
     }
 
     // --- Sequence B: a 1-SQUARE move (left) ------------------------------------
@@ -198,11 +198,11 @@ int main(int argc, char *argv[])
         w.onModelSync(ch, QJsonArray());
         pump(900);
         dumpTrace();
-        cropCells(sx - 4, sy - 2, sx - 1, sy, QStringLiteral("round14_move1.png"));
+        cropCells(sx - 4, sy - 2, sx - 1, sy, QStringLiteral("movenum_move1.png"));
     }
 
     // --- Sequence C: a BLITZ move (2 squares, up then right) --------------------
-    // Numbers 1,2 between the cells (the user: "anche in caso di blitz").
+    // Numbers 1,2 between the cells (a blitz moves 2 squares).
     {
         freshTurn(sx - 3, sy - 2);
         QJsonArray ch;
@@ -216,7 +216,7 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx - 4, sy - 4, sx - 1, sy - 1,
-                 QStringLiteral("round14_blitz.png"));
+                 QStringLiteral("movenum_blitz.png"));
     }
 
     // --- Sequence D: the reported BUG scenario (blitz + block + push +
@@ -266,7 +266,7 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx - 3, sy - 1, sx + 3, sy + 1,
-                 QStringLiteral("round15_blitz_bug.png"));
+                 QStringLiteral("blitz_bug.png"));
     }
 
     // --- Sequence E: FRENZY (blitz + block + second block + follow) ------------
@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx - 2, sy - 2, sx + 2, sy + 1,
-                 QStringLiteral("round15_frenzy.png"));
+                 QStringLiteral("frenzy.png"));
     }
 
     // --- Sequence F: GO FOR IT (blitz + failed block + GFI extra move) ---------
@@ -362,7 +362,7 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx - 2, sy - 3, sx + 2, sy + 1,
-                 QStringLiteral("round15_gfi.png"));
+                 QStringLiteral("gfi.png"));
     }
 
     // --- Sequence G: PLAIN BLOCK of an adjacent player (no move in this
@@ -372,9 +372,9 @@ int main(int argc, char *argv[])
     //   -> push (defender's coordinates)
     //   -> the follow step (BARE — StepFollowup, no action re-dispatch)
     //   -> gameSetDefenderId=null
-    // Expected (user: "in caso di blocco di giocatore adiacente, basta il
-    // solo trail, non c'è bisogno di contare le caselle"): ONE segment
-    // (the trail is drawn), NO step numbers, NO block mark.
+    // Expected: ONE segment (the trail is drawn), NO step numbers, NO
+    // block mark (for a blocked adjacent player the trail alone is enough
+    // — no cell counting).
     {
         pump(3000); // out of the report-dedup window (2.5 s)
         const QString def1 = awayOnField[1];
@@ -402,15 +402,14 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx, sy - 1, sx + 2, sy + 1,
-                 QStringLiteral("round16_plainblock.png"));
+                 QStringLiteral("plainblock.png"));
     }
 
-    // --- Section H: ACTION LOG WRAP (round 16, user: "riga incompleta.
-    // Possiamo andare a capo qualche volta") — a long line (the reported
-    // one: "Catch (Inaccurate Pass or Scattered)" + dice + result) must
-    // WRAP, not clip. The log's height is fixed (compact), so each shot
-    // carries just the lines it needs: compact width (a short line + the
-    // long one) and a narrow width (the long one alone, wrapped harder).
+    // --- Section H: ACTION LOG WRAP — a long line ("Catch (Inaccurate Pass
+    // or Scattered)" + dice + result) must WRAP, not clip. The log's height
+    // is fixed (compact), so each shot carries just the lines it needs:
+    // compact width (a short line + the long one) and a narrow width (the
+    // long one alone, wrapped harder).
     {
         const auto shootLog = [&](const QString &name, int width,
                                   bool withShort) {
@@ -480,11 +479,11 @@ int main(int argc, char *argv[])
             holder->deleteLater();
         };
         // 560 = the REAL live width (mainwindow: setFixedWidth(560)).
-        shootLog(QStringLiteral("round16_logwrap_real.png"), 560, true);
-        shootLog(QStringLiteral("round16_logwrap_compact.png"), 360, true);
-        shootLog(QStringLiteral("round16_logwrap_narrow.png"), 240, false);
+        shootLog(QStringLiteral("logwrap_real.png"), 560, true);
+        shootLog(QStringLiteral("logwrap_compact.png"), 360, true);
+        shootLog(QStringLiteral("logwrap_narrow.png"), 240, false);
     }
 
-    qInfo() << "round14 preview complete ->" << outDir;
+    qInfo() << "movenum preview complete ->" << outDir;
     return 0;
 }

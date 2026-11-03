@@ -35,9 +35,9 @@ const int CHIP_GAP = 5;  // gap between chips
 // =============================================================================
 SkillChipsWidget::SkillChipsWidget(QWidget *parent) : QWidget(parent)
 {
-    // Round 9 (bug: the second row of chips was clipped): with a FIXED
-    // vertical policy the box layout uses sizeHint() (one row) and NEVER
-    // calls heightForWidth() — the wrapped height was ignored. A non-Fixed
+    // With a FIXED vertical policy the box layout uses sizeHint() (one
+    // row) and NEVER calls heightForWidth() — the wrapped height is
+    // ignored (the second row of chips gets clipped). A non-Fixed
     // vertical policy makes the layout honor heightForWidth on every
     // resize; updateGeometry() (setChips/resizeEvent) triggers it.
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
@@ -206,9 +206,8 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_portrait->setFixedSize(72, 72);
     m_portrait->setAlignment(Qt::AlignCenter);
     v->addWidget(m_portrait, 0, Qt::AlignHCenter);
-    // Round 9: the name collided with the face — extra breathing room
-    // between the portrait and the name label. Round 10: still too tight in
-    // practice (the bold 13pt glyph has its own top leading) — widen it.
+    // Extra breathing room between the portrait and the name label (the
+    // bold 13pt glyph has its own top leading — 14px clears it).
     v->addSpacing(14);
 
     m_nameLabel = new QLabel(m_content);
@@ -421,7 +420,7 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
         m_cardsLabel->setVisible(false);
     }
 
-    // Player state — state only (no Active/ACTING chip, Mockup F round 6).
+    // Player state — state only (no Active/ACTING chip, Mockup F).
     // Colored: green for standing/moving, red for prone, amber for stunned,
     // gray for players in the box.
     QString state = info.stateText;

@@ -100,7 +100,9 @@ src/
 assets/            face PNGs + lookup tables (faces.txt, race_roster.txt,
                    race_faces.txt, ...)
 tests/             unit & UI-wiring tests (QtTest)
-tools/             dev tools: spectator_smoke, ui_connect_probe, gen_assets
+tools/             dev tools: hud_preview, move_numbers_preview,
+                   field_preview, reports_capturer, reports_render,
+                   gen_assets, spectator_smoke
 ```
 
 ## Legacy

@@ -1,5 +1,5 @@
 // =============================================================================
-// RainSim — implementation (top-down rain, round 13 turn 4)
+// RainSim — implementation (top-down rain)
 // =============================================================================
 #include "ui/rainsim.h"
 

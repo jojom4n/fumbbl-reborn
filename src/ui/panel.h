@@ -1,10 +1,10 @@
 // =============================================================================
 // FloatingPanel — a translucent, draggable, resizable panel that floats over
-// the central field (single-window "HUD" layout, phase 10).
+// the central field (single-window "HUD" layout).
 //
-// - WA_TranslucentBackground: the dark background is painted ~90% opaque, so
-//   the field glows through slightly (user requirement: fully transparent
-//   chrome, including the title bar).
+// - WA_TranslucentBackground: the dark background is painted ~90% opaque,
+//   so the field glows through slightly (fully transparent chrome,
+//   including the title bar).
 // - Title strip: drag to move (clamped inside the parent), close (×) to hide.
 // - 6px edge/cursor zones: resize on every edge and corner (min size 200x120,
 //   clamped inside the parent).
@@ -27,9 +27,9 @@ public:
     QWidget *contentWidget() const { return m_content; }
     QString panelTitle() const { return m_title; }
     void setAccent(const QColor &color);
-    // Round 10: chromeless mode for the hover Player Info card — no title
-    // text, no close button; the content fills the whole panel. (The
-    // protocol log panel keeps the full chrome.)
+    // Chromeless mode for the hover Player Info card — no title text, no
+    // close button; the content fills the whole panel. (The protocol log
+    // panel keeps the full chrome.)
     void setChromeless(bool c = true);
     bool isChromeless() const { return m_chromeless; }
 
@@ -74,7 +74,7 @@ private:
     QWidget *m_content = nullptr;
     QToolButton *m_close = nullptr;
     QColor m_accent{0x8f, 0xa6, 0xc0};
-    bool m_chromeless = false; // round 10: no title text / close button
+    bool m_chromeless = false; // no title text / close button
     bool m_dragging = false;
     bool m_resizing = false;
     int m_edge = EdgeNone;

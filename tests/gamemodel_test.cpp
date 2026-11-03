@@ -304,8 +304,8 @@ void GameModelTest::boxAndRemovePlayer()
     QCOMPARE(box.first().playerId, QStringLiteral("18109690"));
     QCOMPARE(box.first().state, 5);
 
-    // ROUND 13 (point 17 fix): fieldModelRemovePlayer clears the player's
-    // FIELD DATA but does NOT delete the player from the roster. The server
+    // fieldModelRemovePlayer clears the player's FIELD DATA but does NOT
+    // delete the player from the roster. The server
     // emits it for EVERY player before each re-placement (post-TD / half
     // setup) — removing them from the roster is what made players vanish
     // after every drive (they were re-placed with setPlayerCoordinate, but
@@ -317,8 +317,8 @@ void GameModelTest::boxAndRemovePlayer()
     QVERIFY(!removed->hasCoords);         // field data cleared
 }
 
-// Round 13 (point 6): the CUMULATIVE move trail of the remote acting player.
-// Semantics (user clarifications):
+// The CUMULATIVE move trail of the remote acting player.
+// Semantics:
 //   * the server steps the actor ONE SQUARE AT A TIME, so the trail grows
 //     progressively behind him (one cell per fieldModelSetPlayerCoordinate);
 //   * a NEW move by the SAME player APPENDS another path (its own arrow) —
@@ -391,12 +391,12 @@ void GameModelTest::moveTrailAccumulatesAndClears()
     QCOMPARE(model.moveTrace().size(), 0);
 }
 
-// Round 15 (user): the between-cells numbers are CONTINUOUS across the
-// whole action — the reported bug was a BLITZ whose follow move restarted
-// the count at 1. Spec (user, verbatim): the sideways square is move 1,
-// the block itself is a movement (2), the follow steps continue (3,4,...),
-// a frenzy's second block is the next number, and a go-for-it extra move
-// continues the count and is flagged red.
+// The between-cells numbers are CONTINUOUS across the whole action (the
+// reported bug was a BLITZ whose follow move restarted the count at 1).
+// Spec: the sideways square is move 1, the block itself is a movement (2),
+// the follow steps continue (3,4,...), a frenzy's second block is the next
+// number, and a go-for-it extra move continues the count and is flagged
+// red.
 void GameModelTest::moveNumbersContinuousAcrossBlitzBlockAndFrenzy()
 {
     GameModel model;
@@ -502,11 +502,11 @@ void GameModelTest::moveNumbersContinuousAcrossBlitzBlockAndFrenzy()
     QCOMPARE(model.moveSegments().size(), 0);
     QCOMPARE(model.blockStepMarks().size(), 0);
 
-    // --- Round 16 (user: "in caso di blocco di giocatore adiacente, basta
-    // il solo trail, non c'è bisogno di contare le caselle"): a PLAIN
-    // block action — the drive STARTS with the block, no movement before
-    // it — is UNNUMBERED for its whole lifetime: no block mark, no
-    // follow-step numbers. Just the trail.
+    // --- A PLAIN block action (the drive STARTS with the block, no
+    //     movement before it) is UNNUMBERED for its whole lifetime: no
+    //     block mark, no follow-step numbers. Just the trail (for a
+    //     blocked adjacent player the trail alone is enough — no cell
+    //     counting).
     // Geometry: the defender (new actor) sits at (1,2); put the other
     // player (at (2,1)) adjacent at (2,2).
     changes = QJsonArray();
@@ -661,8 +661,8 @@ void GameModelTest::resetClearsState()
     QVERIFY(!m.rosterHome().isEmpty());
 }
 
-// Turn 12/13 (user): the per-turn marks and the block-marker lifecycle —
-// the model side of the field badges:
+// The per-turn marks and the block-marker lifecycle — the model side of
+// the field badges:
 //   * track numbers parse the server's {coordinate, number} payload,
 //   * the blitzer is the actor when turnDataSetBlitzUsed flips true,
 //   * the moment a player stops acting they are marked "acted this turn",
@@ -714,7 +714,8 @@ void GameModelTest::turnMarksAndBlockMarkerLifecycle()
     model.applyModelChanges(ch);
     QVERIFY(model.blitzingPlayerId().isEmpty());
 
-    // --- acted this turn (turn 16, user bug): the green check appears on
+    // --- acted this turn (the green check appeared on the wrong event):
+    //     it must appear on
     // DEFINITIVE activation (actingPlayerSetPlayerAction), NOT when the
     // actor leaves. Select -> deselect must NOT mark.
     ch = QJsonArray();

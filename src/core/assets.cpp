@@ -278,10 +278,9 @@ QPixmap blockHelmet()
 
 QPixmap stadiumImage(const QString &name)
 {
-    // Round 13 turn 5 (user: the stadium must be 4K-beautiful like the
-    // field): prefer the 4K asset (stadium_4k.png, 3840px) — it stays crisp
-    // at any zoom on 4K monitors; stadiums without one fall back to the
-    // base resolution.
+    // Prefer the 4K asset (stadium_4k.png, 3840px) — it stays crisp at any
+    // zoom on 4K monitors; stadiums without one fall back to the base
+    // resolution.
     const QString fourK = QStringLiteral("stadiums/%1/stadium_4k.png").arg(name);
     if (!dir().isEmpty() && QFile::exists(dir() + QStringLiteral("/") + fourK))
         return loadPixmap(fourK);
@@ -332,10 +331,10 @@ bool isAvailable()
 }
 
 // ---------------------------------------------------------------------------
-// keyBackground — generic flat-backdrop removal for team logos (round 13,
-// user point 10). The backdrop is NOT assumed white: it is estimated from the
-// image border and removed by a border-connected flood fill, so it works for
-// any flat color (or a user-uploaded logo with its own backdrop).
+// keyBackground — generic flat-backdrop removal for team logos. The
+// backdrop is NOT assumed white: it is estimated from the image border and
+// removed by a border-connected flood fill, so it works for any flat color
+// (or a user-uploaded logo with its own backdrop).
 // ---------------------------------------------------------------------------
 namespace {
 

@@ -42,8 +42,8 @@ public:
     int selectedGameId() const;
     int currentTableRow() const;
     int tableRowCount() const;
-    // Round 10: team logos of the currently selected row ({home, away}).
-    // Fallback source for the game state's often-null logoUrl. May be empty.
+    // Team logos of the currently selected row ({home, away}) — fallback
+    // source for the game state's often-null logoUrl. May be empty.
     QPair<QString, QString> selectedTeamLogos() const;
     // Test seams: inject a match list without a network round-trip and reach
     // the manual game-id field.

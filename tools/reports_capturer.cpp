@@ -1,11 +1,11 @@
 // =============================================================================
-// reports_capturer — live raw-report capture (Mockup F round 9, step A)
+// reports_capturer — live raw-report capture
 //
-// The round-8 action log could not show subjects/dice on many live reports
-// ("move", "stand up" without a name; numeric ids; no dice). Root cause
-// suspected: the C++ parser was written against ffb-common field names that
-// do not all match what the server actually sends. This tool removes the
-// guesswork: it spectates a LIVE match as the client does (SpectatorSession:
+// The action log could not show subjects/dice on many live reports ("move",
+// "stand up" without a name; numeric ids; no dice). Root cause suspected:
+// the C++ parser was written against ffb-common field names that do not all
+// match what the server actually sends. This tool removes the guesswork: it
+// spectates a LIVE match as the client does (SpectatorSession:
 // OAuth2 -> one-time token -> LZString WS -> clientJoin) and dumps
 //
 //   <out>/game_<id>_<ts>.jsonl        one raw report JSON per line
@@ -53,10 +53,10 @@ static void logLine(const QString &what)
     std::fflush(stdout);
 }
 
-// Round 13: the MODEL CHANGES are the ground truth for the move trail
+// The MODEL CHANGES are the ground truth for the move trail
 // (actingPlayerSetPlayerId / actingPlayerSetPlayerAction /
-// fieldModelSetPlayerCoordinate) and for the post-TD repositioning bug
-// (point 17): every change object is dumped raw, one per line.
+// fieldModelSetPlayerCoordinate) and for the post-TD repositioning: every
+// change object is dumped raw, one per line.
 static void logChange(const QJsonObject &c)
 {
     const QString id = c.value(QStringLiteral("modelChangeId")).toString();

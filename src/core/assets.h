@@ -23,9 +23,9 @@
 
 namespace assets {
 
-// A STADIUM (round 13, user): a top-down stadium backdrop that is a
-// SEPARATE, interchangeable asset from the field (the user can pick any
-// stadium + any field in the future). Each stadium ships:
+// A STADIUM: a top-down stadium backdrop that is a SEPARATE,
+// interchangeable asset from the field (any stadium + any field can be
+// combined). Each stadium ships:
 //   assets/stadiums/<name>/stadium.png   the top-down art (NO field in it)
 //   assets/stadiums/<name>/stadium.json  a MANIFEST of normalized (0..1,
 //                                         image-space) rects so the client can
@@ -38,9 +38,9 @@ struct StadiumManifest {
     QRectF fieldPit;   // the empty pit the 26x15 field is fitted into
     QRectF dugoutHome; // team 1 (home) dugout — top-left pavilion
     QRectF dugoutAway; // team 2 (away) dugout — top-right pavilion
-    // Round 13 turn 6 (user: the field corners must not look pasted ON the
-    // frame): the frame's inner corner curve, normalized to the stadium
-    // image size (x -> width, y -> height). 0,0 = square-cornered pit.
+    // The frame's inner corner curve, normalized to the stadium image size
+    // (x -> width, y -> height). 0,0 = square-cornered pit. Without it the
+    // field corners look pasted ON the frame.
     // The client clips the field to a rounded rect with this radius so the
     // grass corners follow the stone arch of the pit.
     qreal pitRadiusX = 0;
@@ -80,26 +80,23 @@ QPixmap cardPixmap(const QString &cardName);
 QPixmap fieldTexture();
 // The DUGOUT panel (assets/dugout/dugout.png): the earthy soil bench zone,
 // a SEPARATE asset from the field texture — identical for every field type
-// (round 12). 1:2 aspect, 3 equal bands RESERVE / KO / INJURED. Null pixmap
-// when missing (FieldView falls back to a flat soil fill).
+// 1:2 aspect, 3 equal bands RESERVE / KO / INJURED. Null pixmap when
+// missing (FieldView falls back to a flat soil fill).
 QPixmap dugoutTexture();
 
-// Round 13 turn 4 (user: "usare i simboli ufficiali GW 2025"): the OFFICIAL
-// tabletop section symbols of the dugout, rendered with Qwen-Image from the
-// official GW 2025 product reference (spiked red ring + reserve arrow /
-// dazed face / skull+crossbones). Transparent background; kind =
-// "reserve" | "ko" | "injured". 512px sources (4K-ready: downscaled in the
-// UI, never upscaled).
+// The OFFICIAL tabletop section symbols of the dugout (GW 2025), rendered
+// with Qwen-Image from the official product reference (spiked red ring +
+// reserve arrow / dazed face / skull+crossbones). Transparent background;
+// kind = "reserve" | "ko" | "injured". 512px sources (4K-ready: downscaled
+// in the UI, never upscaled).
 QPixmap dugoutSymbol(const QString &kind);
 
-// Round 13 turn 5 (user's idea): the dugout WOOD PANEL as a separate asset
-// (assets/dugout/panel.png), MOUNTED by the field view on the stadium
-// manifest's dugout rects — the dugout is universal: any stadium ships its
-// rect, the same (or another) panel mounts on it. Null = the vector
-// fallback panel is drawn instead.
+// The dugout WOOD PANEL as a separate asset (assets/dugout/panel.png),
+// MOUNTED by the field view on the stadium manifest's dugout rects — the
+// dugout is universal: any stadium ships its rect, the same (or another)
+// panel mounts on it. Null = the vector fallback panel is drawn instead.
 QPixmap dugoutPanel();
-// Round 13 turn 12 (user: "il casco è orribile, rifallo con Qwen-Image"):
-// the BLOCK MARKER helmet — a Qwen-Image american football helmet on a
+// The BLOCK MARKER helmet: a Qwen-Image american football helmet on a
 // pure white background, background keyed to transparent here. Drawn by the
 // field view on a white disc BETWEEN attacker and defender while the block
 // die is pending. Null pixmap when missing (vector fallback helmet).
@@ -107,7 +104,7 @@ QPixmap blockHelmet();
 // True when the face set is available.
 bool isAvailable();
 
-// --- logo background keying (round 13, user: point 10) -----------------------
+// --- logo background keying -------------------------------------------------
 // Removes a FLAT background from a team logo. The background color is NOT
 // assumed to be white — it is ESTIMATED from the image border (median of the
 // edge pixels), so ANY flat background works (white, red, blue, or a logo the

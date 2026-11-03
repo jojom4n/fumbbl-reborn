@@ -1,7 +1,7 @@
 // =============================================================================
 // MainWindow — FUMBBL Reborn main window
 //
-// HUD layout (Mockup F round 8):
+// HUD layout (Mockup F):
 //   - The field fills the whole window (fullscreen, no side stripes).
 //   - The header is the zoned Mockup F strip (left team / center info /
 //     right team), full width, NO end-turn button (spectator client).
@@ -13,8 +13,7 @@
 //     FloatingPanel (dev tool). Layout persistence still applies to the
 //     remaining panels.
 //   - No roster panels: box/bench/KO/reserve are visible in the field's box
-//     strips (round 8).
-//   - Field navigation: mouse wheel = zoom, right-mouse drag = pan.
+//     strips.
 // =============================================================================
 #pragma once
 
@@ -52,7 +51,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
-    // --- UI state updaters (driven by the FUMBBL core in later phases) -----
+    // --- UI state updaters (driven by the FUMBBL core) ----------------------
     void setTeams(const QString &homeName, const QString &awayName);
     void setScore(int home, int away);
     void setTurn(int turn);
@@ -70,7 +69,7 @@ public:
     // Public so it can be invoked from --spectate-now / tests.
     void openSpectateDialog();
 
-    // Panel layout persistence (JSON via QSettings, phase 10).
+    // Panel layout persistence (JSON via QSettings).
     QByteArray savedLayout() const;
     void restoreLayout(const QByteArray &state);
     // Restore the default panel arrangement (positions AND sizes) — the
@@ -80,17 +79,14 @@ public:
     // --- Core (spectator) -----------------------------------------------------
     // The game model (exposed for tests / tooling; the UI reads from it).
     GameModel *model() const { return m_model; }
-    // The currently selected player (playerId, "" = none).
     // Show the info card for a player (no selection: the spectator does not
     // select players — the field rim glow is the REMOTE coach's selection,
     // driven by the model's actingPlayer).
     void showPlayerCardById(const QString &playerId);
-    // Select a model player (field highlight + Player Info panel). Public so
-    // tests can drive the same path the field/roster clicks take.
 
-    // Round 10: match-list team logos (e.g. "/i/486335") used as the logo
-    // source when the game state's logoUrl is null. Public so tests can
-    // drive the same path the Spectate dialog takes.
+    // Match-list team logos (e.g. "/i/486335") used as the logo source when
+    // the game state's logoUrl is null. Public so tests can drive the same
+    // path the Spectate dialog takes.
     void setFallbackTeamLogos(const QString &home, const QString &away);
 
     // Controller entry points for incoming match data. In production these are
@@ -132,7 +128,7 @@ private:
     void createPanels();
     void createStatusBar();
 
-    // Panel layout (phase 10).
+    // Panel layout.
     FloatingPanel *makePanel(const QString &name, const QString &title,
                              QWidget *content, const QColor &accent);
     void applyDefaultLayout();
@@ -144,31 +140,29 @@ private:
     void onWsClosed(int code, const QString &reason);
     void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
-    // Round 13 turn 4 (user: "Armor broken e Injury vengono ripetuti"): the
-    // server re-sends reports (step retries / re-syncs) and the official
-    // client does NOT dedupe. We do: a report whose canonical fingerprint
-    // arrived within the last kDedupWindowMs is dropped; a batch large
-    // enough to be a FULL re-sync (>= kResyncBatch reports while the log is
-    // already populated) rebuilds the log from the batch.
+    // Report dedup: the server re-sends reports (step retries / re-syncs)
+    // and the official client does NOT dedupe — we do: a report whose
+    // canonical fingerprint arrived within the last kDedupWindowMs is
+    // dropped; a batch large enough to be a FULL re-sync (>= kResyncBatch
+    // reports while the log is already populated) rebuilds the log from the
+    // batch.
     //
-    // Round 13 turn 15 (user: "metti i vari stand up" + "riempi l'action
-    // log con le azioni del client ufficiale"): the window was 2 MINUTES —
-    // but the same player can legitimately repeat an identical report
-    // within two minutes (move -> down -> stand up -> move; the same
-    // defender blocked twice by different attackers; turnEnd is identical
-    // every turn). Capture ground truth (game_1957772): step-retry
-    // re-sends arrive within ~1-3 lines (a couple of seconds), while real
-    // repeats are tens of seconds apart. 2.5s catches the retries and lets
-    // the real repeats through.
+    // Window sizing: the same player can legitimately repeat an identical
+    // report within a couple of minutes (move -> down -> stand up -> move;
+    // the same defender blocked twice; turnEnd is identical every turn).
+    // Capture ground truth (game_1957772): step-retry re-sends arrive
+    // within ~1-3 lines (a couple of seconds), while real repeats are tens
+    // of seconds apart. 2.5s catches the retries and lets the real
+    // repeats through.
     static constexpr int kDedupWindowMs = 2500;
     static constexpr int kResyncBatch = 10;
     QHash<QString, qint64> m_reportFpTimes; // fingerprint -> last-seen ms
-    int m_lastKickoffSeq = 0; // turn 15: kickoff flights already started
+    int m_lastKickoffSeq = 0; // kickoff flights already started
     QElapsedTimer m_clock;
     int m_loggedReportCount = 0;
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
-    // Hover card (round 8): show/hide the player info on the opposite side
+    // Hover card: show/hide the player info on the opposite side
     // of the field from the hovered player. Empty token = hide.
     void onPlayerHovered(const FieldView::PlayerToken &token);
     void showPlayerCard(const FFBPlayer *p, int fieldX);
@@ -191,8 +185,8 @@ private:
     QNetworkAccessManager *m_logoNam = nullptr; // team logo downloads
     QString m_homeLogoUrl; // currently loaded/loaded-in-flight logo URLs
     QString m_awayLogoUrl;
-    // Round 10: match-list logo paths (set from the Spectate dialog); used
-    // when the game state's logoUrl is null — the common case.
+    // Match-list logo paths (set from the Spectate dialog); used when the
+    // game state's logoUrl is null — the common case.
     QString m_fallbackHomeLogo;
     QString m_fallbackAwayLogo;
     QPixmap m_homeLogoPm;

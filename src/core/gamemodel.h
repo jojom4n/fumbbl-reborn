@@ -110,15 +110,15 @@ public:
     // Team race (live players usually carry no per-player race).
     QString teamHomeRace() const { return m_teamHomeRace; }
     QString teamAwayRace() const { return m_teamAwayRace; }
-    // Team coach names (header sublines; the team on turn gets END TURN).
+    // Team coach names (header sublines).
     QString teamHomeCoach() const { return m_teamHomeCoach; }
     QString teamAwayCoach() const { return m_teamAwayCoach; }
     // Team logo URLs (absolute; empty when the state carries no logo).
     QString teamHomeLogoUrl() const { return m_teamHomeLogoUrl; }
     QString teamAwayLogoUrl() const { return m_teamAwayLogoUrl; }
-    // Turn 12 (user): the header shows as many dots as the TEAM has
-    // rerolls (team.reRolls — could be 0 or 6), and a dot turns white as
-    // it is used THIS TURN (turnData.reRolls = remaining this turn).
+    // Team total rerolls (team.reRolls) and the ones remaining this turn
+    // (turnData.reRolls): the header draws one dot per team reroll, and a
+    // dot turns white as it is used.
     int reRollsHome() const { return m_reRollsHome; }
     int reRollsAway() const { return m_reRollsAway; }
     int turnReRollsHome() const { return m_turnReRollsHome; }
@@ -129,15 +129,13 @@ public:
     int half() const { return m_half; }
     QString turnMode() const { return m_turnMode; } // setup|first_turn|regular|halftime|overtime|ended
 
-    // Turn 15 (user, point 11): the KICKOFF flight. The wire sends only the
-    // landing cell (no path, no kicker) — the model synthesizes the flight
-    // origin (previous on-field ball position in the kicker's half, or the
-    // kicker's 30-yd line) and the kicker (nearest kicking-team field
-    // player to the origin). `kickoffSeq` bumps once per kickoff so the UI
-    // triggers the animation exactly once.
+    // Kickoff flight. The wire sends only the landing cell (no path, no
+    // kicker) — the model synthesizes the origin (previous on-field ball
+    // position in the kicking team's half, or its 30-yd line) and the
+    // kicker (nearest field player of the kicking team to the origin).
+    // kickoffSeq() bumps once per kickoff so the UI animates exactly once.
     int kickoffSeq() const { return m_kickoffSeq; }
     QPoint kickoffOrigin() const { return m_kickoffOrigin; }
-    QPoint kickoffLanding() const { return m_kickoffLanding; }
     QString kickoffKickerId() const { return m_kickoffKickerId; }
     bool homePlaying() const { return m_homePlaying; }
     // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
@@ -148,8 +146,6 @@ public:
     QVector<FFBPlayer> rosterHome() const;
     QVector<FFBPlayer> rosterAway() const;
 
-    // First player of a side with the given shirt number (nullptr if none).
-    const FFBPlayer *findPlayerByNumber(int number, bool homeSide) const;
     // Player by server id (nullptr if unknown) — used for click selection.
     const FFBPlayer *findPlayerById(const QString &playerId) const;
     // On-field player standing at the given field cell (nullptr if none).
@@ -164,34 +160,32 @@ public:
     bool ballAt(int &x, int &y) const;
     QString activePlayerId() const { return m_activePlayerId; }
 
-    // --- Block target (round 13 turn 4, user: the player being BLOCKED gets
-    // a RED selection glow, like the actor's blue one) ---------------------
-    // Armed by the UI on the blockRoll/block report (the defenderId — the
-    // player being blocked); cleared when the block RESOLVES: the target's
-    // state changes (fieldModelSetPlayerState), a new turn/half starts, or
-    // another player becomes the actor.
+    // --- Block target: the player being BLOCKED gets a RED glow (the actor
+    // gets the blue one). -------------------------------------------------------------------
+    // Armed by the UI on the blockRoll/block report (defenderId); cleared
+    // when the block RESOLVES: the target's state changes
+    // (fieldModelSetPlayerState), a new turn/half starts, or another player
+    // becomes the actor.
     QString blockTargetId() const { return m_blockTargetId; }
-    // Round 13 turn 8 (user, FINAL rule): the red glow on the DEFENDER
-    // lives as long as the block action — it dies when the ATTACKER loses
-    // his (blue) actor glow. `attacker` empty = the current actor at arming
-    // time (the block reports arrive while the attacker is the actor).
+    // The red defender glow lives as long as the block action: it dies when
+    // the ATTACKER loses his (blue) actor glow. `attacker` empty = the
+    // current actor at arming time (block reports arrive while the attacker
+    // is the actor).
     void setBlockTargetId(const QString &playerId, const QString &attacker = QString());
-    // Round 15 (user: "mostriamo anche il movimento che costa il blocco
-    // durante il blitz"): a block COSTS A MOVEMENT. Called by the UI on a
-    // (deduped) `block` report — the start of a block sequence, including
-    // a FRENZY's second block — it reserves the next number of the drive
-    // and records where the number is painted (between the attacker's
-    // cell and the defender's cell).
+    // A block COSTS A MOVEMENT. Called by the UI on a (deduped) `block`
+    // report — the start of a block sequence, including a FRENZY's second
+    // block — it reserves the next number of the drive and records where
+    // the number is painted (between the attacker's cell and the
+    // defender's cell).
     void noteBlockStep(const QString &defenderId,
                        const QString &attackerId = QString());
-    // Turn 11: the attacker of an open block (the marker pair) + the CHOSEN
-    // block die face (0 = not chosen yet, 1..6 = blockChoice blockRoll[diceIndex]).
+    // The attacker of an open block (the marker pair) + the CHOSEN block die
+    // face (0 = not chosen yet, 1..6 = blockChoice blockRoll[diceIndex]).
     QString blockAttackerId() const { return m_blockAttackerId; }
     int blockDieFace() const { return m_blockDieFace; }
     void setBlockDieFace(int face) { m_blockDieFace = face; }
-    // Turn 16 (user: "il target del blitz fallo gloware di rosso"): a FOUL
-    // target gets the same red glow as a block defender — but WITHOUT the
-    // marker pair (there is no die). The glow's lifecycle is the block
+    // A FOUL target gets the same red glow as a block defender, but WITHOUT
+    // the marker pair (there is no die). The glow's lifecycle is the block
     // glow's: it dies when the fouler (the actor) stops being the actor,
     // on a new turn or half, or when the target is replaced.
     void setFoulTargetId(const QString &playerId)
@@ -202,11 +196,10 @@ public:
         m_blockGlowOnly = true;
     }
     bool blockGlowOnly() const { return m_blockGlowOnly; }
-    // Turn 12 (user): the marker (helmet / chosen die) between attacker
-    // and defender dies as soon as the ATTACKER acts on the follow
-    // decision — it must not stay attached to the player. The RED GLOW on
-    // the defender keeps its own (turn 8) lifecycle and is NOT touched
-    // here.
+    // The marker (helmet / chosen die) between attacker and defender dies as
+    // soon as the ATTACKER acts on the follow decision — it must not stay
+    // attached to the player. The red defender glow keeps its own lifecycle
+    // and is NOT touched here.
     bool blockMarkerActive() const { return !m_blockAttackerId.isEmpty(); }
     void clearBlockMarker()
     {
@@ -215,37 +208,36 @@ public:
         m_blockGlowOnly = false;
     }
 
-    // Turn 13 (user, "come su FUMBBL"): the numbered cells of the current
-    // movement trail. GROUND TRUTH (game_1957772 capture): the server sends
+    // Numbered cells of the current movement trail ("come su FUMBBL").
+    // GROUND TRUTH (game_1957772 capture): the server sends
     // fieldModelAddTrackNumber / fieldModelRemoveTrackNumber with
-    // {coordinate: [x,y], number: N} — the official client paints N on the
+    // {coordinate: [x,y], number: N}; the official client paints N on the
     // cell (FieldLayerUnderPlayers.drawTrackNumber). We mirror the server
     // data 1:1.
     QHash<QPoint, int> trackNumbers() const { return m_trackNumbers; }
 
-    // Turn 13 (user, "come su FUMBBL"): the green check on a field player
-    // who ALREADY ACTED this turn. No server flag exists (verified: no
-    // playedThisTurn in the state nor in the changes) — the client tracks
-    // it: a player is marked the moment they STOP being the actor.
+    // Green check on a field player who ALREADY ACTED this turn. No server
+    // flag exists (verified: no playedThisTurn in state or changes) — the
+    // client tracks it: a player is marked the moment they stop being the
+    // actor.
     QSet<QString> actedThisTurn() const { return m_actedThisTurn; }
 
-    // Turn 14 (user): the player designated as PASS RECEIVER glows (white,
-    // user: "il glow fallo bianco"). GROUND TRUTH (capture):
+    // The designated PASS RECEIVER glows white. GROUND TRUTH (capture):
     // fieldModelSetTargetSelectionState {playerId, targetSelectionStatus:
     // "SELECTED", ...}; value null = the selection is gone.
     QString passTargetId() const { return m_passTargetId; }
 
-    // Turn 13 (user): the BLITZ symbol (top-left of the ring) on the player
-    // who blitzed this turn. GROUND TRUTH (ffb-common TurnData.setBlitzUsed):
-    // the blitzer is exactly the ACTING PLAYER at the moment
+    // The BLITZ symbol (top-left of the ring) on the player who blitzed
+    // this turn. GROUND TRUTH (ffb-common TurnData.setBlitzUsed): the
+    // blitzer is exactly the ACTING PLAYER at the moment
     // turnDataSetBlitzUsed goes true; it dies when the flag goes false or
     // the turn changes.
     QString blitzingPlayerId() const { return m_blitzingPlayerId; }
 
-    // --- Move trail (round 13, user request) ---------------------------------
-    // The CUMULATIVE movement trace of the remote acting player: each entry
-    // is one MOVE ACTION, a list of field cells from the start square to the
-    // last stepped square (one arrow per path in the UI).
+    // --- Move trail of the acting player ------------------------------------
+    // The CUMULATIVE movement trace: each entry is one MOVE ACTION, a list
+    // of field cells from the start square to the last stepped square (one
+    // arrow per path in the UI).
     //
     // The server steps the player ONE SQUARE AT A TIME (ffb-server StepMove:
     // the MOVE_STACK is consumed square by square, each square a
@@ -253,23 +245,23 @@ public:
     // behind the player, exactly like the official client's step-by-step
     // movement.
     //
-    // Persistence semantics (user, round 13):
-    //   * NO timeout — the trace stays until the actor changes or a new
+    // Persistence semantics:
+    //   * no timeout — the trace stays until the actor changes or a new
     //     turn starts;
     //   * a NEW move by the SAME player does NOT replace the trace: it
     //     APPENDS another path (its own arrow) — the spectator sees the
     //     whole cumulative route;
-    //   * when the coach activates ANOTHER player, the whole trace of the
-    //     previous player disappears and the new one starts clean.
+    //   * when another player is activated, the previous trace disappears
+    //     and the new one starts clean.
     //
-    // Protocol ground truth (live capture game_1957772, 28/ott):
+    // Protocol ground truth (live capture game_1957772):
     //   actingPlayerSetPlayerId    = who is acting (null between actions)
     //   actingPlayerSetPlayerAction = "move"/"standUp"/... (plain string)
     //   fieldModelSetPlayerCoordinate [x,y] per stepped square
-    // Round 15 (user): continuous numbering across the WHOLE action — the
-    // blitz's sideways step is 1, the block (a movement in itself) is 2,
-    // the follow steps are 3,4,5..., a frenzy's second block is the next
-    // number, and a go-for-it extra move continues the count (drawn red).
+    // Numbering is continuous across the WHOLE action: the blitz's sideways
+    // step is 1, the block (a movement in itself) is 2, the follow steps are
+    // 3,4,5..., a frenzy's second block is the next number, and a go-for-it
+    // extra move continues the count (drawn red).
     struct MoveSegment {
         QVector<QPoint> cells; // the route's cells, center to center
         QVector<int> stepNumbers; // the number between cells[i] and cells[i+1]
@@ -285,13 +277,12 @@ public:
     };
     QVector<MoveSegment> moveSegments() const { return m_moveSegments; }
     QVector<BlockStepMark> blockStepMarks() const { return m_blockStepMarks; }
-    // The cell view of the segments (round 13 API, kept for the tests).
+    // Flat cell view of the segments (kept for the tests).
     QVector<QVector<QPoint>> moveTrace() const;
     QString moveTraceActor() const { return m_traceActor; }
-    // Round 15 (user: "in caso di go for it, mostriamo in rosso i
-    // movimenti extra"): a successful go-for-it roll — the player's next
-    // NEW route is the GFI extra move and is drawn red. Called by the UI
-    // on the (deduped) `goForItRoll` report with successful=true.
+    // A successful go-for-it roll: the player's next NEW route is the GFI
+    // extra move and is drawn red. Called by the UI on the (deduped)
+    // `goForItRoll` report with successful=true.
     void setGoForItPending(const QString &playerId);
     void clearMoveTrace();
 
@@ -348,12 +339,12 @@ private:
     int m_reRollsAway = 0;
     int m_turnReRollsHome = 0; // remaining THIS turn (dots still colored)
     int m_turnReRollsAway = 0;
-    QHash<QPoint, int> m_trackNumbers; // turn 13: server trail cell numbers
-    QSet<QString> m_actedThisTurn;    // turn 13: players already acted
-    bool m_actorActivated = false;    // turn 16: the current actor chose an
-                                      // action (green-check gate)
-    QString m_passTargetId;           // turn 14: pass receiver (white glow)
-    QString m_blitzingPlayerId;       // turn 13: this turn's blitzer
+    QHash<QPoint, int> m_trackNumbers; // server trail cell numbers
+    QSet<QString> m_actedThisTurn;    // players already acted
+    bool m_actorActivated = false;    // the current actor chose an action
+                                      // (green-check gate)
+    QString m_passTargetId;           // pass receiver (white glow)
+    QString m_blitzingPlayerId;       // this turn's blitzer
 
     // Position lookup: positionId -> positionName/shorthand/keywords,
     // filled from teamX.roster.positionArray (live players carry only the
@@ -369,10 +360,9 @@ private:
     int m_turn = 1;
     int m_half = 0;
     QString m_turnMode = QStringLiteral("setup");
-    bool m_pendingKickoff = false; // turn 15: kickoff turn started, flight pending
-    int m_kickoffSeq = 0;          // turn 15: bumps once per kickoff flight
+    bool m_pendingKickoff = false; // kickoff turn started, flight pending
+    int m_kickoffSeq = 0;          // bumps once per kickoff flight
     QPoint m_kickoffOrigin;
-    QPoint m_kickoffLanding;
     QString m_kickoffKickerId;
     bool m_homePlaying = true;
     QString m_weather;
@@ -385,21 +375,20 @@ private:
 
     // Acting player (turn holder).
     QString m_activePlayerId;
-    QString m_blockTargetId; // round 13 turn 4: the player being blocked
-    bool m_blockGlowOnly = false; // turn 16: foul target (red glow, no marker)
-    QString m_blockAttackerId; // turn 8: whose actor glow holds the block open
-    int m_blockDieFace = 0; // turn 11: chosen block die (0 = pending)
+    QString m_blockTargetId; // the player being blocked (red glow)
+    bool m_blockGlowOnly = false; // foul target (red glow, no marker)
+    QString m_blockAttackerId; // whose actor glow holds the block open
+    int m_blockDieFace = 0; // chosen block die (0 = pending)
 
-    // Move trail of the acting player (round 13; round 15: continuous
-    // numbering across the whole action — see MoveSegment/BlockStepMark).
+    // Move trail of the acting player (see MoveSegment/BlockStepMark).
     QString m_traceActor;                  // player whose trace is tracked
     QVector<MoveSegment> m_moveSegments;   // one entry per move route
     QVector<BlockStepMark> m_blockStepMarks; // blocks that cost a movement
     int m_nextStepNumber = 1;              // next number of the drive
     bool m_driveUnnumbered = false;        // the drive STARTED with a block
                                            // (plain block of an adjacent
-                                           // player): trail only, no numbers
-                                           // (user: "basta il solo trail")
+                                           // player): trail only, no step
+                                           // numbers
     bool m_blockResolved = false;          // gameSetDefenderId null landed
                                            // since the last block opened
     QString m_gfiPendingFor;               // player with a successful GFI

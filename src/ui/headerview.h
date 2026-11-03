@@ -7,19 +7,18 @@
 //            [TURN n] [HALF]   m:ss   (sun|rain) Weather
 //   o o o   coach · race   AWAY NAME  [crest]
 //
-// Layout (round 8): strict ZONES — left = team 1, center = score/turn/half/
-// timer/weather, right = team 2. The widget EXPANDS to the full toolbar
-// width so the center zone is centered on the window (round 8 fix: it used
-// to be anchored left at its 800px sizeHint).
+// Layout: strict ZONES — left = team 1, center = score/turn/half/timer/
+// weather, right = team 2. The widget EXPANDS to the full toolbar width so
+// the center zone is centered on the window.
 //
-// Design rules (Mockup F, 23/ott):
+// Design rules (Mockup F):
 //   * the team ON TURN has its name in gold, raised (embossed) — no dots
 //     and no borders; the other name stays plain ink
 //   * rerolls are dots: 3 slots, filled = remaining
 //   * the turn timer COUNTS UP (FUMBBL semantics) — no decreasing bar
 //   * red is reserved for injury/failure: accents come from the team colors
-//   * round 8: NO END TURN button — this is a spectator client; ending the
-//     turn is not part of spectating.
+//   * no END TURN button — this is a spectator client; ending the turn is
+//     not part of spectating.
 // =============================================================================
 #pragma once
 
@@ -46,9 +45,9 @@ public:
     void setTurn(int turn, int half);
     void setTurnElapsedSeconds(int seconds); // count-up display
     void setHomePlaying(bool homePlaying);   // which team is on turn
-    // Turn 12 (user): as many dots as the TEAM has rerolls (could be 0 or
-    // 6); a dot is gold while it is still available THIS TURN and turns
-    // white as it is used (turnData.reRolls).
+    // As many dots as the TEAM has rerolls (could be 0 or 6); a dot is gold
+    // while it is still available THIS TURN and turns white as it is used
+    // (turnData.reRolls).
     void setRerolls(int totalHome, int totalAway, int leftHome, int leftAway);
     void setLogos(const QPixmap &home, const QPixmap &away);
     void setWeather(const QString &weather); // display name ("Nice Weather")
@@ -68,7 +67,6 @@ public:
     int rerollsTotalAway() const { return m_rerollsTotalAway; }
 
     QSize sizeHint() const override { return QSize(800, 62); }
-    int fixedHeight() const { return 62; }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -99,11 +97,11 @@ private:
     QPixmap m_awayLogo;
     QString m_weather;
 
-    // Round 13: the ACTIVE team's name GLOWS with a breathing pulse (user
-    // request — the turn holder must pop out of the strip). A timer advances
-    // the phase; greenEmboss reads m_glowPhase. Repaints only while a match
-    // is live (a team name is set) — otherwise the timer stays stopped and
-    // the idle header costs nothing.
+    // The ACTIVE team's name GLOWS with a breathing pulse (the turn holder
+    // must pop out of the strip). A timer advances the phase; greenEmboss
+    // reads m_glowPhase. Repaints only while a match is live (a team name
+    // is set) — otherwise the timer stays stopped and the idle header costs
+    // nothing.
     QTimer *m_glowTimer = nullptr;
     qreal m_glowPhase = 0.0;
     void ensureGlowTimer();

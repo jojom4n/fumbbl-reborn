@@ -54,7 +54,8 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName("FUMBBL Reborn");
     QApplication::setOrganizationName("saruman");
-    QApplication::setApplicationVersion("0.1.0");
+    // Single source of truth: the CMake project version (FUMBBL_VERSION).
+    QApplication::setApplicationVersion(QStringLiteral(FUMBBL_VERSION));
 
     applyLightTheme(app);
 

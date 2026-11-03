@@ -1,6 +1,6 @@
 // =============================================================================
 // ReportParser — implementation (see reportparser.h for the ffb-common
-// references and the round-9 field alignment notes)
+// references and the field alignment notes)
 // =============================================================================
 #include "core/reportparser.h"
 
@@ -192,7 +192,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     };
 
     // The long list of plain skill rolls (ReportSkillRoll subclasses —
-    // verified field-by-field against ffb-common, round 9):
+    // verified field-by-field against ffb-common):
     // playerId, roll, minimumRoll, successful, reRolled, rollModifiers.
     static const QHash<QString, std::pair<QString, int>> kSimpleRolls = {
         { "dodgeRoll", { "Dodge", 0 } },
@@ -223,7 +223,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         { "dodgySnackRoll", { "Dodgy Snack", 4 } },
         { "weatherMageRoll", { "Weather Mage", 3 } },
         { "apothecaryRoll", { "Apothecary", 1 } },
-        // Round 9 additions (all ReportSkillRoll subclasses in ffb-common):
+        // the remaining ReportSkillRoll subclasses in ffb-common:
         { "safeThrowRoll", { "Safe Throw", 0 } },
         { "weepingDaggerRoll", { "Weeping Dagger", 4 } },
         { "alwaysHungryRoll", { "Always Hungry", 4 } },
@@ -248,12 +248,11 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     // The big dispatch. Key names are the ffb-common IJsonOption names.
     if (id == QLatin1String("playerAction")) {
         // ReportPlayerAction: ACTING_PLAYER_ID + playerAction enum. THE
-        // subject field is `actingPlayerId` (round-9 bug: the old parser
-        // read `playerId`, so "move"/"stand up" had no subject).
-        // Turn 15 (user: "riempi l'action log con le azioni del client
-        // ufficiale"): the OFFICIAL client (PlayerActionMessage.render)
-        // prints the PlayerAction enum's description string — use the same
-        // wording (ffb-common PlayerAction.java, ground truth).
+        // subject field is `actingPlayerId` (the old parser read `playerId`,
+        // so "move"/"stand up" had no subject).
+        // The OFFICIAL client (PlayerActionMessage.render) prints the
+        // PlayerAction enum's description string — use the same wording
+        // (ffb-common PlayerAction.java, ground truth).
         const QString an = enumName(report.value(QStringLiteral("playerAction")));
         static const QHash<QString, QString> kActionText = {
             { QStringLiteral("move"),                QStringLiteral("moves") },
@@ -298,9 +297,9 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
              kLightGray, actorId);
     } else if (id == QLatin1String("block")) {
         // ReportBlock: ONLY defenderId = the player being blocked. No dice
-        // here (the dice arrive in the `blockRoll` report — round-9 bug:
-        // the old parser looked for them here and never found them).
-        // Turn 15 (official wording, BlockMessage.render): the line is
+        // here (the dice arrive in the `blockRoll` report — the old parser
+        // looked for them here and never found them).
+        // Official wording (BlockMessage.render): the line is
         // "ATTACKER blocks DEFENDER: " — the report carries ONLY the
         // defender; the ATTACKER is the current acting player, so the
         // parser leaves actorId empty and MainWindow fills it from the
@@ -309,10 +308,10 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     } else if (id == QLatin1String("blockRoll")) {
         // ReportBlockRoll: choosingTeamId + blockRoll[6] + defenderId.
         // The six block dice — the star of the action log.
-        // Turn 16 (user: after a BLITZ the dice line was titled with the
-        // blitzer's TEAM, not the blitzer): the actor is the ACTING PLAYER
-        // (the blitzer / the blocking attacker) — actorId left empty, like
-        // the `block` report; MainWindow fills it from the model.
+        // The actor is the ACTING PLAYER (the blitzer / the blocking
+        // attacker) — actorId left empty, like the `block` report; MainWindow
+        // fills it from the model. (Titled with the team, the line showed
+        // the blitzer's TEAM instead of the blitzer.)
         DiceLogLine l;
         l.text = QStringLiteral("Block roll");
         l.color = kYellow;
@@ -333,7 +332,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         l.color = brU.startsWith(QLatin1String("SKULL")) ? kRed
                   : brU.contains(QLatin1String("BOTH")) ? kYellow
                   : kGreen;
-        // Turn 16: same rule as blockRoll — the line is titled with the
+        // Same rule as blockRoll — the line is titled with the
         // acting player (blitzer / attacker), not the choosing team.
         l.actorId = QString();
         l.defenderId = defenderId;
@@ -389,9 +388,8 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         // server StepInitFouling sets the game defender to the foul target
         // and the report carries game.getDefenderId()). The FOULER is the
         // current acting player, not in the report: actorId left empty and
-        // filled from the model by MainWindow (same pattern as `block`).
-        // Turn 16 user report: the old code titled the line with the victim
-        // ("il fallatore era il giocatore fallato").
+        // filled from the model by MainWindow (same pattern as `block`;
+        // the old code titled the line with the VICTIM, not the fouler).
         push(QStringLiteral("commits a Foul!"), kOrange, QString(), defenderId);
     } else if (id == QLatin1String("pushback")) {
         // ReportPushback: defenderId + pushbackMode.
@@ -547,10 +545,8 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         const QString si = enumName(report.value(QStringLiteral("seriousInjury")));
         if (!ar.isEmpty()) {
             DiceLogLine l;
-            // ROUND 13 TURN 8 (user, rules — he is always right): an armor
-            // roll that BREAKS the armor is a SUCCESS of the roll ("se
-            // l'armatura è BROKEN allora è un SUCCESSO, non un FAILURE") —
-            // and ONLY on that success does the injury roll happen (1-7
+            // An armor roll that BREAKS the armor is a SUCCESS of the roll
+            // — and ONLY on that success does the injury roll happen (1-7
             // stunned, 8+ KO/injured, 15-16 dead). A failed armor roll
             // leaves the player prone on the ground with NO injury roll.
             // So: BROKEN -> Success label, holds -> Failure label.
@@ -596,7 +592,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
             l.text = QStringLiteral("Turn ended (touchdown)");
         l.color = kGray;
         l.actorId = str(report, "playerIdTouchdown");
-        // Round 13 turn 4 (BB3 log): turn separators are CENTERED lines.
+        // Turn separators are CENTERED lines.
         l.separator = true;
         l.actorIsPlayer = true; // a player id (touchdown scorer) or empty
         l.d6Roll = num(report, "heatRoll");
@@ -607,7 +603,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         DiceLogLine l;
         l.text = QStringLiteral("Half %1 starts").arg(num(report, "half"));
         l.color = kGray;
-        l.separator = true; // round 13 turn 4: centered separator
+        l.separator = true; // centered separator
         out.append(l);
     } else if (id == QLatin1String("coinThrow")) {
         // ReportCoinThrow: coach + coinThrowHeads + coinChoiceHeads.
@@ -615,7 +611,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         l.text = QStringLiteral("Coin Toss: %1")
                      .arg(flag(report, "coinThrowHeads") ? QStringLiteral("Heads") : QStringLiteral("Tails"));
         l.color = kGray;
-        l.separator = true; // round 13 turn 4: centered separator
+        l.separator = true; // centered separator
         out.append(l);
     } else if (id == QLatin1String("receiveChoice")) {
         push(QStringLiteral("Receive choice: %1")
@@ -878,10 +874,8 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
     // Every report not matched above (no-dice / bookkeeping / exotic
     // inducements: balefulHex, allYouCanEat, brilliantCoachingReRoll, ...)
     // falls through to the clean named line below — NEVER the raw JSON
-    // payload (user rule: no numeric ids / raw strings in the log).
-
-    // Unknown report: a clean named line, never the raw JSON (round 9: the
-    // old fallback dumped the payload, leaking ids into the log).
+    // payload (no numeric ids / raw strings in the log; the old fallback
+    // dumped the payload, leaking ids into the log).
     if (out.isEmpty())
         push(humanize(id), kGray, actorId, defenderId);
 

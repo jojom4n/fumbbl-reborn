@@ -2,13 +2,14 @@
 // ReportParser — FUMBBL server reports -> action log lines
 //
 // C++ port of the TS client's reportParser.ts, FIELD-BY-FIELD ALIGNED with
-// the authoritative ffb-common Java sources (round 9):
+// the authoritative ffb-common Java sources:
 //   /home/saruman/Projects/ffb/ffb-common/src/main/java/com/fumbbl/ffb/
 //     - report/Report*.java (+ report/mixed, report/bb2025 variants)
 //     - json/IJsonOption.java   (the actual on-wire JSON key names)
 //   and the ffb-server step classes (who emits what, with which id).
 //
-// Round-8 bugs found this way (the parser was guessing field names):
+// Field names verified against the Java sources (early guessing produced
+// real bugs):
 //   * ReportPlayerAction carries the subject in `actingPlayerId`, NOT
 //     `playerId`  -> "move"/"stand up" lost their subject
 //   * ReportBlock carries ONLY `defenderId` (the player being blocked;
@@ -37,7 +38,7 @@
 
 // One action-log entry. The dice are carried as STRUCTURED data, not as
 // numbers in the text: the UI renders them as official-style die face
-// images (Mockup F round 8: "non ci mettere i numeri: metti i dadi").
+// images (dice are never shown as bare numbers).
 struct DiceLogLine {
     // Action description ("Dodge", "Pass (Incomplete)", "is OUT!", ...).
     // May still contain an unresolved id token for actorId/defenderId — the
@@ -64,7 +65,7 @@ struct DiceLogLine {
     QStringList d6Rolls;
     // Block roll: the six faces ("1".."6"), rendered as block die images.
     QStringList blockFaces;
-    // Round 13 turn 4 (BB3-like log): structural hints for the UI.
+    // Structural hints for the UI.
     bool separator = false;     // a turn/half/coin separator line (centered)
     bool actorIsPlayer = true;   // actorId is a PLAYER id (hover -> card)
     bool defenderIsPlayer = true; // defenderId is a PLAYER id

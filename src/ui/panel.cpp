@@ -154,7 +154,7 @@ void FloatingPanel::paintEvent(QPaintEvent *event)
     p.drawLine(QPointF(r.left() + 10, r.top() + 1.2), QPointF(r.right() - 10, r.top() + 1.2));
 
     // Title text (the "title bar" is part of the translucent chrome).
-    // Round 10: chromeless cards (the hover Player Info) have no title text.
+    // Chromeless cards (the hover Player Info) have no title text.
     if (!m_chromeless) {
         p.setPen(QColor(34, 40, 50, 240)); // INK
         QFont f = font();
@@ -245,7 +245,7 @@ void FloatingPanel::mouseReleaseEvent(QMouseEvent *event)
 void FloatingPanel::resizeEvent(QResizeEvent *event)
 {
     Q_UNUSED(event);
-    const int top = m_chromeless ? 6 : kTitleHeight; // round 10
+    const int top = m_chromeless ? 6 : kTitleHeight;
     if (m_content)
         m_content->setGeometry(6, top, width() - 12, height() - top - 6);
     if (m_close && !m_chromeless)

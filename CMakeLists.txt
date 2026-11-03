@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )
@@ -121,58 +121,12 @@ add_executable(fumbbl-qt
 
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# Mockup F dice (official-style block dice + red d6 — generated via
-# tools/mockup/dice_queue.py + dice_process.py). This Qt build does not
-# auto-process .qrc target sources, so rcc runs explicitly.
-set(DICE_RCC ${CMAKE_CURRENT_BINARY_DIR}/qrc_dice.cpp)
-# This Qt build does not export Qt6_rcc_EXECUTABLE — locate rcc explicitly.
-if(NOT Qt6_rcc_EXECUTABLE)
-    find_program(DICE_RCC_EXECUTABLE
-        NAMES rcc
-        PATHS /usr/lib/qt6 /usr/lib/qt6/bin /usr/bin
-        NO_DEFAULT_PATH
-    )
-    if(NOT DICE_RCC_EXECUTABLE)
-        message(FATAL_ERROR "rcc not found (needed for assets/dice.qrc)")
-    endif()
-else()
-    set(DICE_RCC_EXECUTABLE ${Qt6_rcc_EXECUTABLE})
-endif()
-add_custom_command(
-    OUTPUT ${DICE_RCC}
-    COMMAND ${DICE_RCC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
-            -o ${DICE_RCC}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice.qrc
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block1_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block2_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block3_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block4_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block5_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/block6_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_1_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_2_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_3_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_4_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_5_s.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/dice/d6_6_s.png
-    VERBATIM
-)
 # Game assets: cartoon faces (assets/faces, per roster piece) + procedural
 # skill/card icons (see gen_assets). Committed under <source>/assets.
+# FUMBBL_VERSION: project version, shown in the window title and About box.
 target_compile_definitions(fumbbl-qt PRIVATE
-    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    FUMBBL_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Core
@@ -209,8 +163,8 @@ add_executable(reports_render
 target_include_directories(reports_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(reports_render PRIVATE Qt6::Core Qt6::Gui)
 
-# Headless LIVE raw-report capture (Mockup F round 9): spectates a match and
-# dumps every raw serverModelSync report (one JSON line) + the full
+# Headless LIVE raw-report capture: spectates a match and dumps every raw
+# serverModelSync report + model change (one JSON line each) + the full
 # serverGameState. Ground truth for reportparser field alignment.
 add_executable(reports_capturer
     tools/reports_capturer.cpp
@@ -226,10 +180,12 @@ target_link_libraries(reports_capturer PRIVATE
     Qt6::WebSockets
 )
 
-# Round 13 offscreen visual verification (grass texture + vector grid/TD,
-# full-height dugouts + gap, move trail, 44px spaced dice, header glow).
-add_executable(round13_preview
-    tools/round13_preview.cpp
+# Offscreen HUD verification: drives a real MainWindow offscreen (live game
+# fixture + synthetic reports/changes) and saves PNG crops — window, field,
+# dugouts, header, action log, block glows/markers, move trail, ball flight,
+# kickoff, rain.
+add_executable(hud_preview
+    tools/hud_preview.cpp
     src/core/lzstring.cpp
     src/core/fumbblauth.cpp
     src/core/fumbblws.cpp
@@ -250,10 +206,10 @@ add_executable(round13_preview
 
     ${DICE_RCC}
 )
-target_include_directories(round13_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(round13_preview PRIVATE
+target_include_directories(hud_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(hud_preview PRIVATE
     FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
-target_link_libraries(round13_preview PRIVATE
+target_link_libraries(hud_preview PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -261,10 +217,12 @@ target_link_libraries(round13_preview PRIVATE
     Qt6::WebSockets
 )
 
-# Round 14 offscreen visual verification (between-cells move numbers:
-# 3-step move, 1-square move, blitz).
-add_executable(round14_preview
-    tools/round14_preview.cpp
+# Offscreen verification of the move-trail rendering (between-cells step
+# numbers, block marks, go-for-it red trail, log line wrapping): a full
+# MainWindow fed with the exact wire flows of the ffb-server block/move
+# sequences.
+add_executable(move_numbers_preview
+    tools/move_numbers_preview.cpp
     src/core/lzstring.cpp
     src/core/fumbblauth.cpp
     src/core/fumbblws.cpp
@@ -285,10 +243,10 @@ add_executable(round14_preview
 
     ${DICE_RCC}
 )
-target_include_directories(round14_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(round14_preview PRIVATE
+target_include_directories(move_numbers_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(move_numbers_preview PRIVATE
     FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
-target_link_libraries(round14_preview PRIVATE
+target_link_libraries(move_numbers_preview PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -296,8 +254,8 @@ target_link_libraries(round14_preview PRIVATE
     Qt6::WebSockets
 )
 
-# Offscreen FieldView renderer for visual verification of the Mockup F
-# design (feeds a real serverGameState fixture, saves a PNG).
+# Offscreen FieldView renderer: feeds a raw serverGameState fixture into a
+# bare FieldView and saves a PNG (quick check of field/stadium/dugout look).
 add_executable(field_preview
     tools/field_preview.cpp
     src/core/assets.cpp

@@ -153,8 +153,7 @@ void GameModel::clearMoveTrace()
     m_movePending = false;
 }
 
-// Round 15: the CELL view of the segments (round 13 API, kept for the
-// tests and the old drawing path).
+// Flat cell view of the segments (kept for the tests).
 QVector<QVector<QPoint>> GameModel::moveTrace() const
 {
     QVector<QVector<QPoint>> v;
@@ -163,9 +162,8 @@ QVector<QVector<QPoint>> GameModel::moveTrace() const
     return v;
 }
 
-// Round 15 (user): the block is a movement. `attacker` empty = the current
-// actor at arming time (the block reports arrive while the attacker is the
-// actor).
+// `attacker` empty = the current actor at arming time (the block reports
+// arrive while the attacker is the actor).
 void GameModel::setBlockTargetId(const QString &playerId,
                                  const QString &attacker)
 {
@@ -175,7 +173,7 @@ void GameModel::setBlockTargetId(const QString &playerId,
         m_blockAttackerId = attacker.isEmpty() ? m_activePlayerId : attacker;
 }
 
-// Round 15 (user): reserve the drive's next number for a block and record
+// Reserve the drive's next number for a block and record
 // where its number is painted (between the attacker's cell and the
 // defender's cell). A re-send of the `block` report for the SAME still-
 // open block (a server step retry outliving the UI's dedup window) is
@@ -194,8 +192,7 @@ void GameModel::noteBlockStep(const QString &defenderId, const QString &attacker
         return;
     const QPoint from(a->fieldX, a->fieldY);
     const QPoint to(d->fieldX, d->fieldY);
-    // Round 16 (user: "in caso di blocco di giocatore adiacente, basta il
-    // solo trail, non c'è bisogno di contare le caselle"): a PLAIN block
+    // A PLAIN block
     // action — the drive STARTED with this block, no movement before it —
     // is UNNUMBERED for its whole lifetime: no block mark, no follow-step
     // numbers, just the trail. A BLITZ (a movement before the block) is
@@ -213,8 +210,8 @@ void GameModel::noteBlockStep(const QString &defenderId, const QString &attacker
     m_blockStepMarks.append({from, to, m_nextStepNumber++});
 }
 
-// Round 15 (user): a successful go-for-it roll — the player's next NEW
-// route is the extra move, drawn red.
+// A successful go-for-it roll — the player's next NEW route is the extra
+// move, drawn red.
 void GameModel::setGoForItPending(const QString &playerId)
 {
     if (!playerId.isEmpty() && playerId == m_traceActor)
@@ -234,10 +231,9 @@ bool GameModel::initialize(const QJsonObject &game)
 
     m_teamHomeName = home.value(QStringLiteral("teamName")).toString();
     m_teamAwayName = away.value(QStringLiteral("teamName")).toString();
-    // Round 9 (verified on the live game state): the team id lives in
-    // `teamId`, not `id` — with the wrong key every team reference in the
-    // reports (prayers, bribes, throw-ins, block rolls...) stayed an
-    // unresolved numeric id.
+    // The team id lives in `teamId`, not `id` (verified on the live state):
+    // with the wrong key every team reference in the reports (prayers,
+    // bribes, throw-ins, block rolls...) stays an unresolved numeric id.
     m_teamHomeId = !home.value(QStringLiteral("teamId")).toString().isEmpty()
                        ? home.value(QStringLiteral("teamId")).toString()
                        : home.value(QStringLiteral("id")).toString();
@@ -253,7 +249,7 @@ bool GameModel::initialize(const QJsonObject &game)
     m_teamAwayLogoUrl = teamLogoUrl(away);
     m_reRollsHome = readInt(home.value(QStringLiteral("reRolls")));
     m_reRollsAway = readInt(away.value(QStringLiteral("reRolls")));
-    // Turn 12: the colored dots follow the CURRENT-TURN remaining rerolls
+    // The colored header dots follow the CURRENT-TURN remaining rerolls
     // (turnData.reRolls; capture-verified: team total vs per-turn values).
     m_turnReRollsHome = readInt(
         game.value(QStringLiteral("turnDataHome")).toObject()
@@ -473,15 +469,14 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     if (id == QLatin1String("fieldModelSetBallCoordinate")) {
         int x = -1, y = -1;
         if (readCoords(value, x, y)) {
-            // Turn 15 (user, point 11): KICKOFF flight. GROUND TRUTH
-            // (game_1957772 capture): the wire sends ONLY the landing cell
+            // KICKOFF flight. GROUND TRUTH (game_1957772 capture): the wire
+            // sends ONLY the landing cell
             // (+ later scatter bounces) — no flight path, no kicker id.
             // The trajectory is synthesized: from the ball's previous
             // on-field position (a post-TD kick starts in the scorer's
             // end zone) or from the kicker's half, to the landing cell.
             if (m_pendingKickoff && isOnField(x, y)) {
                 m_pendingKickoff = false;
-                m_kickoffLanding = QPoint(x, y);
                 // The ball lands in the REceiving team's half — the kicking
                 // team is the other one (it kicks from its own half).
                 const bool homeReceives = (x <= 12);
@@ -530,7 +525,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     if (id == QLatin1String("fieldModelSetPlayerCoordinate")) {
         FFBPlayer *player = findPlayer(key);
         if (player) {
-            // Round 13: the move trail. Only the ACTOR's steps are traced
+            // The move trail. Only the ACTOR's steps are traced
             // (pushed/defended players are not). The server steps the actor
             // one square at a time, so each change appends the new cell;
             // a step whose previous cell does not match the path's tail
@@ -538,25 +533,25 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             int nx = -1, ny = -1;
             if (readCoords(value, nx, ny) && !isOnField(nx, ny) && key == m_traceActor) {
                 // The actor left the field (into a box: knocked out, sent
-                // to the bench...) — its route is over (round 15: the
-                // numbers and the block marks die with it).
+                // to the bench...) — its route is over (the numbers and
+                // the block marks die with it).
                 clearMoveTrace();
             }
             if (readCoords(value, nx, ny) && isOnField(nx, ny) && key == m_traceActor) {
-                // Round 13 (user): the arrow must NOT appear before the
-                // player actually MOVES. The server re-sends the actor's
-                // coordinate at selection / turn setup (a same-cell no-op
-                // re-write, or a placement right after fieldModelRemovePlayer,
-                // with NO pending move action). Those are NOT move steps and
-                // used to create a degenerate 1-point (or A,A) path -> a
-                // premature arrow next to the just-selected player. Now only
-                // REAL move steps are traced: a step that continues the
-                // current route, or the first step after a moving action.
+                // The arrow must NOT appear before the player actually
+                // MOVES. The server re-sends the actor's coordinate at
+                // selection / turn setup (a same-cell no-op re-write, or a
+                // placement right after fieldModelRemovePlayer, with NO
+                // pending move action). Those are NOT move steps: tracing
+                // them creates a degenerate 1-point path -> a premature
+                // arrow next to the just-selected player. Only REAL move
+                // steps are traced: a step that continues the current route,
+                // or the first step after a moving action.
                 const bool sameCell = player->hasCoords
                     && isOnField(player->fieldX, player->fieldY)
                     && player->fieldX == nx && player->fieldY == ny;
                 if (!sameCell) {
-                    // Round 15: a route starts. Its FIRST step number is
+                    // A route starts. Its FIRST step number is
                     // the drive's next number — the count is CONTINUOUS
                     // across routes of the same action (the blitz's
                     // sideways step, the block — noteBlockStep — and the
@@ -570,8 +565,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                             seg.cells << QPoint(player->fieldX, player->fieldY);
                         seg.cells << QPoint(nx, ny);
                         // A drive that STARTED with a block (a plain block
-                        // action) is unnumbered: trail only, no badges
-                        // (user: "basta il solo trail").
+                        // action) is unnumbered: trail only, no badges.
                         if (!m_driveUnnumbered)
                             seg.stepNumbers << m_nextStepNumber++;
                         seg.goForIt = (m_gfiPendingFor == key);
@@ -586,9 +580,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                         // the old cell, continuing the numbering.
                         newRoute(player);
                         m_movePending = false;
-                        // Turn 12 (user): a NEW action by the attacker also
-                        // ends the block — the marker is not "left
-                        // attached" to the token.
+                        // A NEW action by the attacker also ends the block
+                        // — the marker is not "left attached" to the token.
                         if (key == m_blockAttackerId && m_blockDieFace > 0)
                             clearBlockMarker();
                     } else {
@@ -602,10 +595,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                                 m_moveSegments.last().stepNumbers
                                     .append(m_nextStepNumber++);
                         } else if (!m_blockTargetId.isEmpty() && key == m_blockAttackerId) {
-                            // Turn 11 (user): the FOLLOW — after the block
-                            // choice the attacker follows the defender
-                            // ("solita trail con freccettina che segnala il
-                            // piccolo movimento dell'attacker"). The follow is
+                            // The FOLLOW: after the block choice the
+                            // attacker follows the defender. The follow is
                             // NOT a moving action on the wire (capture: the
                             // coordinate step lands straight after the
                             // followupChoice dialog, no
@@ -613,12 +604,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                             // it would be untraced. Any actor step while a
                             // block is open IS the follow.
                             newRoute(player);
-                            // Turn 12 (user): "se l'attacker segue, il
-                            // simbolo deve sparire, non deve rimanergli
-                            // attaccato" — the helmet/die marker dies the
-                            // moment the attacker takes the follow step.
-                            // (The red glow on the defender keeps its
-                            // turn-8 lifecycle.)
+                            // The helmet/die marker dies the moment the
+                            // attacker takes the follow step. (The red glow
+                            // on the defender keeps its own lifecycle.)
                             if (m_blockDieFace > 0)
                                 clearBlockMarker();
                         }
@@ -633,29 +621,29 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         return;
     }
 
-    // Turn 12 (user): the block is fully resolved when the server clears
-    // the defender id (capture: gameSetDefenderId null lands right after
-    // the follow decision, even when the attacker did NOT follow — the
-    // marker must be gone in both cases). The red glow keeps living until
-    // the attacker's actor glow dies (turn 8 rule).
+    // The block is fully resolved when the server clears the defender id
+    // (capture: gameSetDefenderId null lands right after the follow
+    // decision, even when the attacker did NOT follow — the marker must be
+    // gone in both cases). The red glow keeps living until the attacker's
+    // actor glow dies.
     if (id == QLatin1String("gameSetDefenderId")) {
         if (value.isNull()) {
             const bool glowOnly = m_blockGlowOnly;
             clearBlockMarker();
-            m_blockResolved = true; // round 15: a FRENZY second block now
-                                    // gets its own number
-            // Turn 16: for a FOUL the null defender id is the foul's
-            // resolution (ffb-server StepEndFouling does exactly this) —
-            // the glow-only mark dies with it. A block's red glow keeps
-            // its turn-8 lifecycle (dies with the attacker's actor glow).
+            m_blockResolved = true; // a FRENZY second block now gets its
+                                    // own number
+            // For a FOUL the null defender id is the foul's resolution
+            // (ffb-server StepEndFouling does exactly this) — the glow-only
+            // mark dies with it. A block's red glow keeps its own lifecycle
+            // (dies with the attacker's actor glow).
             if (glowOnly)
                 m_blockTargetId.clear();
         }
         return;
     }
 
-    // Turn 12 (user): the colored reroll dots follow the CURRENT-TURN
-    // remaining rerolls (capture: turnDataSetReRolls {key, value}).
+    // The colored reroll dots follow the CURRENT-TURN remaining rerolls
+    // (capture: turnDataSetReRolls {key, value}).
     if (id == QLatin1String("turnDataSetReRolls")) {
         const int n = value.toInt();
         if (key == QLatin1String("home"))
@@ -669,25 +657,24 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         FFBPlayer *player = findPlayer(key);
         if (player)
             player->state = readInt(value);
-        // Round 13 turn 8 (user, FINAL rule): the defender's state changes
-        // DURING the block (down, box, KO, ...) — the red glow must SURVIVE
-        // them. It dies only when the attacker's actor glow disappears
-        // (actingPlayerSetPlayerId) or a new turn/half starts.
+        // The defender's state changes DURING the block (down, box, KO, ...)
+        // — the red glow must SURVIVE them. It dies only when the
+        // attacker's actor glow disappears (actingPlayerSetPlayerId) or a
+        // new turn/half starts.
         return;
     }
 
     if (id == QLatin1String("fieldModelRemovePlayer")) {
-        // ROUND 13 BUG FIX (user report: players vanished after every TD /
-        // half end). ffb-common FieldModel.remove(player) clears ONLY the
-        // player's LIVE FIELD DATA (coordinate + state map) — the player
-        // REMAINS in the team roster. The server does this for EVERY player
-        // at the start of each turn (post-TD / half setup) right before
-        // re-placing them with fieldModelSetPlayerCoordinate (verified in
-        // the live capture game_1957772: 22x removePlayer + 22x
-        // setPlayerCoordinate in one batch). The old code deleted the
-        // player from the model — the follow-up setPlayerCoordinate then
-        // found no player and the player stayed gone forever (and every
-        // report referencing it lost its subject: "Move" without a name).
+        // ffb-common FieldModel.remove(player) clears ONLY the player's
+        // LIVE FIELD DATA (coordinate + state map) — the player REMAINS in
+        // the team roster. The server does this for EVERY player at the
+        // start of each turn (post-TD / half setup) right before re-placing
+        // them with fieldModelSetPlayerCoordinate (verified in the live
+        // capture game_1957772: 22x removePlayer + 22x setPlayerCoordinate
+        // in one batch). The player must NOT be deleted from the model:
+        // the follow-up setPlayerCoordinate would find no player and the
+        // player would stay gone forever (and every report referencing it
+        // would lose its subject: "Move" without a name).
         FFBPlayer *player = findPlayer(key);
         if (player) {
             player->fieldX = -1;
@@ -700,7 +687,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     if (id == QLatin1String("gameSetHalf")) {
         m_half = readInt(value);
         clearMoveTrace(); // a new half: the trace dies with the old turn
-        m_blockTargetId.clear(); // round 13 turn 4: a new half kills the glow
+        m_blockTargetId.clear(); // a new half kills the glow
         m_actedThisTurn.clear();
         m_actorActivated = false;
         m_blitzingPlayerId.clear();
@@ -728,9 +715,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         m_turnMode = obj.contains(QStringLiteral("name"))
                          ? obj.value(QStringLiteral("name")).toString()
                          : value.toString();
-        // Turn 15 (user, point 11): a KICKOFF turn starts — the next
-        // on-field ball placement is the kickoff landing: the flight
-        // (trajectory + bounces + kicker glow) is synthesized from it.
+        // A KICKOFF turn starts — the next on-field ball placement is the
+        // kickoff landing: the flight (trajectory + bounces + kicker glow)
+        // is synthesized from it.
         m_pendingKickoff = (m_turnMode == QStringLiteral("kickoff"));
         // Turn START (post-TD or post-half setup: the players are about to
         // be re-placed) — the trace of the old drive is gone. (Live
@@ -744,7 +731,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         };
         if (kTurnStartModes.contains(m_turnMode)) {
             clearMoveTrace();
-            m_blockTargetId.clear(); // round 13 turn 4: new turn = no block
+            m_blockTargetId.clear(); // new turn = no block
         }
         return;
     }
@@ -764,10 +751,10 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // TS reference: only the "home" key updates the displayed turn.
         if (key == QLatin1String("home"))
             m_turn = readInt(value);
-        // Turn 13: a new turn resets the per-turn marks (green checks,
-        // blitzer, trail numbers — the server removes them individually,
-        // but a new turn starts a fresh numbering anyway). The block
-        // marker dies with the turn too.
+        // A new turn resets the per-turn marks (green checks, blitzer,
+        // trail numbers — the server removes them individually, but a new
+        // turn starts a fresh numbering anyway). The block marker dies
+        // with the turn too.
         m_actedThisTurn.clear();
         m_actorActivated = false;
         m_blitzingPlayerId.clear();
@@ -776,8 +763,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         return;
     }
 
-    // Turn 13 (user, "come su FUMBBL"): the numbered trail cells.
-    // GROUND TRUTH (capture): value = {coordinate: [x,y], number: N}.
+    // The numbered trail cells ("come su FUMBBL").
     // GROUND TRUTH (capture): value = {coordinate: [x, y], number: N}.
     if (id == QLatin1String("fieldModelAddTrackNumber")) {
         const QJsonObject o = value.toObject();
@@ -795,9 +781,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         return;
     }
 
-    // Turn 14 (user): the PASS RECEIVER (white glow). GROUND TRUTH
-    // (capture): {playerId, targetSelectionStatus: "SELECTED", ...}; a
-    // null value ends the selection.
+    // The PASS RECEIVER (white glow). GROUND TRUTH (capture):
+    // {playerId, targetSelectionStatus: "SELECTED", ...}; a null value
+    // ends the selection.
     if (id == QLatin1String("fieldModelSetTargetSelectionState")) {
         if (value.isNull())
             m_passTargetId.clear();
@@ -812,9 +798,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         return;
     }
 
-    // Turn 13 (user): the BLITZ symbol. GROUND TRUTH (ffb-common
-    // TurnData.setBlitzUsed): the blitzer is the acting player at the
-    // moment the flag goes true.
+    // The BLITZ symbol. GROUND TRUTH (ffb-common TurnData.setBlitzUsed):
+    // the blitzer is the acting player at the moment the flag goes true.
     if (id == QLatin1String("turnDataSetBlitzUsed")) {
         if (value.toBool())
             m_blitzingPlayerId = m_activePlayerId;
@@ -835,30 +820,27 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         const QString newActor = playerIdKey(value);
         const QString oldActor = m_activePlayerId;
         m_activePlayerId = newActor;
-        // Round 13 trace semantics: the value is null BETWEEN actions of
+        // Trace semantics: the value is null BETWEEN actions of
         // the same player (the trace must survive — a new move of the same
         // player appends, it does not replace), so only a DIFFERENT non-
         // null actor wipes the previous player's whole trace.
         if (!m_activePlayerId.isEmpty() && m_activePlayerId != m_traceActor) {
             m_traceActor = m_activePlayerId;
-            clearMoveTrace(); // round 15: numbers + block marks die too
+            clearMoveTrace(); // numbers + block marks die too
         }
-        // Round 13 turn 8 (user, FINAL rule): the red block glow on the
-        // DEFENDER lives exactly as long as the block action — it dies when
-        // the ATTACKER loses his (blue) actor glow: the actor becomes
-        // another player OR nobody (null). Turn 4's rule (clear on any
-        // different non-null actor) was wrong: with re-rolls the attacker
-        // re-armed in the same batch and the glow flickered / was often
-        // missing (user: "non sempre c'è il glow rosso").
+        // The red block glow on the DEFENDER lives exactly as long as the
+        // block action — it dies when the ATTACKER loses his (blue) actor
+        // glow: the actor becomes another player OR nobody (null). Clearing
+        // on any different non-null actor was wrong: with re-rolls the
+        // attacker re-armed in the same batch and the glow flickered / was
+        // often missing.
         if (!m_blockTargetId.isEmpty() && m_activePlayerId != m_blockAttackerId)
             m_blockTargetId.clear();
-        // Turn 16 (user, second logic bug): the old code marked the
-        // previous actor as "acted" the moment the actor changed (A -> null
-        // or A -> B). That was WRONG for the select -> DESELECT -> reselect
-        // flow: the human selects a player to think, cancels (actor -> null,
-        // no action taken), selects them again and only THEN activates them
-        // — the green check appeared after the FIRST selection, before the
-        // real action.
+        // The previous actor is NOT marked "acted" here: marking on actor
+        // change was wrong for the select -> DESELECT -> reselect flow —
+        // the human selects a player to think, cancels (actor -> null, no
+        // action taken), selects them again and only THEN activates them,
+        // so the green check would appear before the real action.
         //
         // Server ground truth (ffb-server StepInitMoving +
         // UtilActingPlayer.changeActingPlayer, capture-verified pattern
@@ -867,7 +849,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         //   - ACTIVATION = actingPlayerSetPlayerAction=<action> (the human
         //                  definitively chose an action)
         //   - DESELECT / action end = actingPlayerSetPlayerId=null
-        // Only ACTIVATION is definitive. The mark moves to the
+        // Only ACTIVATION is definitive: the mark is made in the
         // actingPlayerSetPlayerAction handler below; here the activation
         // window simply resets for any new actor (X -> null and X -> Y).
         if (newActor != m_activePlayerId)
@@ -882,8 +864,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         const QString an = enumNameValue(value);
         if (isMovingActionName(an))
             m_movePending = true;
-        // Turn 16: the GREEN CHECK ("acted this turn") appears exactly when
-        // the acting player is DEFINITIVELY activated — the human chose an
+        // The GREEN CHECK ("acted this turn") appears exactly when the
+        // acting player is DEFINITIVELY activated — the human chose an
         // action. A select-then-deselect (no action on the wire) never
         // marks; a reselected player marks only when they finally act.
         if (!an.isEmpty() && !m_activePlayerId.isEmpty()) {
@@ -917,20 +899,6 @@ FFBPlayer *GameModel::findPlayer(const QString &playerId)
 // -----------------------------------------------------------------------------
 // Rosters / field tokens
 // -----------------------------------------------------------------------------
-const FFBPlayer *GameModel::findPlayerByNumber(int number, bool homeSide) const
-{
-    const QStringList &ids = homeSide ? m_rosterHomeIds : m_rosterAwayIds;
-    for (const QString &id : ids) {
-        const auto it = m_playerIndex.constFind(id);
-        if (it != m_playerIndex.constEnd()) {
-            const FFBPlayer &p = m_players.at(it.value());
-            if (p.number == number)
-                return &p;
-        }
-    }
-    return nullptr;
-}
-
 const FFBPlayer *GameModel::findPlayerById(const QString &playerId) const
 {
     const auto it = m_playerIndex.constFind(playerId);
@@ -1062,7 +1030,7 @@ QString GameModel::stateText(int state)
     case 1: return QStringLiteral("Standing");      // STANDING
     case 2: return QStringLiteral("Moving");        // MOVING
     case 3: return QStringLiteral("Prone");         // PRONE
-    case 4: return QStringLiteral("Stunned");        // STUNNED (round 11: user — no "has been")
+    case 4: return QStringLiteral("Stunned");        // STUNNED
     case 5: return QStringLiteral("Knocked Out");   // KNOCKED_OUT
     case 6: return QStringLiteral("Badly Hurt");    // BADLY_HURT
     case 7: return QStringLiteral("Serious Injury"); // SERIOUS_INJURY

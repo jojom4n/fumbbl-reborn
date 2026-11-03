@@ -1,20 +1,20 @@
 // =============================================================================
-// round13_preview — offscreen visual verification of the round-13 changes
+// hud_preview — offscreen visual verification of the live HUD
 //
-//   round13_window.png     whole HUD: [dugout | gap | pitch | gap | dugout],
+//   hud_window.png     whole HUD: [dugout | gap | pitch | gap | dugout],
 //                          grass-only texture + CODE-drawn grid/TD/TOUCHDOWN,
 //                          full-height dugouts, move trail, spaced 44px dice
-//   round13_field.png      the pitch: grass texture + vector grid, 1-column
+//   hud_field.png      the pitch: grass texture + vector grid, 1-column
 //                          crimson TD zones, vertical TOUCHDOWN, center line
-//   round13_dugouts.png    the two full-height dugout panels + the visible
+//   hud_dugouts.png    the two full-height dugout panels + the visible
 //                          gap (apron) between each panel and the TD column
-//   round13_actionlog.png  action log: block + d6 dice at 44px with spacing
-//   round13_header.png     header: active-team breathing glow, equal font
+//   hud_actionlog.png  action log: block + d6 dice at 44px with spacing
+//   hud_header.png     header: active-team breathing glow, equal font
 //                          for both team names, more line spacing
-//   round13_trail.png      the actor's cumulative move trail (grid-following
+//   hud_trail.png      the actor's cumulative move trail (grid-following
 //                          polyline + arrow per move)
 //
-// Run: QT_QPA_PLATFORM=offscreen ./build/round13_preview [out_dir]
+// Run: QT_QPA_PLATFORM=offscreen ./build/hud_preview [out_dir]
 // =============================================================================
 #include <QApplication>
 #include <QDir>
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     const QString outDir = argc > 1 ? QString::fromLocal8Bit(argv[1])
-                                    : QStringLiteral("/tmp/round13");
+                                    : QStringLiteral("/tmp/hud");
     QDir().mkpath(outDir);
 
     QFile f(QStringLiteral("tests/liveGameState_fixture.json"));
@@ -174,10 +174,10 @@ int main(int argc, char *argv[])
         QApplication::processEvents();
     }
 
-    // --- Round 13 turn 4: the RED BLOCK GLOW. The blockRoll above armed the
-    //     glow on the DEFENDER (awayPid); capture a crop around him BEFORE the
-    //     trail simulation switches the actor (which resolves the block).
-    //     Turn 11: the crop also shows the HELMET marker between the pair.
+    // --- The RED BLOCK GLOW. The blockRoll above armed the glow on the
+    //     DEFENDER (awayPid); capture a crop around him BEFORE the trail
+    //     simulation switches the actor (which resolves the block). The crop
+    //     also shows the HELMET marker between the pair.
     {
         const FFBPlayer *victim = w.model()->findPlayerById(awayPid);
         if (victim && victim->hasCoords) {
@@ -185,16 +185,14 @@ int main(int argc, char *argv[])
             const QPoint c = field->cellCenterPx(victim->fieldX, victim->fieldY);
             const int pad = int(cell * 3.5);
             QRect r(c.x() - pad, c.y() - pad, pad * 2, pad * 2);
-            saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_blockglow.png");
+            saveCrop(*field, r.intersected(field->rect()), outDir + "/hud_blockglow.png");
         }
     }
 
-    // --- Turn 11: the block CHOICE -> the between-the-two marker switches
-    //     helmet -> the chosen die's SYMBOL (transparent).
-    //     Turn 16 (user: "se il risultato è un block skull, il simbolo non
-    //     compare"): simulate the SKULL (face 1) case — and the defender
-    //     going prone (the live resolution changes) — the marker must
-    //     survive both and show the skull.
+    // --- The block CHOICE: the between-the-two marker switches helmet ->
+    //     the chosen die's SYMBOL (transparent). Simulate the SKULL (face 1)
+    //     case — and the defender going prone (the live resolution changes):
+    //     the marker must survive both and show the skull.
     {
         QJsonArray rep;
         QJsonObject r;
@@ -230,13 +228,13 @@ int main(int argc, char *argv[])
             QRect r(qMin(a.x(), b.x()) - pad, qMin(a.y(), b.y()) - pad,
                     qAbs(a.x() - b.x()) + pad * 2, qAbs(a.y() - b.y()) + pad * 2);
             saveCrop(*field, r.intersected(field->rect()),
-                     outDir + "/round13_blockskull.png");
+                     outDir + "/hud_blockskull.png");
         }
     }
 
-    // --- Turn 13: the green CHECK — switch the actor away and back so the
-    //     previous actor gets marked as "already acted this turn", then
-    //     re-arm the block glow + choice (the actor switch cleared them).
+    // --- The green CHECK: switch the actor away and back so the previous
+    //     actor gets marked as "already acted this turn", then re-arm the
+    //     block glow + choice (the actor switch cleared them).
     {
         QString awaySecond;
         for (const FFBPlayer &p : w.model()->rosterAway())
@@ -256,8 +254,8 @@ int main(int argc, char *argv[])
         r2.insert("reportId", "blockRoll");
         r2.insert("choosingTeamId", w.model()->teamHomeId());
         QJsonArray faces2;
-        faces2 << 6 << 3; // turn 16: re-arm with a PUSHBACK (face 3) so the
-                          // final crop shows the straight die-like push arrow
+        faces2 << 6 << 3; // re-arm with a PUSHBACK (face 3) so the final
+                          // crop shows the straight die-like push arrow
         r2.insert("blockRoll", faces2);
         r2.insert("defenderId", awayPid);
         rep2.append(r2);
@@ -279,9 +277,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Crop the marker with the CHOSEN die (turn 16 re-arm: face 3 =
-    // PUSHBACK, the straight die-like arrow) while it is still armed —
-    // before the trail move clears it.
+    // Crop the marker with the CHOSEN die (re-arm: face 3 = PUSHBACK, the
+    // straight die-like arrow) while it is still armed — before the trail
+    // move clears it.
     {
         const FFBPlayer *att = w.model()->findPlayerById(homePid);
         const FFBPlayer *def = w.model()->findPlayerById(awayPid);
@@ -294,11 +292,11 @@ int main(int argc, char *argv[])
             const int pad = int(cell * 2.5);
             r.adjust(-pad, -pad, pad, pad);
             saveCrop(*field, r.intersected(field->rect()),
-                     outDir + "/round13_blockchoice.png");
+                     outDir + "/hud_blockchoice.png");
         }
     }
 
-    // --- Simulate a MOVE so the trail draws (round 13) --------------------------
+    // --- Simulate a MOVE so the trail draws ------------------------------------
     // The actor makes two moves from its REAL position, stepping ADJACENT
     // squares (like the server does): the trace must ACCUMULATE (one arrow
     // per move), following the grid square by square.
@@ -328,8 +326,8 @@ int main(int argc, char *argv[])
         w.onModelSync(ch, QJsonArray());
     }
 
-    // --- Turn 12/14 (user): per-turn token badges, numbered trail cells,
-    //     the white pass-receiver glow, and the ball flight (growing ball).
+    // --- Per-turn token badges, numbered trail cells, the white
+    //     pass-receiver glow, and the ball flight (growing ball).
     {
         QJsonArray ch;
         // Blitzed this turn -> gold lightning top-left on the actor.
@@ -371,9 +369,8 @@ int main(int argc, char *argv[])
     }
 
     // --- Move trail crop: the area the actor moved through ------------------------
-    // (Turn 16: the crop must happen BEFORE the kickoff simulation below —
-    // gameSetTurnMode=kickoff is a turn-start mode and clears the trace,
-    // which used to erase the trail before this crop was taken.)
+    // (The crop must happen BEFORE the kickoff simulation below —
+    // gameSetTurnMode=kickoff is a turn-start mode and clears the trace.)
     {
         // Let the glide animation settle first so the crops show the RESTING
         // layout (final token in its cell, badges un-occluded).
@@ -392,7 +389,7 @@ int main(int argc, char *argv[])
                      QRect(c0.x() - cw2 / 2, c0.y() - ch2 / 2,
                            (c1.x() - c0.x()) + cw2, (c1.y() - c0.y()) + ch2)
                          .intersected(field->rect()),
-                     outDir + "/round13_routecells.png");
+                     outDir + "/hud_routecells.png");
         }
         const qreal cell = field->fieldRect().width() / 26.0;
         const QPoint a = field->cellCenterPx(trailX, trailY);
@@ -401,11 +398,11 @@ int main(int argc, char *argv[])
                 qAbs(a.x() - b.x()), qAbs(a.y() - b.y()));
         const int pad = int(cell * 3);
         r.adjust(-pad, -pad, pad, pad);
-        saveCrop(*field, r.intersected(field->rect()), outDir + "/round13_trail.png");
+        saveCrop(*field, r.intersected(field->rect()), outDir + "/hud_trail.png");
     }
 
     // Ball flight: the throw steps through the grid; the ball GROWS with
-    // every step (turn 14). Grab it mid-flight (settle timer = 900ms).
+    // every step. Grab it mid-flight (settle timer = 900ms).
     {
         // Throw LEFT (towards the home TD) — that side of the fixture is
         // empty, so the ball lands on free squares (a ball on a player's
@@ -432,10 +429,10 @@ int main(int argc, char *argv[])
         const int pad = int(cell * 4);
         saveCrop(*field, QRect(c.x() - pad, c.y() - pad, pad * 2, pad * 2)
                         .intersected(field->rect()),
-                 outDir + "/round13_ballflight.png");
+                 outDir + "/hud_ballflight.png");
     }
 
-    // --- Kickoff flight (turn 15, user point 11) --------------------------------
+    // --- Kickoff flight ---------------------------------------------------------
     // The wire sends only the landing cell: the model synthesizes the
     // origin (kicker's half) + the kicker (nearest away field player to it);
     // the field view animates the flight with the bouncing size profile.
@@ -478,10 +475,10 @@ int main(int argc, char *argv[])
         };
         pump(300); // mid first arc: the ball is visibly bigger in the air
         saveCrop(*field, field->fieldRectPx().toAlignedRect(),
-                 outDir + "/round13_kickoff1.png");
+                 outDir + "/hud_kickoff1.png");
         pump(500); // descent + landing zone
         saveCrop(*field, field->fieldRectPx().toAlignedRect(),
-                 outDir + "/round13_kickoff1b.png");
+                 outDir + "/hud_kickoff1b.png");
         // Second arc / landing + the wire BOUNCE step ([6,3] -> [7,4]).
         QThread::msleep(700);
         QApplication::processEvents();
@@ -498,7 +495,7 @@ int main(int argc, char *argv[])
         QThread::msleep(200);
         QApplication::processEvents();
         saveCrop(*field, field->fieldRectPx().toAlignedRect(),
-                 outDir + "/round13_kickoff2.png");
+                 outDir + "/hud_kickoff2.png");
         // Back to regular play.
         QJsonArray ch4;
         QJsonObject tm2; tm2.insert(QStringLiteral("name"), QStringLiteral("regular"));
@@ -513,15 +510,15 @@ int main(int argc, char *argv[])
     }
 
     // --- Whole HUD -----------------------------------------------------------------
-    w.grab().save(outDir + "/round13_window.png");
-    qInfo().noquote() << "saved" << outDir << "/round13_window.png";
+    w.grab().save(outDir + "/hud_window.png");
+    qInfo().noquote() << "saved" << outDir << "/hud_window.png";
 
-    // --- New stadium geometry (round 13): the scene is the STADIUM (cover);
-    //     the field is fitted into the manifest pit; the dugouts are the top
-    //     band. Crop using the widget-space geometry (zoom 1 / pan 0).
+    // --- Stadium geometry: the scene is the STADIUM (cover); the field is
+    //     fitted into the manifest pit; the dugouts are the top band. Crop
+    //     using the widget-space geometry (zoom 1 / pan 0).
     {
         const QRect fr = field->fieldRectPx().toAlignedRect();
-        saveCrop(*field, fr, outDir + "/round13_field.png");
+        saveCrop(*field, fr, outDir + "/hud_field.png");
         const QRect hr = field->dugoutRect(true).toAlignedRect();
         const QRect ar = field->dugoutRect(false).toAlignedRect();
         const int topX = qMax(0, qMin(hr.left(), ar.left()));
@@ -530,13 +527,13 @@ int main(int argc, char *argv[])
                               qMax(hr.right(), ar.right()) - topX + 8);
         const int topH = qMin(field->height() - topY,
                               qMax(hr.bottom(), ar.bottom()) - topY + 10);
-        saveCrop(*field, QRect(topX, topY, topW, topH), outDir + "/round13_dugouts.png");
-        qInfo().noquote() << "saved" << outDir << "/round13_dugouts.png";
+        saveCrop(*field, QRect(topX, topY, topW, topH), outDir + "/hud_dugouts.png");
+        qInfo().noquote() << "saved" << outDir << "/hud_dugouts.png";
     }
 
     // --- Header strip --------------------------------------------------------------
-    header->grab().save(outDir + "/round13_header.png");
-    qInfo().noquote() << "saved" << outDir << "/round13_header.png";
+    header->grab().save(outDir + "/hud_header.png");
+    qInfo().noquote() << "saved" << outDir << "/hud_header.png";
 
     // --- Action log: 44px spaced dice --------------------------------------------
     for (QLabel *l : log->findChildren<QLabel *>())
@@ -548,10 +545,10 @@ int main(int argc, char *argv[])
             break;
         }
     QApplication::processEvents();
-    saveCrop(*log, log->rect(), outDir + "/round13_actionlog.png");
+    saveCrop(*log, log->rect(), outDir + "/hud_actionlog.png");
 
     // --- Rain: switch to pouring rain, let drops + dynamic puddles build up -------
-    // (round 13: top-down rain over the WHOLE field, puddles appear over time).
+    // (top-down rain over the WHOLE field, puddles appear over time).
     {
         QJsonArray ch;
         change(ch, QStringLiteral("fieldModelSetWeather"), QString(),
@@ -561,10 +558,10 @@ int main(int argc, char *argv[])
             QThread::msleep(200);
             QApplication::processEvents();
         }
-        saveCrop(*field, field->fieldRectPx().toAlignedRect(), outDir + "/round13_rain.png");
-        qInfo().noquote() << "saved" << outDir << "/round13_rain.png";
+        saveCrop(*field, field->fieldRectPx().toAlignedRect(), outDir + "/hud_rain.png");
+        qInfo().noquote() << "saved" << outDir << "/hud_rain.png";
     }
 
-    qInfo() << "round13 preview complete ->" << outDir;
+    qInfo() << "hud preview complete ->" << outDir;
     return 0;
 }

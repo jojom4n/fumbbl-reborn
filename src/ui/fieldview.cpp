@@ -22,10 +22,10 @@
 
 #include <cmath>
 
-// Round 13 turn 6 (user): the TEAM RING colors. Home team (left in the
-// header) = BLUE, away team (right in the header) = RED. Thick ("cicciotelli"),
-// drawn INSIDE the token so they never overflow the cell, with a thin dark
-// edge so the ring reads clearly against the face and the grass.
+// TEAM RING colors. Home team (left in the header) = BLUE, away team
+// (right in the header) = RED. Drawn INSIDE the token so the ring never
+// overflows the cell, with a thin dark edge so it reads clearly against
+// the face and the grass.
 namespace {
 inline QColor teamRingColor(bool home)
 {
@@ -33,10 +33,7 @@ inline QColor teamRingColor(bool home)
 }
 inline void drawTeamRing(QPainter &p, const QPointF &c, qreal d, bool home)
 {
-    // Round 13 turn 9 (user: "i ring ancora meno cicciotti, così come sono
-    // rendono la grafica dei token troppo piccola"): 0.17 -> 0.14 -> 0.10
-    // -> 0.07 (turn 12, user: "ring ancora più sottili, così che possiamo
-    // ingrandire ancora il volto dei player").
+    // Ring width: kept thin so the face stays large.
     const qreal w = d * 0.07;
     const qreal rr = d * 0.5 - w / 2;     // outer edge = token edge (no overflow)
     QPen rp(teamRingColor(home), w);
@@ -54,64 +51,54 @@ FieldView::FieldView(QWidget *parent)
     : QWidget(parent)
 {
     setMinimumSize(390, 225); // 26:15 ratio at 15px cells
-    setMouseTracking(true); // hover cards (Mockup F round 8)
+    setMouseTracking(true); // hover cards
     setCursor(Qt::OpenHandCursor);
-    // Round 13 turn 4c: the user rejected the beige "light/clean" stadiums
-    // and approved the dark-fantasy style of their reference — the dark
-    // arena (Qwen i2i from the reference, see tools/mockup/r13_arena_gen.py
-    // + stadium_cleanup.py) is now the default. medieval_arena stays
-    // installed: stadiums are INTERCHANGEABLE (setStadium(name)).
+    // Default stadium: the dark arena (Qwen i2i from the reference, see
+    // tools/mockup/r13_arena_gen.py + stadium_cleanup.py). medieval_arena
+    // stays installed: stadiums are INTERCHANGEABLE (setStadium(name)).
     setStadium(QStringLiteral("dark_arena"));
-    // Round 13: WASD pan — the field can take keyboard focus (clicking it or
-    // zooming with the wheel grabs it; typing in the chat input still works
-    // because that widget has the focus then).
+    // WASD pan — the field can take keyboard focus (clicking it or zooming
+    // with the wheel grabs it; typing in the chat input still works because
+    // that widget has the focus then).
     setFocusPolicy(Qt::StrongFocus);
 
-    // Round 13 turn 5 (user): the EDGE PAN is REMOVED — pressing the cursor
-    // against the window edge kept scrolling the zoomed field ("è rimasto
-    // attivo uno scroll con il mouse"). Navigation is now exactly:
-    // wheel = zoom, wheel-button click = reset, right-drag / WASD = pan.
-
-    // Round 9: selection-halo pulse (~1.2 Hz breathing). The timer only
-    // repaints the selected token's rect — never the whole field.
+    // Selection-halo pulse (~1.2 Hz breathing). The timer only repaints the
+    // selected token's rect — never the whole field.
     m_pulseTimer = new QTimer(this);
     m_pulseTimer->setInterval(33); // ~30 fps
-    // Turn 14: the BALL FLIGHT settle — while the ball steps through the
-    // grid after a throw, every step resets this timer; when it fires (the
-    // ball has been still for a moment) the flight ends and the ball size
-    // goes back to the resting size.
+    // BALL FLIGHT settle: while the ball steps through the grid after a
+    // throw, every step resets this timer; when it fires (the ball has been
+    // still for a moment) the flight ends and the ball size goes back to
+    // the resting size.
     m_ballSettleTimer = new QTimer(this);
     m_ballSettleTimer->setSingleShot(true);
-    // Turn 15: 900ms could fire BETWEEN two wire bounce steps of a kickoff
-    // (server ticks ~0.5-1s) and chop the flight — 1600ms is safe.
+    // 900ms could fire BETWEEN two wire bounce steps of a kickoff (server
+    // ticks ~0.5-1s) and chop the flight — 1600ms is safe.
     m_ballSettleTimer->setInterval(1600);
     connect(m_ballSettleTimer, &QTimer::timeout, this, [this]() {
         m_ballFlightSteps = 0;
         m_ballMoving = false;
-        m_ballFlightBaseDist = 0; // turn 15: the bounce profile restarts
-        m_kickoffKickerId.clear(); // turn 15: the kicker glow ends with it
+        m_ballFlightBaseDist = 0; // the bounce profile restarts
+        m_kickoffKickerId.clear(); // the kicker glow ends with it
         update();
     });
     connect(m_pulseTimer, &QTimer::timeout, this, [this]() {
         m_pulsePhase += 2.0 * M_PI * 1.2 * 0.033;
         if (m_pulsePhase > 2.0 * M_PI)
             m_pulsePhase -= 2.0 * M_PI;
-        // Round 15 (user: "il glow sulla palla molto più lento — così
-        // veloce distrae troppo"): the ball's gold glow breathes on its
-        // OWN slower phase (~0.25 Hz, one breath every ~4 s) — the other
-        // glows keep the 1.2 Hz pulse.
+        // The ball's gold glow breathes on its OWN slower phase (~0.25 Hz,
+        // one breath every ~4 s) — faster would be too distracting; the
+        // other glows keep the 1.2 Hz pulse.
         m_ballPulsePhase += 2.0 * M_PI * 0.25 * 0.033;
         if (m_ballPulsePhase > 2.0 * M_PI)
             m_ballPulsePhase -= 2.0 * M_PI;
-        // Turn 18 (user: "The ball must glow gold (animated glow)"): the
-        // ball's gold glow breathes on EVERY tick — it must be repainted
-        // even when no selection/block/pass glow is armed (the old
-        // early-return advanced the phase but never scheduled a repaint,
-        // so in the live app the glow sat FROZEN at the phase of the last
-        // unrelated paint). Full field update while the ball is visible:
-        // the ball is on a square, gliding in flight, or in a carrier's
-        // hand — always correct, and cheap (same cost the block/pass
-        // glows already pay).
+        // The ball's gold glow must be repainted on EVERY tick, even when
+        // no selection/block/pass glow is armed: an early-return here would
+        // advance the phase but never schedule a repaint, and the glow
+        // would sit FROZEN at the phase of the last unrelated paint. Full
+        // field update while the ball is visible (on a square, gliding in
+        // flight, or in a carrier's hand) — always correct, and cheap
+        // (same cost the block/pass glows already pay).
         if (ballGlowVisible()) {
             update();
             return;
@@ -119,10 +106,10 @@ FieldView::FieldView(QWidget *parent)
         if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty()
             && m_passTarget.isEmpty())
             return;
-        // Round 13 turn 4: while a BLOCK glow is on, a full field update is
-        // cheap enough (the glow is short-lived); the selection alone keeps
-        // the efficient token-rect repaint. Turn 14: the white pass glow
-        // breathes the same way.
+        // While a BLOCK glow is on, a full field update is cheap enough
+        // (the glow is short-lived); the selection alone keeps the
+        // efficient token-rect repaint. The white pass glow breathes the
+        // same way.
         if (!m_blockTarget.isEmpty() || !m_passTarget.isEmpty()) {
             update();
             return;
@@ -153,18 +140,6 @@ QSize FieldView::sizeHint() const
     return QSize(780, 450);
 }
 
-void FieldView::setHomeTeamName(const QString &name)
-{
-    m_homeName = name;
-    update();
-}
-
-void FieldView::setAwayTeamName(const QString &name)
-{
-    m_awayName = name;
-    update();
-}
-
 void FieldView::setHomeColor(const QColor &color)
 {
     m_homeColor = color;
@@ -192,16 +167,16 @@ void FieldView::setPlayers(const QVector<PlayerToken> &home,
 {
     m_homePlayers = home;
     m_awayPlayers = away;
-    // Turn 17: the ball-in-hand marker (hasBall) carries the ball's
-    // animated gold glow — keep the pulse timer in sync.
+    // The ball-in-hand marker (hasBall) carries the ball's animated gold
+    // glow — keep the pulse timer in sync.
     if (needsPulse())
         m_pulseTimer->start();
     else
         m_pulseTimer->stop();
 
-    // Round 13 (user): per-square MOVEMENT ANIMATION. Build the new on-field
-    // model layout; every player that MOVED gets a glide through the grid
-    // (old cell -> new cell, one square per leg), like the official client.
+    // Per-square MOVEMENT ANIMATION. Build the new on-field model layout;
+    // every player that MOVED gets a glide through the grid (old cell ->
+    // new cell, one square per leg), like the official client.
     // New arrivals snap in; players that left the field (to the box) drop.
     QHash<QString, QPoint> newModel;
     const auto record = [&](const PlayerToken &t) {
@@ -246,8 +221,8 @@ void FieldView::setBoxes(const QVector<BoxEntry> &home, const QVector<BoxEntry> 
 
 void FieldView::beginKickoffFlight(const QPoint &origin, const QString &kickerId)
 {
-    // Turn 15 (user, point 11): armed once per kickoff (the model bumps its
-    // seq). The actual animation starts on the landing setBall, which is
+    // Armed once per kickoff (the model bumps its seq). The actual
+    // animation starts on the landing setBall, which is
     // the model's ball coordinate (the wire sends landing + bounces only).
     m_kickoffOrigin = origin;
     m_kickoffArmed = true;
@@ -275,8 +250,8 @@ void FieldView::setBall(int x, int y, bool inPlay)
             m_visualPos.insert(id, QPointF(x + 0.5, y + 0.5));
             m_tokenAnim.remove(id);
         } else if (m_prevBall != np) {
-            // Turn 15 (user, point 11): KICKOFF — the model jumped the ball
-            // straight to the landing cell; synthesize the flight from the
+            // KICKOFF — the model jumped the ball straight to the landing
+            // cell; synthesize the flight from the
             // kickoff origin (the model's 30-yd line or the previous
             // on-field position) to here, with the bouncing size profile
             // (see the painter). The kickoff leg counts as a MULTI-step
@@ -288,8 +263,8 @@ void FieldView::setBall(int x, int y, bool inPlay)
                 m_ballFlightBaseDist = 0;
             }
             startTokenAnim(id, np);
-            // Turn 14 (user): the ball GROWS along the pass trajectory —
-            // every step since the flight started adds a little size (capped
+            // The ball GROWS along the pass trajectory — every step since
+            // the flight started adds a little size (capped
             // in the painter). A 1-step fumble hop starts the flight at 1
             // step = NO growth (the painter only grows from step 2 up).
             if (kickoffLeg) {
@@ -298,8 +273,8 @@ void FieldView::setBall(int x, int y, bool inPlay)
                 m_ballFlightSteps = 1;
             } else {
                 ++m_ballFlightSteps;
-                // Turn 15: a step arrived while a flight was running — the
-                // previous leg is DONE: fold its length into the base so the
+                // A step arrived while a flight was running — the previous
+                // leg is DONE: fold its length into the base so the
                 // bounce profile phase is continuous across wire steps.
                 m_ballFlightBaseDist += qAbs(np.x() - m_prevBall.x())
                     + qAbs(np.y() - m_prevBall.y());
@@ -323,17 +298,11 @@ void FieldView::setBall(int x, int y, bool inPlay)
     }
     if (anyTokenAnimActive())
         ensureAnimTimer();
-    // Turn 17: the ball's animated gold glow needs the pulse timer.
+    // The ball's animated gold glow needs the pulse timer.
     if (needsPulse())
         m_pulseTimer->start();
     else
         m_pulseTimer->stop();
-    update();
-}
-
-void FieldView::setTurn(int turn)
-{
-    m_turn = turn;
     update();
 }
 
@@ -349,7 +318,7 @@ void FieldView::setWeather(const QString &weather)
     if (m_weather == weather)
         return;
     m_weather = weather;
-    rainConfigure(); // round 12: rain on/off starts/stops the animation
+    rainConfigure(); // rain on/off starts/stops the animation
     update();
 }
 
@@ -371,15 +340,13 @@ void FieldView::resizeEvent(QResizeEvent *e)
 }
 
 // ---------------------------------------------------------------------------
-// Round 12 — animated rain (user request): droplet streaks falling over the
-// field, a splash ripple where each drop lands. The puddles (water patches
-// drawn on the grass) catch their own drops with a BIGGER, longer ripple.
-// The puddle layout is stable (fixed fractions of the field) so the water
-// patches do not jump around between frames/resizes.
-// ---------------------------------------------------------------------------
-// Round 13 (user): the FIXED puddle layout is gone — the puddles are now
+// Animated rain: droplet streaks falling over the field, a splash ripple
+// where each drop lands. The puddles (water patches drawn on the grass)
+// catch their own drops with a BIGGER, longer ripple. The puddles are
 // DYNAMIC (rainConfigure / stepPuddles): they accumulate over match time,
-// are smaller, organic, and fade in as they appear.
+// are smaller, organic, and fade in as they appear (stable fractions of
+// the field, so the water patches do not jump between frames/resizes).
+// ---------------------------------------------------------------------------
 
 void FieldView::rainConfigure()
 {
@@ -395,8 +362,8 @@ void FieldView::rainConfigure()
     if (f.isEmpty())
         return;
 
-    // Round 13 (user): puddles are DYNAMIC — they accumulate over match
-    // time (stepPuddles), not all at once. Seed a couple of "pre-existing"
+    // Puddles are DYNAMIC — they accumulate over match time (stepPuddles),
+    // not all at once. Seed a couple of "pre-existing"
     // ones (already faded in) so the field isn't bare, then let the rest
     // grow over time.
     m_puddles.clear();
@@ -476,8 +443,8 @@ void FieldView::stepPuddles(float dtMs)
 
 void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
 {
-    // Round 13 (user): prettier, SMALLER, organic puddles that FADE IN as
-    // they appear (they accumulate over match time, not all at once).
+    // Smaller, organic puddles that FADE IN as they appear (they
+    // accumulate over match time, not all at once).
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     for (const Puddle &pd : m_puddles) {
@@ -521,8 +488,8 @@ void FieldView::drawRain(QPainter &p)
     p.save();
     p.translate(f.x(), f.y());
     p.setRenderHint(QPainter::Antialiasing, true);
-    // Round 13 turn 4 (user): TOP-DOWN droplets — the field is seen from
-    // ABOVE. Each drop is a SHORT bright streak that GROWS as it descends
+    // TOP-DOWN droplets — the field is seen from ABOVE. Each drop is a
+    // SHORT bright streak that GROWS as it descends
     // (top-down pseudo-depth: small/high -> big/low), with a consistent
     // wind slant. The sim spawns/lands them uniformly over the WHOLE field
     // (the old "fall from the top" left rain only on the upper band and the
@@ -560,8 +527,8 @@ void FieldView::drawRain(QPainter &p)
     p.restore();
 }
 
-// Mowing stripes (round 13): every GRASS column (1..24; 0/25 are the TD
-// columns) is tinted light or dark alternating — the same values the
+// Mowing stripes: every GRASS column (1..24; 0/25 are the TD columns) is
+// tinted light or dark alternating — the same values the
 // mockup baked (tools/mockup/compose_f.py grid_mow_tint: even x1.252, odd
 // x0.884). Drawn as a white/black overlay in code so it stays perfectly
 // grid-aligned and crisp at any zoom.
@@ -579,8 +546,8 @@ void FieldView::drawMowStripes(QPainter &p, const QRectF &f) const
 }
 
 // The crimson 1-column TOUCHDOWN zones + the vertical vector "TOUCHDOWN"
-// (round 13: code-drawn — the baked version blurred with the texture at
-// zoom). Port of the mockup's narrow_td_zone (crimson 128,30,28 + white
+// (code-drawn — the baked version blurred with the texture at zoom).
+// Port of the mockup's narrow_td_zone (crimson 128,30,28 + white
 // 900-weight text, rotated 90 deg, reads top-to-bottom, centered in the
 // column).
 void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
@@ -593,9 +560,8 @@ void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
     p.fillRect(QRectF(f.x(), f.y(), cellW, f.height()), crimson);
     p.fillRect(QRectF(f.right() - cellW, f.y(), cellW, f.height()), crimson);
 
-    // Vector TOUCHDOWN running the FULL length of the TD zone (round 13
-    // user: "le parole corrano lungo tutta la touchdown zone", keeping the
-    // current vector sharpness). The word is long for a 1-column zone, so it
+    // Vector TOUCHDOWN running the FULL length of the TD zone (keeping the
+    // vector sharpness). The word is long for a 1-column zone, so it
     // is set to a size where its advance == the target run, then condensed
     // (scaled) horizontally into the column width — a tall stretched
     // end-zone word, still razor-sharp (pure vector transform, no raster).
@@ -613,11 +579,9 @@ void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
     const qreal scaleY = colW / qMax(1.0, fm.capHeight()); // condense width
     p.setFont(tf);
     p.setPen(QColor(255, 255, 255, 235));
-    // Round 13 turn 5b (user, FINAL): the words face OUTWARD, mirrored —
-    // the LEFT word's letter-tops point LEFT (rotated 270 deg, reads
-    // bottom->top), the RIGHT word's letter-tops point RIGHT (rotated 90
-    // deg, reads top->bottom). (Turn 5a pointed both toward the center:
-    // "hai fatto casino" — each rotated another 180 deg.)
+    // The words face OUTWARD, mirrored: the LEFT word's letter-tops point
+    // LEFT (rotated 270 deg, reads bottom->top), the RIGHT word's
+    // letter-tops point RIGHT (rotated 90 deg, reads top->bottom).
     const QPair<qreal, qreal> cols[2] = {
         { f.x() + cellW * 0.5, 270.0 },
         { f.right() - cellW * 0.5, 90.0 },
@@ -633,8 +597,8 @@ void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
     p.restore();
 }
 
-// Turn 17 (user: "the ball must glow gold (animated glow)"): the ball's
-// gold glow breathes, so the pulse timer must run while the ball is
+// The ball's gold glow breathes, so the pulse timer must run while the
+// ball is
 // visible ANYWHERE: on an empty field square (m_ballInPlay), gliding in
 // flight (the __ball__ token anim), or as the ball-in-hand marker on a
 // token (hasBall). No idle repaints: when the ball is gone (and no other
@@ -666,7 +630,7 @@ void FieldView::setSelectedPlayer(const QString &playerId)
         return;
     m_selectedPlayer = playerId;
     // The pulse timer runs only while something animated is visible
-    // (round 9: no idle repaints on the field).
+    // (no idle repaints on the field).
     if (needsPulse())
         m_pulseTimer->start();
     else
@@ -683,8 +647,8 @@ void FieldView::setBlockMarker(const QString &attackerId, const QString &defende
     m_blockTarget = defenderId;
     m_blockAttacker = attackerId;
     m_blockDieFace = dieFace;
-    // Round 13 turn 4: the red block glow breathes with the same pulse
-    // timer as the selection glow (turn 17: + the ball's gold glow).
+    // The red block glow breathes with the same pulse timer as the
+    // selection glow (+ the ball's gold glow).
     if (needsPulse())
         m_pulseTimer->start();
     else
@@ -713,8 +677,8 @@ void FieldView::setPassTarget(const QString &playerId)
     if (m_passTarget == playerId)
         return;
     m_passTarget = playerId;
-    // The white receiver glow breathes with the same pulse timer (turn 17:
-    // + the ball's gold glow).
+    // The white receiver glow breathes with the same pulse timer (+ the
+    // ball's gold glow).
     if (needsPulse())
         m_pulseTimer->start();
     else
@@ -737,10 +701,9 @@ void FieldView::setPlayMode(bool play)
 
 void FieldView::keyPressEvent(QKeyEvent *event)
 {
-    // SMOOTH WASD pan (round 13, user: "lo scroll da tastiera non è fluido").
-    // Track the held keys and let a fast timer pan continuously — no more
-    // jumpy auto-repeat steps. Only meaningful while zoomed (at zoom 1 the
-    // letterboxed scene cannot pan).
+    // SMOOTH WASD pan: track the held keys and let a fast timer pan
+    // continuously — no jumpy auto-repeat steps. Only meaningful while
+    // zoomed (at zoom 1 the letterboxed scene cannot pan).
     const int key = event->key();
     const bool wasd = key == Qt::Key_W || key == Qt::Key_A ||
                       key == Qt::Key_S || key == Qt::Key_D;
@@ -798,10 +761,10 @@ void FieldView::setMoveTrace(const QVector<GameModel::MoveSegment> &segments,
 }
 
 // ---------------------------------------------------------------------------
-// Round 13 (user): per-square movement animation. A moved token glides
-// through the grid (old cell -> new cell, one square per leg) instead of
-// jumping — fast and pleasant, like the official client. The model is
-// authoritative; this is pure render state.
+// Per-square movement animation. A moved token glides through the grid
+// (old cell -> new cell, one square per leg) instead of jumping — fast
+// and pleasant, like the official client. The model is authoritative;
+// this is pure render state.
 // ---------------------------------------------------------------------------
 void FieldView::startTokenAnim(const QString &id, const QPoint &to)
 {
@@ -899,8 +862,8 @@ QPointF FieldView::cellCenter(int x, int y) const
     return c.center();
 }
 
-// The actor's CUMULATIVE move trail (round 13): one polyline per move
-// action, through the FIELD CELL CENTERS (the line follows the grid — a
+// The actor's CUMULATIVE move trail: one polyline per move action,
+// through the FIELD CELL CENTERS (the line follows the grid — a
 // center-to-center segment per stepped square, never a straight line from
 // start to end), with an arrow at the end of each path. White over a dark
 // under-stroke so it reads on both the grass and the crimson TD. Drawn in
@@ -918,11 +881,11 @@ void FieldView::drawMoveTrail(QPainter &p)
     p.setRenderHint(QPainter::Antialiasing, true);
     for (const GameModel::MoveSegment &seg : m_moveSegments) {
         const QVector<QPoint> &path = seg.cells;
-        // Round 15 (user): the go-for-it extra move is drawn RED.
+        // The go-for-it extra move is drawn RED.
         const bool gfi = seg.goForIt;
         if (path.size() < 2)
             continue; // a single square: nothing to trace yet
-        // Defensive (round 13): a path with NO real movement (every cell
+        // Defensive: a path with NO real movement (every cell
         // identical, e.g. a server re-placement) would draw a degenerate
         // zero-length arrow. Skip it.
         bool anyMove = false;
@@ -943,8 +906,8 @@ void FieldView::drawMoveTrail(QPainter &p)
         const qreal len = std::hypot(dir.x(), dir.y());
         const QPointF u(len > 1e-6 ? QPointF(dir.x() / len, dir.y() / len)
                                    : QPointF(1.0, 0.0));
-        // Round 13 (user): the trail must leave a SMALL GAP before the
-        // player box, end in an ARROW, and the arrow must NOT invade the
+        // The trail must leave a SMALL GAP before the player box, end in
+        // an ARROW, and the arrow must NOT invade the
         // selection glow. Pull the end back from the token: just outside the
         // glow when the trail's endpoint is the selected player, otherwise a
         // small gap beyond the token.
@@ -996,8 +959,8 @@ void FieldView::drawMoveTrail(QPainter &p)
         p.drawPolygon(tri);
     }
 
-    // BETWEEN-CELLS move numbers (user): the step number is painted
-    // BETWEEN two consecutive cells of the route — never on a cell, never
+    // BETWEEN-CELLS move numbers: the step number is painted BETWEEN two
+    // consecutive cells of the route — never on a cell, never
     // on the trail line. A route of N steps shows 1..N: number k sits on
     // the shared edge of step k's two cells, offset perpendicular to the
     // line so it never touches or overlaps the trail (dark under-stroke
@@ -1018,8 +981,8 @@ void FieldView::drawMoveTrail(QPainter &p)
     //   * the FINAL step (endpoint cell = the actor's resting cell): the
     //     actor's selection halo (r ~0.95-1.03) swallows the whole shared
     //     border of that cell, so ANY border number reads as "sul token"
-    //     (user, round 14 — three explicit rejections of border
-    //     placements: 0.30-slide, corner vertex, 0.15-hug). The final
+    //     (three explicit rejections of border placements: 0.30-slide,
+    //     corner vertex, 0.15-hug). The final
     //     number therefore sits in the PENULTIMATE (empty) cell, 0.30
     //     off the trail's last leg, anchored at that cell's center: the
     //     only spot that is beside the trail AND outside the token's halo
@@ -1073,9 +1036,9 @@ void FieldView::drawMoveTrail(QPainter &p)
             bool isBlock = false; // block mark (no closing arrow beside it)
         };
         QVector<Num> nums;
-        // Round 15: the numbers come from the MODEL (segment.stepNumbers —
-        // continuous across the whole action: sideways step 1, block 2,
-        // follow 3,4,5..., frenzy block next, GFI move continues).
+        // The numbers come from the MODEL (segment.stepNumbers — continuous
+        // across the whole action: sideways step 1, block 2, follow 3,4,5...
+        // frenzy block next, GFI move continues).
         for (const GameModel::MoveSegment &seg : m_moveSegments) {
             for (int i = 0;
                  i + 1 < seg.cells.size() && i < seg.stepNumbers.size();
@@ -1101,11 +1064,11 @@ void FieldView::drawMoveTrail(QPainter &p)
                 nums.append(num);
             }
         }
-        // Round 15 (user): the block COSTS A MOVEMENT — its number is
-        // painted between the attacker's cell and the defender's cell,
-        // like the other between-cells numbers (the endpoint cell is the
-        // defender's — the placement logic anchors it in the (empty)
-        // attacker cell, off the defender's glow/badges).
+        // The block COSTS A MOVEMENT — its number is painted between the
+        // attacker's cell and the defender's cell, like the other
+        // between-cells numbers (the endpoint cell is the defender's — the
+        // placement logic anchors it in the (empty) attacker cell, off the
+        // defender's glow/badges).
         for (const GameModel::BlockStepMark &mk : m_blockMarks) {
             const QPointF a = cellCenter(mk.from.x(), mk.from.y());
             const QPointF b = cellCenter(mk.to.x(), mk.to.y());
@@ -1125,9 +1088,8 @@ void FieldView::drawMoveTrail(QPainter &p)
             num.isBlock = true;
             nums.append(num);
         }
-        // Round 16 (user: "il numero del movimento finale deve essere messo
-        // più vicino alla freccia che chiude il trail"): the FINAL number's
-        // anchor is 0.35 ALONG the last leg from its start — beside the
+        // The FINAL number's anchor is 0.35 ALONG the last leg from its
+        // start — beside the
         // MIDDLE of the closing arrowhead (which spans the first 0.72 of
         // the leg), not beside its base. Block marks (no arrow) stay at the
         // attacker cell's center.
@@ -1182,8 +1144,7 @@ void FieldView::drawMoveTrail(QPainter &p)
                         n, at.x(), at.y(), nums[k].end.x(), nums[k].end.y(),
                         occupantAt(nums[k].end.x(), nums[k].end.y())
                             ? 1 : 0);
-            // Round 16 (user: "fai il tondino leggermente più grande (meglio)")
-            // — the digit used to kiss the rim at r 0.13.
+            // Badge radius 0.165 (the digit used to kiss the rim at r 0.13).
             const qreal br = minDim * 0.165;
             QFont nf = p.font();
             nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
@@ -1234,19 +1195,19 @@ const FieldView::PlayerToken *FieldView::tokenAt(const QPoint &pos) const
 void FieldView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        // Left button = SELECT / show the info card (the round-12 behavior,
-        // kept). An EMPTY id (clicked an empty square) is emitted too: the
+        // Left button = SELECT / show the info card. An EMPTY id (clicked
+        // an empty square) is emitted too: the
         // caller uses it to HIDE the card. Emitted on the press, as before.
         const PlayerToken *t = tokenAt(event->pos());
         emit playerClicked(t ? t->playerId : QString());
         setFocus(Qt::MouseFocusReason); // WASD pan right after a click
     } else if (event->button() == Qt::MiddleButton) {
-        // Round 13 (user): the view RESET moved to the MIDDLE click (the
-        // right click no longer resets — the right button is the drag-pan).
+        // The view RESET is on the MIDDLE click (the right button is the
+        // drag-pan).
         resetView();
     } else if (event->button() == Qt::RightButton) {
-        // Round 13 (user): right button + DRAG = pan (brought back). Record
-        // the press so mouseMove can pan and mouseRelease can tell a drag
+        // Right button + DRAG = pan. Record the press so mouseMove can pan
+        // and mouseRelease can tell a drag
         // from a (play-mode, on-player) action-wheel click.
         m_rightPressPos = event->pos();
         m_rightDragLast = event->pos();
@@ -1259,7 +1220,7 @@ void FieldView::mousePressEvent(QMouseEvent *event)
 
 void FieldView::mouseMoveEvent(QMouseEvent *event)
 {
-    // Right button + DRAG = pan (round 13, user): move the view with the
+    // Right button + DRAG = pan: move the view with the
     // cursor while the right button is held. A move under the threshold is
     // still a click (no pan) so the play-mode action wheel keeps working.
     if (event->buttons() & Qt::RightButton) {
@@ -1313,10 +1274,9 @@ void FieldView::mouseReleaseEvent(QMouseEvent *event)
         // Left click already fired on the press (see mousePressEvent); the
         // release does nothing.
     } else if (event->button() == Qt::RightButton) {
-        // Round 13 (user): a right DRAG was a pan (nothing to do on release).
-        // A right CLICK (no drag) in play mode on a player = action wheel.
-        // The reset moved to the MIDDLE click, so a plain right click no
-        // longer resets the view.
+        // A right DRAG was a pan (nothing to do on release). A right CLICK
+        // (no drag) in play mode on a player = action wheel; a plain right
+        // click does not reset the view (the reset is the MIDDLE click).
         if (!m_rightDragging && m_playMode && !m_rightPressPlayerId.isEmpty()) {
             const PlayerToken *tRel = tokenAt(event->pos());
             if (tRel && tRel->playerId == m_rightPressPlayerId) {
@@ -1340,10 +1300,8 @@ void FieldView::leaveEvent(QEvent *)
 
 void FieldView::wheelEvent(QWheelEvent *event)
 {
-    // Round 13 (user, FINAL mapping): WHEEL = ZOOM (anchored on the cursor).
-    // Panning is right-button+DRAG or WASD (smooth). MIDDLE click resets.
-    // A plain wheel used to PAN, which at zoom=1 did nothing visible — hence
-    // "non funziona più lo zoom". Now the wheel always zooms in/out.
+    // WHEEL = ZOOM (anchored on the cursor). Panning is right-button+DRAG
+    // or WASD (smooth). MIDDLE click resets.
     const QPoint delta = event->angleDelta();
     const int dy = delta.y();
     if (dy == 0) {
@@ -1401,8 +1359,8 @@ void FieldView::clampPan()
 
 QRectF FieldView::sceneRect() const
 {
-    // Round 13 (user): the SCENE is the STADIUM image, COVER-fitted to the
-    // widget (fill it, preserve aspect). The anchor is the FIELD PIT CENTER
+    // The SCENE is the STADIUM image, COVER-fitted to the widget (fill it,
+    // preserve aspect). The anchor is the FIELD PIT CENTER
     // (not the image center): the field is the visual centerpiece, so it sits
     // in the middle of the widget and the stands + top-band dugout sit at a
     // predictable offset around it (data-driven, per the manifest). Returns
@@ -1419,13 +1377,11 @@ QRectF FieldView::sceneRect() const
     // on screen at any window size. The leftover (the widget's wider
     // dimension) is the dark stadium apron (filled in paintEvent).
     //
-    // ROUND 13 TURN 4 FIX ("stadium shifted right + small", "cannot pan to
-    // the right side when zoomed"): the rect is anchored at the ORIGIN
-    // (0,0) — the centering is clampPan()'s job. Centering it HERE too
-    // double-applied the letterbox offset: at zoom 1 the stadium was drawn
-    // shifted right by the whole left margin, and the zoom-clamp range was
-    // computed as if the scene started at 0, so the stadium's right side
-    // could never be panned to the screen edge.
+    // The rect is anchored at the ORIGIN (0,0) — the centering is
+    // clampPan()'s job. Centering it HERE too double-applied the letterbox
+    // offset: at zoom 1 the stadium was drawn shifted right by the whole
+    // left margin, and the zoom-clamp range (computed as if the scene
+    // started at 0) never let the right side reach the screen edge.
     const qreal scale = qMin(qreal(width()) / st.width(),
                              qreal(height()) / st.height());
     return QRectF(0.0, 0.0, st.width() * scale, st.height() * scale);
@@ -1449,9 +1405,8 @@ QRectF FieldView::mapNormRect(const QRectF &norm) const
 QRectF FieldView::fieldRect() const
 {
     // The PITCH: the 26x15 field FILLING the stadium's FIELD PIT EXACTLY
-    // (round 13 turn 5, user: "il campo dovrebbe coprire tutto... espanso al
-    // massimo, senza lasciare spazi vuoti" — the flat brown apron strips
-    // above/below the field were rejected). The cells take the pit's own
+    // (no empty apron strips above/below the field). The cells take the
+    // pit's own
     // width/height (cellW = pitW/26, cellH = pitH/15): when the pit's
     // aspect is close to 26:15 (the stadiums are generated that way) the
     // cells stay (near-)square and the field covers 100% of the pit — no
@@ -1507,22 +1462,21 @@ QRectF FieldView::cellRect(int x, int y) const
     return QRectF(f.x() + x * cellW, f.y() + y * cellH, cellW, cellH);
 }
 
-// Dugout sections (round 12): the box sections, shared by the slot painter
-// and the hover hit-test. State bases from ffb-common PlayerState:
-// RESERVE = 9, KO = 5, INJURED = 6..8,10.
+// Dugout sections: the box sections, shared by the slot painter and the
+// hover hit-test. State bases from ffb-common PlayerState: RESERVE = 9,
+// KO = 5, INJURED = 6..8,10.
 namespace {
-// Round 13 turn 5 (user): the dugout is a SINGLE bench section holding up
-// to 16 players (the physical game's 3-section split is replaced by a small
-// STATE BADGE on each face ring, like the number badges on field tokens):
+// The dugout is a SINGLE bench section holding up to 16 players (the
+// physical game's 3-section split is replaced by a small STATE BADGE on
+// each face ring, like the number badges on field tokens):
 //   * reserves (9)            : plain face, no badge
 //   * KO (5)                  : little cartoon "dizzy" stars (top-left)
 //   * injured (6,7) / banned (13) / missing (10): red medical cross
 //   * dead (8)                : a small skull
-// The badge sits TOP-LEFT of the ring (user: "così non coprono il loro
-// numero") while the number stays bottom-right. The wood panel is a
-// SEPARATE asset MOUNTED on the manifest's dugout rect (user's idea): the
-// dugout is UNIVERSAL — any future stadium ships its rect, the same panel
-// mounts on it.
+// The badge sits TOP-LEFT of the ring (so it never covers the number,
+// which stays bottom-right). The wood panel is a SEPARATE asset MOUNTED on
+// the manifest's dugout rect: the dugout is UNIVERSAL — any stadium ships
+// its rect, the same panel mounts on it.
 constexpr int kDugoutMaxFaces = 16;
 
 struct DugoutLayout {
@@ -1530,9 +1484,8 @@ struct DugoutLayout {
     QVector<QPointF> centers; // one per face, in entries order
 };
 
-// Round 13 turn 7 (user): the face size is FIXED — sized by the 16-slot
-// grid, NEVER by the bench count ("non voglio volti a grandezza variabile a
-// seconda di quanti sono"). The grid is 2 rows x 8 slots = room for 16 per
+// The face size is FIXED — sized by the 16-slot grid, NEVER by the bench
+// count. The grid is 2 rows x 8 slots = room for 16 per
 // dugout; players fill the slots in order (left->right, top->bottom) and
 // ONLY the present players are drawn ("non voglio empty slot"). Wide, even
 // spacing ("spazia di più"). Shared by boxSlots (hit-test) and
@@ -1575,14 +1528,12 @@ void drawStar(QPainter &p, const QPointF &c, qreal r, qreal rot,
     p.drawPolygon(poly);
 }
 
-// The little STATE badge on the dugout face ring. Round 13 turn 7 (user):
-// TOP-RIGHT of the ring, made EXACTLY LIKE THE NUMBER BADGE (dark disc +
-// gold rim) but SLIGHTLY MORE INTERNAL and SMALLER ("falli come sono i
-// numeri, ma tienili leggermente più interni e piccoli"). Vector —
-// QPainter is the right tool for small crisp badges (turn-5 rule).
-// Comic-style bandage (the KO badge, round 13 turn 10): a capsule rotated
-// ~35°, tan body, lighter center pad with tiny dots, bold dark outline
-// (cartoon look — the stars were rejected: "un cerotto in stile comics").
+// The little STATE badge on the dugout face ring: TOP-RIGHT of the ring,
+// made EXACTLY LIKE THE NUMBER BADGE (dark disc + gold rim) but SLIGHTLY
+// MORE INTERNAL and smaller. Vector — QPainter is the right tool for
+// small crisp badges.
+// Comic-style bandage (the KO badge): a capsule rotated ~35°, tan body,
+// lighter center pad with tiny dots, bold dark outline (cartoon look).
 void drawComicBandage(QPainter &p, const QPointF &c, qreal br)
 {
     p.save();
@@ -1616,14 +1567,11 @@ void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
     // Status badge: top-right, slightly more internal (0.33 vs 0.41 faceD
     // from center) and smaller (0.21 vs 0.26 faceD).
     const qreal br = faceD * 0.21;
-    // Turn 12 (user: "spostali un poco più a destra di dove sono, sul
-    // ring"): the badge center sits ON the face ring (ring radius = 0.33
-    // faceD), a bit further right than before.
+    // The badge center sits ON the face ring (ring radius = 0.33 faceD).
     const QPointF bc = c + QPointF(faceD * 0.26, -faceD * 0.22);
-    // Round 13 turn 10 (user): ALL state badges sit on a WHITE disc — "come
-    // quelle delle ambulanze/servizi sanitari... croce rossa su sfondo
-    // bianco" and, in the follow-up, bandage + skull on white too. The gold
-    // rim keeps the badge family look (number-badge style).
+    // ALL state badges sit on a WHITE disc (ambulance / medical-service
+    // style: red cross on white, and bandage + skull on white too). The
+    // gold rim keeps the badge family look (number-badge style).
     p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.0));
     p.setBrush(QColor(255, 255, 255, 255));
     p.drawEllipse(bc, br, br);
@@ -1650,8 +1598,7 @@ void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
     } else {
         // Injured (6,7) / missing (10) / banned (13): the RED CROSS on
         // white — ambulance / medical-service style. Geneva cross
-        // proportions: arm thickness = 1/6 of the full length (the old
-        // chunky cross "non sembra una croce rossa").
+        // proportions: arm thickness = 1/6 of the full length.
         const qreal L = br * 0.62;  // half-length
         const qreal t = L / 3.0;    // half-thickness (= 1/6 of 2L)
         p.setPen(Qt::NoPen);
@@ -1663,24 +1610,17 @@ void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)
 }
 
 // ---------------------------------------------------------------------------
-// Round 13 turn 11 (user): the BLOCK MARKER — drawn between attacker and
-// defender. While the die is not chosen yet: an AMERICAN FOOTBALL HELMET
-// ("il simbolo di un casco da football americano... per rendere ancora più
-// chiaro il blocco"); after the choice: the CHOSEN DICE'S SYMBOL ONLY, on
-// transparent ("solo il simbolo su sfondo trasparente"). Both are vector
-// (QPainter is the right tool for crisp 4K glyphs) and carry a white halo
-// so they read on any grass.
+// The BLOCK MARKER — drawn between attacker and defender. While the die
+// is not chosen yet: an AMERICAN FOOTBALL HELMET; after the choice: the
+// CHOSEN DICE'S SYMBOL ONLY. Both are vector (QPainter is the right tool
+// for crisp 4K glyphs).
 // ---------------------------------------------------------------------------
-// Turn 12 (user: "i simboli tra attacker e defender sono incoerenti, alcuni
-// con sfondo bianco altri no, alcuni di un colore altri di un altro. Lo
-// sfondo bianco va bene, ma userei un colore giallo per i simboli"): ALL
-// block symbols share ONE style now —
+// ALL block symbols share ONE style:
 //   * a WHITE disc (the "die face") with a thin dark rim, and
-//   * a GOLD-AMBER symbol (the user's yellow) with a thin dark outline.
-// The pending state draws the Qwen-Image helmet (grey monochrome, turn 12
-// user: "monocolore, tipo grigio") on the SAME white disc. No more mixed
-// backgrounds or colors: the "red arrow" mystery is gone — an arrow face
-// now clearly reads as a symbol on the shared die face.
+//   * a GOLD-AMBER symbol with a thin dark outline.
+// The pending state draws the Qwen-Image helmet (grey monochrome) on the
+// SAME white disc. No mixed backgrounds or colors: an arrow face clearly
+// reads as a symbol on the shared die face.
 const QColor kMarkGold(224, 158, 0, 255);
 const QColor kMarkInk(46, 40, 34, 255);
 const QColor kMarkDisc(252, 252, 248, 245);
@@ -1699,13 +1639,11 @@ inline void markerDisc(QPainter &p, const QPointF &c, qreal r)
     p.drawEllipse(c, r - rim / 2, r - rim / 2);
 }
 
-// Turn 16 (user: "la palla dovrebbe essere un poco più visibile ... Falla
-// gloware oro"): a soft GOLD halo under the ball (field + carrier), so it
-// pops on the grass and on the token alike.
-// Turn 17 (user: "the ball must glow gold (animated glow)"): the halo
-// BREATHES — radius and alpha pulse sinusoidally with the shared pulse
-// timer (same language as the selection/block/receiver glows). breath is
-// the 0..1 breathing factor computed by the painter.
+// A soft GOLD halo under the ball (field + carrier), so it pops on the
+// grass and on the token alike. The halo BREATHES — radius and alpha pulse
+// sinusoidally with the shared pulse timer (same language as the
+// selection/block/receiver glows). breath is the 0..1 breathing factor
+// computed by the painter.
 inline void drawBallGlow(QPainter &p, const QPointF &c, qreal radius, qreal breath)
 {
     const qreal r = radius * (1.0 + 0.30 * breath);
@@ -1720,9 +1658,8 @@ inline void drawBallGlow(QPainter &p, const QPointF &c, qreal radius, qreal brea
     p.restore();
 }
 
-// Turn 15 (user, point 1): the vector american football, shared by the
-// ball on the field AND the ball-in-hand indicator on the token (the old
-// carrier marker was a plain ugly ellipse — the "versione brutta").
+// The vector american football, shared by the ball on the field AND the
+// ball-in-hand indicator on the token.
 inline void drawFootball(QPainter &p, const QPointF &c, qreal bw, qreal bh,
                          qreal rotDeg)
 {
@@ -1778,13 +1715,10 @@ inline void goldFill(QPainter &p, const QPolygonF &path)
     p.drawPolygon(path);
 }
 
-// Face 3/4 arrows: the bent two-segment arrow. `dir` 1 = face 3, -1 = face 4
-// (same geometry as the official faces, now gold on the shared disc).
-// Turn 16 (user: "deve essere una freccia come quella del dado, perché la
-// fai storta e tutta piegata?"): the push symbol is the die's STRAIGHT
-// chunky arrow — one filled polygon (shaft + big triangular head), a thin
-// dark rim, rotated to the actual push direction. It used to be an L-shape
-// (bent), which had nothing to do with the die glyph.
+// Face 3/4 arrows (same geometry as the official faces, gold on the
+// shared disc). The push symbol is the die's STRAIGHT chunky arrow — one
+// filled polygon (shaft + big triangular head), a thin dark rim, rotated
+// to the actual push direction.
 void drawPushArrow(QPainter &p, const QPointF &c, qreal k, qreal angleDeg)
 {
     p.save();
@@ -1866,9 +1800,9 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face,
     //   3 push arrow            4 push arrow (same symbol)
     //   5 '!' in a burst (STUMBLE)  6 burst (POW)
     switch (face) {
-    case 5: { // '!' (stumble) — turn 15 (user, point 14): the exclamation
-              // mark is inscribed in the burst (star) TOO, like the block5
-              // die face: gold burst, the '!' knocked out in the disc color.
+    case 5: { // '!' (stumble): the exclamation mark is inscribed in the
+              // burst (star) TOO, like the block5 die face: gold burst, the
+              // '!' knocked out in the disc color.
         goldFill(p, burstPolygon(c, k, 0.92));
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setPen(Qt::NoPen);
@@ -1890,18 +1824,14 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face,
             // parameter default only matters for a bare die-face replica.
         drawPushArrow(p, c, k, arrowAngleDeg);
         break;
-    case 1: { // skull (player down). Turn 16 (user: "se il risultato è un
-              // block skull, il simbolo non compare"): the skull was a third
-              // of the disc — on the official die face 1 the skull fills the
-              // face. Enlarged to match.
+    case 1: { // skull (player down). On the official die face 1 the skull
+              // fills the face — sized to match.
         drawSkull(p, c, 0.46 * k, kMarkGold, kMarkDisc, true);
         break;
     }
-    case 2: { // BOTH DOWN — turn 12 user report: the old skull+ARROW glyph
-              // was the "odd symbol". Official face (block2 asset): skull
-              // + explosion burst, both gold on the white disc. Turn 16:
-              // the glyph was a third the size of the other faces (barely
-              // visible at 24px cells) — scaled up to match face 1/6.
+    case 2: { // BOTH DOWN. Official face (block2 asset): skull +
+              // explosion burst, both gold on the white disc. Scaled up to
+              // match face 1/6 (barely visible at small cells otherwise).
         drawSkull(p, QPointF(c.x() - 0.20 * k, c.y() + 0.08 * k), 0.30 * k,
                   kMarkGold, kMarkDisc, true);
         goldFill(p, burstPolygon(QPointF(c.x() + 0.22 * k, c.y() - 0.18 * k),
@@ -1914,16 +1844,15 @@ void drawBlockDieSymbol(QPainter &p, const QPointF &c, qreal k, int face,
     p.restore();
 }
 
-// Turn 12 (user: "il casco è orribile, rifallo con Qwen-Image" + "monocolore,
-// tipo grigio"): the Qwen-generated grey helmet asset on the shared white
-// disc. Vector fallback when the asset is missing.
+// The Qwen-generated grey helmet asset on the shared white disc. Vector
+// fallback when the asset is missing.
 void drawFootballHelmet(QPainter &p, const QPointF &c, qreal k, bool facingLeft)
 {
     p.save();
     markerDisc(p, c, 0.62 * k);
     const QPixmap helm = assets::blockHelmet();
     if (helm.isNull()) {
-        // --- vector fallback (original round 11 helmet, recolored dark) ---
+        // --- vector fallback (recycled original helmet, recolored dark) ---
         p.translate(c);
         if (facingLeft)
             p.scale(-1, 1);
@@ -1965,16 +1894,14 @@ void drawFootballHelmet(QPainter &p, const QPointF &c, qreal k, bool facingLeft)
 }
 } // namespace
 
-// Round 12: the bench slots live on the DUGOUT PANEL (outside the TD
-// columns). Each of the 3 image bands (RESERVE / KO / INJURED) holds a
-// 2-column x 4-row grid of slots below the baked-in band label. Field space;
-// shared by painter + hover so the two never drift apart.
+// The bench slots on the DUGOUT PANEL. Field space; shared by painter +
+// hover so the two never drift apart.
 QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
     const QVector<BoxEntry> &entries, bool leftSide) const
 {
-    // Round 13 turn 5: ONE section, all bench players in entries order
-    // (1 row for <=8, 2 rows of 8 above) — the hit-test shares the exact
-    // layout with the painter (dugoutFaceLayout).
+    // ONE section, all bench players in entries order (1 row for <=8, 2
+    // rows of 8 above) — the hit-test shares the exact layout with the
+    // painter (dugoutFaceLayout).
     QVector<QPair<QRectF, const FieldView::BoxEntry*>> filled;
     const QRectF R = dugoutRect(leftSide); // the team's top-band pavilion
     if (R.isEmpty())
@@ -1990,8 +1917,8 @@ QVector<QPair<QRectF, const FieldView::BoxEntry*>> FieldView::boxSlots(
     return filled;
 }
 
-// The dugout slot under a WIDGET point (round 12: the dugouts are inside
-// the zoomed scene, so the point is mapped to field space first).
+// The dugout slot under a WIDGET point (the dugouts are inside the
+// zoomed scene, so the point is mapped to field space first).
 const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHome) const
 {
     const QPointF w = toFieldSpace(pos);
@@ -2009,11 +1936,9 @@ const FieldView::BoxEntry *FieldView::boxEntryAt(const QPoint &pos, bool &sideHo
     return hit(m_awayBox, false);
 }
 
-// Dugout bench (round 13): the team's top-band pavilion. Three horizontal
-// section rows (RESERVE / KO / INJURED), each with a GW-style symbol badge
-// (left gutter) + a run of team-ringed faces (only the players actually
-// present — no empty rings). A thin team-color bar under the pavilion says
-// whose dugout it is.
+// Dugout bench: the team's top-band pavilion — a wooden panel with a run
+// of team-ringed faces (only the players actually present — no empty
+// rings).
 void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
                               const QVector<BoxEntry> &entries, bool leftSide) const
 {
@@ -2022,9 +1947,9 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         return;
 
     // 1) The WOODEN PANEL — a separate asset MOUNTED on the manifest rect
-    //    (round 13 turn 5, user's idea: the dugout is universal across
-    //    stadiums, the manifest carries the coordinates). The baked-in
-    //    pavilions of the stadium image stay underneath as a fallback.
+    //    (the dugout is universal across stadiums; the manifest carries
+    //    the coordinates). The baked-in pavilions of the stadium image
+    //    stay underneath as a fallback.
     const QPixmap panel = assets::dugoutPanel();
     if (!panel.isNull()) {
         p.save();
@@ -2046,7 +1971,7 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
     }
 
     // 2) The bench faces (team-ringed, FIXED size for 16, number badge
-    //    bottom-right, STATE badge top-right — round 13 turn 7, user design).
+    //    bottom-right, STATE badge top-right).
     const DugoutLayout lay =
         dugoutFaceLayout(R, qMin(entries.size(), kDugoutMaxFaces));
     for (int i = 0; i < lay.centers.size(); ++i) {
@@ -2055,7 +1980,7 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         const qreal faceD = lay.faceD;
         const QPixmap pm = assets::playerFace(e->positionName, e->race);
         if (!pm.isNull()) {
-            const qreal fr = faceD * 0.33; // turn 12: thinner ring -> bigger face
+            const qreal fr = faceD * 0.33; // thinner ring -> bigger face
             const QRectF faceR(c.x() - fr, c.y() - fr, fr * 2, fr * 2);
             p.save();
             QPainterPath clip;
@@ -2065,13 +1990,13 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
             p.drawPixmap(faceR, pm, QRectF(0, 0, pm.width(), pm.height()));
             p.restore();
         }
-        // Round 13 turn 6: the SAME thick team ring as on the field (home
-        // blue / away red) — the bench reads as the same team.
+        // The SAME team ring as on the field (home blue / away red) — the
+        // bench reads as the same team.
         drawTeamRing(p, c, faceD, leftSide);
 
-        // Number badge (bottom-right of the ring, like the field tokens).
-        // Turn 17 (user): team color — blue disc (home) / red disc (away)
-        // with a white number.
+        // Number badge (bottom-right of the ring, like the field tokens):
+        // team color — blue disc (home) / red disc (away) with a white
+        // number.
         if (e->number > 0) {
             const qreal br = faceD * 0.26;
             const QPointF bc(c.x() + faceD * 0.27, c.y() + faceD * 0.29);
@@ -2079,9 +2004,9 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
             p.setBrush(teamRingColor(leftSide));
             p.drawEllipse(bc, br, br);
             p.setPen(Qt::white);
-            // Round 15 (user): the dugout's jersey number is the SAME
-            // SIZE as on the field — the exact font formula of the field
-            // token badge (drawTeam), not a face-relative one.
+            // The dugout's jersey number is the SAME SIZE as on the field
+            // — the exact font formula of the field token badge, not a
+            // face-relative one.
             const QRectF fr = fieldRect();
             const qreal minDimF = fr.isEmpty()
                                      ? faceD
@@ -2202,14 +2127,14 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
-    // Dark apron behind the scene (round 13): the stadium scene is drawn in
-    // the zoomed/panned space below; this only shows if the scene ever fails
-    // to cover (no stadium art) — a dark stadium floor.
+    // Dark apron behind the scene: the stadium scene is drawn in the
+    // zoomed/panned space below; this only shows if the scene ever fails to
+    // cover (no stadium art) — a dark stadium floor.
     p.fillRect(QRectF(0, 0, width(), height()), QColor(40, 38, 36));
 
-    // Field navigation (round 8): the WHOLE scene (dugouts, texture, grid,
-    // tokens, rain) lives in a zoomed/panned space. Round 12: the dugout
-    // panels are part of the scene too (they zoom with the field).
+    // Field navigation: the WHOLE scene (dugouts, texture, grid, tokens,
+    // rain) lives in a zoomed/panned space (the dugout panels are part of
+    // the scene too — they zoom with the field).
     p.save();
     p.translate(m_pan);
     p.scale(m_zoom, m_zoom);
@@ -2218,8 +2143,8 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cellW = f.width() / kFieldWidth;
     const qreal cellH = f.height() / kFieldHeight;
 
-    // --- Stadium (round 13, user): the SCENE is the STADIUM image (an
-    //     interchangeable top-down backdrop + manifest). Drawn COVER (fills
+    // --- Stadium: the SCENE is the STADIUM image (an interchangeable
+    //     top-down backdrop + manifest). Drawn COVER (fills
     //     the widget at zoom 1, center-cropped) in scene space. The field is
     //     fitted into the manifest's pit (below); the dugout faces go into
     //     the manifest's dugout rects (TOP band: home LEFT, away RIGHT) —
@@ -2233,25 +2158,21 @@ void FieldView::paintEvent(QPaintEvent *)
         } else {
             p.fillRect(s, QColor(58, 56, 54)); // fallback apron
         }
-        // Dugout benches (team-ringed faces + GW section symbols) on the
-        // stadium's top-band pavilions.
-        paintBoxStrip(p, m_homeColor, m_homeBox, true);
-        paintBoxStrip(p, m_awayColor, m_awayBox, false);
+        // (The dugout benches are painted at the END of the zoomed pass,
+        // once the field + tokens + rain are on top.)
     }
 
-    // --- Field texture (round 13): the Qwen art is PURE GRASS now (the
-    //     baked grid/TD/TOUCHDOWN came out blurred and duplicated at zoom —
-    //     user round 12/13). Everything structural is drawn in CODE over it:
-    //     mowing stripes, crimson 1-column TD zones + vector TOUCHDOWN,
-    //     the exact grid. The texture only supplies the grass detail, which
-    //     stays soft even when zoomed (fine detail, tolerable) while lines
-    //     and text stay razor-sharp at any zoom/HiDPI (user point 15).
-    // ROUND 13 TURN 6 (user: "gli angoli del campo sembrano giustapposti a
-    // qualcosa sotto"): the pit's inner corners are CURVED (the stone arch
-    // of the frame). The field is clipped to a ROUNDED rect (the manifest's
-    // pitRadius) so the grass/TD corners follow the arch instead of poking
-    // a sharp 90° corner over it. Tokens/glow are drawn AFTER the restore,
-    // unclipped.
+    // --- Field texture: the Qwen art is PURE GRASS (the baked
+    //     grid/TD/TOUCHDOWN came out blurred and duplicated at zoom).
+    //     Everything structural is drawn in CODE over it: mowing stripes,
+    //     crimson 1-column TD zones + vector TOUCHDOWN, the exact grid. The
+    //     texture only supplies the grass detail, which stays soft even
+    //     when zoomed (fine detail, tolerable) while lines and text stay
+    //     razor-sharp at any zoom/HiDPI.
+    // The pit's inner corners are CURVED (the stone arch of the frame).
+    // The field is clipped to a ROUNDED rect (the manifest's pitRadius) so
+    // the grass/TD corners follow the arch instead of poking a sharp 90°
+    // corner over it. Tokens/glow are drawn AFTER the restore, unclipped.
     p.save();
     {
         QPainterPath fieldClip;
@@ -2265,9 +2186,9 @@ void FieldView::paintEvent(QPaintEvent *)
     }
     const QPixmap tex = assets::fieldTexture();
     if (!tex.isNull()) {
-        // ROUND 13 TURN 4 (user): NO empty grass apron — the 26x15 pitch is
-        // drawn over its rect ONLY. The "no black band" rule is satisfied by
-        // the STADIUM itself: each stadium's field pit is designed at the
+        // NO empty grass apron — the 26x15 pitch is drawn over its rect
+        // ONLY. The "no black band" rule is satisfied by the STADIUM
+        // itself: each stadium's field pit is designed at the
         // field's aspect (26:15), so the pitch fills the pit exactly (see
         // the stadium generator prompts). Grass = the pitch, nothing else.
         const qreal scale = qMax(f.width() / tex.width(), f.height() / tex.height());
@@ -2287,14 +2208,13 @@ void FieldView::paintEvent(QPaintEvent *)
     p.setPen(linePen);
     for (int x = 0; x <= kFieldWidth; ++x)
         p.drawLine(QPointF(f.x() + x * cellW, f.y()), QPointF(f.x() + x * cellW, f.bottom()));
-    // Round 11: the WIDE ZONE boundary lines (what the mockup called the
-    // missing "side zone" lines). Ground truth (ffb-common
+    // The WIDE ZONE boundary lines. Ground truth (ffb-common
     // FieldCoordinateBounds): UPPER wide zone = y 0..3, LOWER = y 11..14,
     // centre field = y 4..10 — so the emphasized lines run at y=4 and y=11,
     // plus a slightly stronger sideline at y=0 / y=14 (the pitch edges).
-    // ROUND 13 TURN 4 (user): the wide-zone lines must NOT continue into the
-    // TOUCHDOWN zones — they start/stop at the TD line (x=1 / x=25), not at
-    // the end of the pitch.
+    // The wide-zone lines must NOT continue into the TOUCHDOWN zones —
+    // they start/stop at the TD line (x=1 / x=25), not at the end of the
+    // pitch.
     QPen wzPen(QColor(255, 255, 255, 210), qMax(2.0, cellW * 0.08));
     QPen sidePen(QColor(255, 255, 255, 160), qMax(1.5, cellW * 0.055));
     for (int y = 0; y <= kFieldHeight; ++y) {
@@ -2319,12 +2239,12 @@ void FieldView::paintEvent(QPaintEvent *)
     const qreal cx = f.x() + 13 * cellW;
     p.drawLine(QPointF(cx, f.y()), QPointF(cx, f.bottom()));
 
-    // --- Team logos: per-match watermarks centered on each half.
-    // Round 8: 25% — the user found 19% still too transparent.
-    // Round 13 (user): both logos the SAME size, and they must NOT overflow
-    // into the WIDE ZONES (the y 0..3 / y 11..14 bands). The box is fitted to
-    // the central field (y 4..10) and the logo is drawn aspect-preserved (no
-    // stretch) inside it, so both crests read the same size.
+    // --- Team logos: per-match watermarks centered on each half (25%
+    //     opacity). Both logos the SAME size, and they must NOT overflow
+    //     into the WIDE ZONES (the y 0..3 / y 11..14 bands). The box is
+    //     fitted to the central field (y 4..10) and the logo is drawn
+    //     aspect-preserved (no stretch) inside it, so both crests read the
+    //     same size.
     const auto drawLogo = [&](const QPixmap &pm, qreal col) {
         if (pm.isNull())
             return;
@@ -2347,14 +2267,14 @@ void FieldView::paintEvent(QPaintEvent *)
     drawLogo(m_homeLogo, 6.5);
     drawLogo(m_awayLogo, 18.5);
 
-    // --- Puddles (round 12): water patches on the grass, drawn UNDER the
+    // --- Puddles: water patches on the grass, drawn UNDER the
     //     tokens/ball. Present only when it rains — the animated rain's
     //     drops splash into them.
     if (m_raining)
         drawPuddles(p, f);
 
-    // --- The actor's cumulative MOVE TRAIL (round 13): drawn on the field,
-    //     under the tokens — the player walks on top of his own trail.
+    // --- The actor's cumulative MOVE TRAIL: drawn on the field, under
+    //     the tokens — the player walks on top of his own trail.
     drawMoveTrail(p);
 
     // End of the CLIPPED field (rounded pit corners). Everything after this
@@ -2370,13 +2290,13 @@ void FieldView::paintEvent(QPaintEvent *)
     };
     const bool ballOccupied = atBall(m_homePlayers) || atBall(m_awayPlayers);
     if (m_ballInPlay && !ballOccupied) {
-        // Round 13 (user): the ball glides through the grid too — draw it at
-        // its animated VISUAL position (cell coords), not the model cell.
-        // Turn 15 (user, point 11): the in-flight size is a BOUNCE profile —
-        // the ball rises (bigger), lands (normal), bounces smaller, ...
-        // across the trajectory (phase in cells travelled since the flight
-        // started; arcs of ~3.2 cells, each damped 0.70x). A 1-step fumble
-        // hop (steps == 1) stays flat (turn 14 rule: no growth on fumble).
+        // The ball glides through the grid too — draw it at its animated
+        // VISUAL position (cell coords), not the model cell. The in-flight
+        // size is a BOUNCE profile: the ball rises (bigger), lands (normal),
+        // bounces smaller, ... across the trajectory (phase in cells
+        // travelled since the flight started; arcs of ~3.2 cells, each
+        // damped 0.70x). A 1-step fumble hop (steps == 1) stays flat (no
+        // growth on fumble).
         qreal ballScale = 1.0;
         if (m_ballMoving && m_ballFlightSteps >= 2) {
             const TokenAnim &ba = m_tokenAnim.value(QLatin1String("__ball__"));
@@ -2389,27 +2309,24 @@ void FieldView::paintEvent(QPaintEvent *)
         const QPointF bvc = m_visualPos.value(QLatin1String("__ball__"),
                                               QPointF(m_ballX + 0.5, m_ballY + 0.5));
         const QPointF bctr(f.x() + bvc.x() * cellW, f.y() + bvc.y() * cellH);
-        // Turn 12 (user: "il pallone sembra una cacca"): a proper vector
-        // american football (drawFootball, shared with the ball-in-hand
-        // marker — turn 15 point 1).
+        // A proper vector american football (drawFootball, shared with the
+        // ball-in-hand marker).
         const qreal bw = cellW * 0.52 * ballScale;
         const qreal bh = cellH * 0.34 * ballScale;
-        // Turn 16 (user: "la palla dovrebbe essere un poco più visibile,
-        // sia che stia sul campo sia che stia sul token. Falla gloware
-        // oro"): a soft GOLD halo under the ball, at rest and in flight.
-        // Turn 17 (user): the glow is ANIMATED — it breathes with the
-        // pulse timer (the timer stays armed while the ball is visible).
+        // A soft GOLD halo under the ball, at rest and in flight. The glow
+        // is ANIMATED — it breathes with the pulse timer (the timer stays
+        // armed while the ball is visible).
         const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
         drawBallGlow(p, bctr, qMax(bw, bh) * 1.15, breath);
         drawFootball(p, bctr, bw, bh, -18);
     }
 
     // --- Target brackets + action wheel (drawn UNDER the tokens, like the
-    //     mockup). Round 9: NO LONGER follows the FFB acting-player state
-    //     (t.isActing) nor the click selection — only an EXPLICIT target
-    //     (setActionWheelTarget, set by a right-click on a player in play
-    //     mode). In spectator mode the target stays empty: no wheel. The
-    //     wheel + bracket code is kept "meso da parte" for the play mode.
+    //     mockup). Follows ONLY an EXPLICIT target (setActionWheelTarget,
+    //     set by a right-click on a player in play mode) — never the FFB
+    //     acting-player state nor the click selection. In spectator mode
+    //     the target stays empty: no wheel. The wheel + bracket code is
+    //     kept for the play mode.
     const PlayerToken *wheelOn = nullptr;
     if (!m_wheelTarget.isEmpty()) {
         const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
@@ -2482,21 +2399,18 @@ void FieldView::paintEvent(QPaintEvent *)
         for (const PlayerToken &t : players) {
             if (t.x < 0 || t.x >= kFieldWidth || t.y < 0 || t.y >= kFieldHeight)
                 continue; // box coordinate / off field
-            // Round 13 (user): the token is drawn at its ANIMATED visual
-            // position (cell coords) so it glides square-by-square while
-            // moving; at rest it sits exactly on the model cell center.
+            // The token is drawn at its ANIMATED visual position (cell
+            // coords) so it glides square-by-square while moving; at rest
+            // it sits exactly on the model cell center.
             const QPointF vpos = tokenVisualPos(t);
             const QPointF ctr(f.x() + vpos.x() * cellW, f.y() + vpos.y() * cellH);
 
-            // Round 11: DOWN players keep the FULL round token — round 8
-            // stretched the face into a flat ellipse and the face came out
-            // "schiacciata" (user report). Prone/stunned is shown by the
-            // state mark instead.
-            //
-            // ROUND 13 TURN 6 (user): home = BLUE ring, away = RED ring,
-            // THICK ("cicciotelli"), inside the cell, clearly readable
-            // around the human face: dark base disc -> face -> thick team
-            // ring on the outer rim (outer edge = token edge, no overflow).
+            // DOWN players keep the FULL round token (a stretched ellipse
+            // squashed the face); prone/stunned is shown by the state mark
+            // instead. Home = BLUE ring, away = RED ring, inside the cell,
+            // clearly readable around the human face: dark base disc ->
+            // face -> team ring on the outer rim (outer edge = token edge,
+            // no overflow).
             const QRectF circ(ctr.x() - s * 0.5, ctr.y() - s * 0.5, s, s);
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(0x23, 0x23, 0x2a));
@@ -2509,7 +2423,7 @@ void FieldView::paintEvent(QPaintEvent *)
             const QString race = sideHome ? m_homeRace : m_awayRace;
             const QPixmap pm = assets::playerFace(t.positionName, race);
             if (!pm.isNull()) {
-                const qreal fs = s * 0.68; // turn 12: thinner ring -> bigger face
+                const qreal fs = s * 0.68; // thinner ring -> bigger face
                 const QRectF face(ctr.x() - fs / 2, ctr.y() - fs / 2, fs, fs);
                 p.save();
                 QPainterPath clip;
@@ -2522,14 +2436,11 @@ void FieldView::paintEvent(QPaintEvent *)
             // The thick TEAM ring (home blue / away red) on the outer rim.
             drawTeamRing(p, ctr, s, sideHome);
 
-            // Round 10: player state mark over the face — prone = "/",
-            // stunned = "X" (white with a dark under-stroke for contrast).
-            // Turn 15 (user, point 6: "una X vera e propria, non una
-            // sbarra sovrapposta all'altra"): the old code drew each arm
-            // as dark-stroke THEN white-stroke, so the second arm's dark
-            // under-stroke painted OVER the first arm's white. Now: ALL
-            // dark under-strokes first, then all white over-strokes — one
-            // clean X with a uniform thin rim.
+            // Player state mark over the face — prone = "/", stunned = "X"
+            // (white with a dark under-stroke for contrast). ALL dark
+            // under-strokes first, then all white over-strokes — otherwise
+            // the second arm's dark rim paints over the first arm's white
+            // and the X comes out broken.
             const int base = t.state & 0xFF;
             if (base == 3 || base == 4) {
                 const qreal mw = s * 0.46;
@@ -2554,9 +2465,8 @@ void FieldView::paintEvent(QPaintEvent *)
             // Number badge (bottom-right of the token — follows it while it
             // glides, not the model cell). Same badge family as the
             // check/lightning/'?' ring badges (0.15 minDim) with a dark rim.
-            // Turn 17 (user): the badge is the TEAM COLOR — blue disc +
-            // white font for the "blu" (home) team, red disc + white font
-            // for the "red" (away) team.
+            // The badge is the TEAM COLOR — blue disc + white font for
+            // home, red disc + white font for away.
             const qreal br = qMin(cellW, cellH) * 0.15;
             const QPointF bc(ctr.x() + s * 0.30, ctr.y() + s * 0.32);
             p.setPen(QPen(QColor(0x2a, 0x28, 0x22), qMax(1.0, br * 0.16)));
@@ -2571,14 +2481,11 @@ void FieldView::paintEvent(QPaintEvent *)
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
-            // Ball carrier indicator (top-left of the token). Turn 15
-            // (user, point 1): the old marker was still the ugly plain
-            // ellipse — now the SAME vector football as the ball on the
-            // field, at badge scale.
+            // Ball carrier indicator (top-left of the token): the SAME
+            // vector football as the ball on the field, at badge scale.
             if (t.hasBall) {
-                // Turn 16 (user): the carrier ball GLOWS GOLD on the token
-                // too ("sia che stia sul campo sia che stia sul token").
-                // Turn 17 (user): ANIMATED — breathes with the pulse timer.
+                // The carrier ball GLOWS GOLD on the token too, ANIMATED —
+                // it breathes with the pulse timer.
                 const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
                 const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
                 const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
@@ -2591,12 +2498,12 @@ void FieldView::paintEvent(QPaintEvent *)
     drawTeam(m_homePlayers, true);
     drawTeam(m_awayPlayers, false);
 
-    // --- Selection: BLUE RIM GLOW (round 9: blue radial + ring; round 10:
-    //     the glow now hugs the token's RIM only — transparent over the
-    //     face, a soft blue band just outside the team circle, fading out —
-    //     with a crisp blue ring. Pulsing: the band's alpha breathes
-    //     sinusoidally (~1.2 Hz, m_pulseTimer). Drawn last in field space
-    //     so it is always visible and follows zoom/pan.
+    // --- Selection: BLUE RIM GLOW — the glow hugs the token's RIM only
+    //     (transparent over the face, a soft blue band just outside the
+    //     team circle, fading out) with a crisp blue ring. Pulsing: the
+    //     band's alpha breathes sinusoidally (~1.2 Hz, m_pulseTimer).
+    //     Drawn last in field space so it is always visible and follows
+    //     zoom/pan.
     if (!m_selectedPlayer.isEmpty()) {
         const auto find = [this](const QVector<PlayerToken> &team) -> const PlayerToken * {
             for (const PlayerToken &t : team)
@@ -2617,9 +2524,9 @@ void FieldView::paintEvent(QPaintEvent *)
             // Rim-only radial: clear over the face (up to the team circle's
             // edge), peak band at the ring, fade to transparent.
             QRadialGradient halo(ctr, glowR);
-            // Round 11: round 10's subtle ring was INVISIBLE on the bright
-            // green field (user report) — a clearly visible rim glow, still
-            // limited to the border (the face stays uncovered).
+            // A clearly visible rim glow, still limited to the border (the
+            // face stays uncovered) — a subtle ring reads nothing on the
+            // bright green field.
             const int rimA = int(150 + 90 * breath); // 150..240
             halo.setColorAt(0.0, QColor(88, 168, 255, 0));
             halo.setColorAt((minDim * 0.5) / glowR, QColor(88, 168, 255, 0));
@@ -2636,15 +2543,12 @@ void FieldView::paintEvent(QPaintEvent *)
         }
     }
 
-    // --- Round 13 turn 4 (user): RED GLOW on the player being BLOCKED —
-    //     same shape as the selection's blue rim glow, in the reserved red
-    //     (injury/failure/block). Armed by the model on the block report,
-    //     cleared when the block resolves (state change / new turn / new
-    //     actor). Follows the token's animated glide.
-    //     (injury/failure/block). Armed by the model on the block report,
-    //     cleared when the block resolves. Turn 14 (user): the SAME shape in
-    //     WHITE for the PASS RECEIVER ("il glow intorno a chi riceve fallo
-    //     bianco") — fieldModelSetTargetSelectionState SELECTED.
+    // --- RED GLOW on the player being BLOCKED — same shape as the
+    //     selection's blue rim glow, in the reserved red (injury/failure/
+    //     block). Armed by the model on the block report, cleared when the
+    //     block resolves (state change / new turn / new actor). Follows the
+    //     token's animated glide. The SAME shape in WHITE is the PASS
+    //     RECEIVER's glow (fieldModelSetTargetSelectionState SELECTED).
     const auto drawGlow = [&](const QString &id, const QColor &col) {
         if (id.isEmpty())
             return;
@@ -2679,25 +2583,23 @@ void FieldView::paintEvent(QPaintEvent *)
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(ctr, ringR, ringR);
     };
-    drawGlow(m_blockTarget, QColor(225, 64, 54));   // red = block (turn 4)
+    drawGlow(m_blockTarget, QColor(225, 64, 54));   // red = block
     drawGlow(m_passTarget, QColor(255, 255, 255));  // white = pass receiver
-    // Turn 15 (user, point 11): the KICKER of a kickoff gets the usual
-    // blue glow while the ball is in flight (cleared by the settle timer;
-    // the ballInPlay guard keeps it off for a kickoff TIMEOUT where the
-    // ball never enters play).
+    // The KICKER of a kickoff gets the usual blue glow while the ball is
+    // in flight (cleared by the settle timer; the ballInPlay guard keeps
+    // it off for a kickoff TIMEOUT where the ball never enters play).
     if (m_ballInPlay)
         drawGlow(m_kickoffKickerId, QColor(70, 160, 255));
 
-    // Turn 13 (user, "come su FUMBBL") — the per-turn BADGES on the ring,
-    // drawn AFTER the glows (the actor's blue halo would otherwise cover
-    // the badge corners). Corners: top-right = green check (already acted),
+    // The per-turn BADGES on the ring ("come su FUMBBL"), drawn AFTER the
+    // glows (the actor's blue halo would otherwise cover the badge
+    // corners). Corners: top-right = green check (already acted),
     // top-left = gold lightning (blitzed this turn), bottom-left = gold "?"
     // (confused, state bit 512). All white disc + gold symbol, EXCEPT the
     // check (green disc + white symbol).
     const auto drawTurnBadges = [&](const PlayerToken &t, const QPointF &ctr,
                                     qreal s) {
-        // Turn 12 (user: "i simboli sul ring devono essere più piccoli"):
-        // 0.21 -> 0.15 minDim.
+        // Badge radius: 0.15 minDim.
         const qreal tbr = qMin(cellW, cellH) * 0.15;
         const auto drawBadge = [&](const QPointF &c,
                                    const QColor &discCol,
@@ -2741,9 +2643,8 @@ void FieldView::paintEvent(QPaintEvent *)
         }
         if (t.state & 0x00200) { // PlayerState._BIT_CONFUSED (ffb-common)
             drawBadge(botL, QColor(255, 255, 255), [&]() {
-                // Turn 12 (user: "pallino bianco vuoto in basso a sinistra"):
-                // drawText uses the PEN, not the brush — the "?" was being
-                // painted with NoPen and the disc came out empty.
+                // drawText uses the PEN, not the brush — the "?" would be
+                // painted with NoPen and the disc would come out empty.
                 QFont qf = p.font();
                 qf.setPointSizeF(qMax(5.0, tbr * 1.6));
                 qf.setBold(true);
@@ -2768,10 +2669,10 @@ void FieldView::paintEvent(QPaintEvent *)
     badgePass(m_homePlayers);
     badgePass(m_awayPlayers);
 
-    // --- Round 13 turn 11 (user): the BLOCK MARKER between attacker and
-    //     defender — a football helmet while the die is pending, the chosen
-    //     die's SYMBOL (transparent) after the choice. Follows the tokens'
-    //     animated glide, so it travels with the follow step too.
+    // --- The BLOCK MARKER between attacker and defender: a football
+    //     helmet while the die is pending, the chosen die's SYMBOL after
+    //     the choice. Follows the tokens' animated glide, so it travels
+    //     with the follow step too.
     if (!m_blockTarget.isEmpty() && !m_blockAttacker.isEmpty()) {
         auto findTok = [this](const QString &id) -> const PlayerToken * {
             for (const auto &team : { m_homePlayers, m_awayPlayers })
@@ -2789,8 +2690,8 @@ void FieldView::paintEvent(QPaintEvent *)
                               f.y() + (va.y() + vd.y()) * 0.5 * cellH);
             const qreal k = qMin(cellW, cellH) * 0.45;
             if (m_blockDieFace >= 1 && m_blockDieFace <= 6) {
-                // Turn 16 (user): the push arrow must point ALONG THE REAL
-                // PUSH (attacker -> defender), like the die's straight arrow.
+                // The push arrow points ALONG THE REAL PUSH (attacker ->
+                // defender), like the die's straight arrow.
                 const qreal ang =
                         qRadiansToDegrees(std::atan2(vd.y() - va.y(),
                                                      vd.x() - va.x()));
@@ -2801,16 +2702,16 @@ void FieldView::paintEvent(QPaintEvent *)
         }
     }
 
-    // --- Animated rain (round 12): droplet streaks + splash ripples, in the
-    //     zoomed field space so they belong to the field scene. Stepped by
-    //     m_rainTimer (see rainConfigure). Replaces the old static specks.
+    // --- Animated rain: droplet streaks + splash ripples, in the zoomed
+    //     field space so they belong to the field scene. Stepped by
+    //     m_rainTimer (see rainConfigure).
     if (m_raining)
         drawRain(p);
 
     // --- Bench box slots on the dugout panels (left = home, right = away).
-    //     Round 12: the dugouts are part of the scene, so the slots are drawn
-    //     in the zoomed scene space (the hover hit-test uses the same field
-    //     space via toFieldSpace).
+    //     The dugouts are part of the scene, so the slots are drawn in the
+    //     zoomed scene space (the hover hit-test uses the same field space
+    //     via toFieldSpace).
     paintBoxStrip(p, m_homeColor, m_homeBox, true);
     paintBoxStrip(p, m_awayColor, m_awayBox, false);
 

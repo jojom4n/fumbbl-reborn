@@ -99,7 +99,7 @@ private slots:
     void diceLogShowsPlayerName();
     void newGameStateReplacesOldMatch();
     void manualGameIdDoesNotOverrideSelection();
-    // ---- Round 9 (live-report alignment + UI fixes) ----
+    // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
     void blockReportsShowDiceAndNames();
     void unresolvedNumericIdNeverShown();
@@ -108,48 +108,41 @@ private slots:
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
     void skillChipsWrapWithoutClipping();
-    // ---- Round 10 (header spacing, logos, chat default, upward log, glow) ----
+    // ---- header spacing, logos, chat default, upward log, glow ----
     void chatStartsCollapsedByDefault();
     void actionLogExpandsUpward();
     void hoverAndClickDoNotMoveGlow();
     void playerInfoCardIsChromeless();
     void matchListLogoFallbackUsedWhenGameStateNull();
     void proneAndStunnedMarksRendered();
-    // ---- Round 11 (side-zone lines, dice, downed faces, card growth) ----
+    // ---- side-zone lines, dice, downed faces, card growth ----
     void wideZoneLinesDrawn();
     void downedFaceNotSquashed();
     void diceAssetsPreScaled();
     void playerCardGrowsWithSkillCount();
-    // ---- Round 12 (remote glow, animated rain) ----
+    // ---- remote glow, animated rain ----
     void rainSimulationDropsAndSplashes();
     void fieldRainAnimationActive();
-    // ---- Round 13 (log-name hover, spectator-first interactions) ----
-    void actionLogNameHoverOpensCard();
-    // ---- Round 13 (per-square movement animation) ----
-    void movementAnimationGlidesThroughGrid();
-    // ---- Round 13 turn 8 (dugout hover UAF crash) ----
-    void dugoutHoverSurvivesModelSync();
-    // ---- Round 13 turn 11 (block marker between attacker/defender) ----
-    void blockMarkerDrawsBetweenPair();
-    // ---- Round 13 turn 9 (autoscroll checkbox + stick-to-bottom) ----
-    void actionLogAutoscrollStickToBottom();
+    void actionLogNameHoverOpensCard(); // log-name hover opens the player card
+    void movementAnimationGlidesThroughGrid(); // per-square movement glide
+    void dugoutHoverSurvivesModelSync(); // UAF regression: hover + model sync
+    void blockMarkerDrawsBetweenPair(); // block marker between attacker/defender
+    void actionLogAutoscrollStickToBottom(); // autoscroll + stick-to-bottom
     void actionLogDiceImagesRender();
-    // ---- Round 13 turn 17 (animated gold ball glow) ----
-    void ballGlowBreathes();
-    // ---- Round 13 turn 18 (glow must repaint on its own) ----
-    void ballGlowRepaintsOnItsOwn();
+    void ballGlowBreathes(); // animated gold ball glow
+    void ballGlowRepaintsOnItsOwn(); // the glow repaints without external events
 };
 
 namespace {
 // Deterministic click point: the widget-space center of cell (x,y), using
-// the FieldView's OWN geometry (round 13 stadium layout: the field is fitted
-// into the manifest pit, so the test must ask the view, not re-derive it).
+// the FieldView's OWN geometry (stadium layout: the field is fitted into
+// the manifest pit, so the test must ask the view, not re-derive it).
 QPoint cellCenter(const FieldView *field, int x, int y)
 {
     return field->cellCenterPx(x, y);
 }
 
-// The FloatingPanel that wraps `content` (the HUD overlay of phase 10).
+// The FloatingPanel that wraps `content` (the HUD overlay).
 FloatingPanel *panelFor(QWidget *root, QWidget *content)
 {
     const auto panels = root->findChildren<FloatingPanel *>();
@@ -167,7 +160,7 @@ void UiWiringTest::gameStatePopulatesUi()
     GameModel *model = w.model();
     FieldView *field = w.findChild<FieldView *>();
     ActionLogWidget *actionLog = w.findChild<ActionLogWidget *>();
-    // Round 8: rosters are gone (field box strips cover box/KO/reserve).
+    // Rosters are gone (field box strips cover box/KO/reserve).
     QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_home")));
     QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_away")));
     QVERIFY(model && field && actionLog);
@@ -225,7 +218,7 @@ void UiWiringTest::modelSyncUpdatesUi()
     QCOMPARE(field->playerCount(), 21);
 }
 
-// Round 12: clicking a player token only shows its info card (the same as
+// Clicking a player token only shows its info card (the same as
 // hovering it). The field rim glow is the REMOTE coach's selection (the
 // model's actingPlayer) and a local click never moves it.
 void UiWiringTest::fieldClickShowsCard()
@@ -272,7 +265,7 @@ void UiWiringTest::fieldClickShowsCard()
     QVERIFY(labelContains(info, QStringLiteral("ST")));
 }
 
-// Round 12: clicking an empty square hides the card; the glow (remote
+// Clicking an empty square hides the card; the glow (remote
 // selection) is untouched.
 void UiWiringTest::fieldClickEmptyHidesCard()
 {
@@ -314,7 +307,7 @@ void UiWiringTest::fieldClickEmptyHidesCard()
     QCOMPARE(field->selectedPlayer(), QStringLiteral("18109690")); // glow unchanged
 }
 
-// Round 12: the rim glow is the REMOTE human's selection. It follows the
+// The rim glow is the REMOTE human's selection. It follows the
 // actingPlayerSetPlayerId model changes (the moment the coach picks a
 // player to act) and clears when the action ends (null value).
 void UiWiringTest::glowFollowsRemoteSelection()
@@ -362,7 +355,7 @@ void UiWiringTest::glowFollowsRemoteSelection()
 }
 
 // The info card survives model updates: state changes refresh it; removing
-// the player hides it (round 12: the card is opened by hover/click but its
+// the player hides it (the card is opened by hover/click but its
 // data stays live).
 void UiWiringTest::cardFollowsModelSync()
 {
@@ -400,7 +393,7 @@ void UiWiringTest::cardFollowsModelSync()
     QCOMPARE(info->shownPlayerId(), id);
     QVERIFY(labelContains(info, QStringLiteral("KO")));
 
-    // ROUND 13 (point 17 fix): fieldModelRemovePlayer clears the player's
+    // fieldModelRemovePlayer clears the player's
     // FIELD DATA but does NOT remove the player from the game — the server
     // emits it for every player before each re-placement (post-TD / half
     // setup). The old code deleted the player from the model here, which
@@ -523,7 +516,7 @@ void UiWiringTest::assetsLoad()
 
 void UiWiringTest::panelLayoutPersistAndReset()
 {
-    // Phase 10 HUD: the panels float over the field. Verify that:
+    // HUD: the panels float over the field. Verify that:
     //  1) the default layout is applied on the first sizing,
     //  2) "Reset Layout" restores the default geometry (position AND size —
     //     the old QDS-based reset lost the sizes),
@@ -534,7 +527,7 @@ void UiWiringTest::panelLayoutPersistAndReset()
     MainWindow w;
     w.show();
 
-    // Round 8: the rosters are gone — use the player info panel (it still
+    // The rosters are gone — use the player info panel (it still
     // participates in the layout system until hover drives it).
     PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
     QVERIFY(info);
@@ -570,7 +563,7 @@ void UiWiringTest::panelLayoutPersistAndReset()
 
 void UiWiringTest::savedLayoutRestoredOnFirstShow()
 {
-    // Regression (phase 10): a layout saved by a PREVIOUS run must be
+    // Regression: a layout saved by a PREVIOUS run must be
     // restored on the first stage resize — while the top-level is still
     // mid-show. The old action-sync used panel->isVisible() (false at that
     // moment) and its toggled signal re-hid every panel.
@@ -595,7 +588,7 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
                       QJsonDocument(root).toJson(QJsonDocument::Compact));
 
     MainWindow w; // ctor shows maximized; the saved layout lands on first sizing
-    // Round 8: rosters gone — assert on the player_info seed.
+    // Rosters gone — assert on the player_info seed.
     PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
     QVERIFY(info);
     FloatingPanel *panel = panelFor(&w, info);
@@ -610,7 +603,7 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
 
 void UiWiringTest::matchListParsing()
 {
-    // Phase 11: /api/match/current response (real capture) must parse into
+    // /api/match/current response (real capture) must parse into
     // filterable live matches (id, status, division, both teams).
     QFile f(QStringLiteral("matchlist_fixture.json"));
     QVERIFY2(f.open(QIODevice::ReadOnly), "matchlist_fixture.json not found");
@@ -713,7 +706,7 @@ void UiWiringTest::faceBareNameLookup()
 }
 
 // The action log must show the player's NAME, not the raw numeric id from
-// the report payload (user reported "18234934 dodged…" instead of the name).
+// the report payload (a raw id like "18234934 dodged…" must never show).
 void UiWiringTest::diceLogShowsPlayerName()
 {
     MainWindow w;
@@ -749,8 +742,8 @@ void UiWiringTest::diceLogShowsPlayerName()
     QVERIFY2(!text.contains(pid), qPrintable(text)); // no raw id
 }
 
-// "Spectate Game" on a different match must fully replace the previous one —
-// the user reported staying on the old game after picking a new one.
+// "Spectate Game" on a different match must fully replace the previous one
+// (regression: the client used to stay on the old game).
 void UiWiringTest::newGameStateReplacesOldMatch()
 {
     MainWindow w;
@@ -817,12 +810,12 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
 }
 
 // =============================================================================
-// Round 9 — live report alignment + UI fixes
+// Live report alignment + UI fixes
 // =============================================================================
 
-// Round 9 point 3: the "move"/"stand up" lines had no subject —
-// ReportPlayerAction carries the subject in `actingPlayerId` (NOT `playerId`,
-// which the old parser read and found empty).
+// The "move"/"stand up" lines had no subject: ReportPlayerAction carries
+// the subject in `actingPlayerId` (NOT `playerId`, which the old parser
+// read and found empty).
 void UiWiringTest::playerActionReportShowsSubject()
 {
     MainWindow w;
@@ -853,17 +846,15 @@ void UiWiringTest::playerActionReportShowsSubject()
     const QString text = log->toPlainText();
     QVERIFY2(text.contains(name), qPrintable(text));
     QVERIFY2(!text.contains(pid), qPrintable(text)); // no raw id
-    // Turn 15 (user: "riempi l'action log con le azioni del client
-    // ufficiale"): the wording follows the official PlayerActionMessage —
-    // "X moves", "X stands up".
+    // The wording follows the official PlayerActionMessage — "X moves",
+    // "X stands up" (the log shows the client's own actions).
     QVERIFY(text.contains(QStringLiteral("moves")));
     QVERIFY(text.contains(QStringLiteral("stands up")));
 }
 
-// Round 9 point 6: the six block dice live in the `blockRoll` report
-// (choosingTeamId + blockRoll[6] + defenderId); the `block` report carries
-// ONLY defenderId (the player being blocked) and no dice. The old parser
-// looked for the dice inside `block` and never found them.
+// The six block dice live in the `blockRoll` report (choosingTeamId +
+// blockRoll[6] + defenderId); the `block` report carries ONLY defenderId
+// (the player being blocked) and no dice.
 void UiWiringTest::blockReportsShowDiceAndNames()
 {
     MainWindow w;
@@ -878,9 +869,9 @@ void UiWiringTest::blockReportsShowDiceAndNames()
     const QString homeTeamId = w.model()->teamHomeId();
     const QString homeTeamName = w.model()->teamHomeName();
 
-    // Turn 16 (user: the dice line after a BLITZ was titled with the team,
-    // not the blitzer): the whole block sequence is titled with the ACTING
-    // player. Set the actor (the attacking home player) first.
+    // The dice line after a BLITZ was once titled with the team, not the
+    // blitzer: the whole block sequence is titled with the ACTING player.
+    // Set the actor (the attacking home player) first.
     const QVector<FFBPlayer> home = w.model()->rosterHome();
     QVERIFY(!home.isEmpty());
     const QString attackerId = home.first().playerId;
@@ -910,10 +901,10 @@ void UiWiringTest::blockReportsShowDiceAndNames()
     QVERIFY2(text.contains(defenderName), qPrintable(text));
     QVERIFY2(!text.contains(defenderId), qPrintable(text));
     QVERIFY2(text.contains(attackerName), qPrintable(text));
-    // Turn 16: the choosing team is no longer the line title.
+    // The choosing team is no longer the line title.
     QVERIFY2(!text.contains(homeTeamName), qPrintable(text));
-    // ...and the block dice render as die-face widgets (turn 16: one
-    // QLabel per die, pixmap + official tooltip — no more rich-text <img>).
+    // ...and the block dice render as die-face widgets (one QLabel per die,
+    // pixmap + official tooltip — no more rich-text <img>).
     int diceWithTip = 0;
     for (QLabel *l : log->findChildren<QLabel *>())
         if (!l->pixmap().isNull() && !l->toolTip().isEmpty())
@@ -922,9 +913,9 @@ void UiWiringTest::blockReportsShowDiceAndNames()
              "the six block dice render as die-face widgets with tooltips");
 }
 
-// Round 9 point 5 (user rule "MAI id numerici a schermo"): a report whose
-// actor id the model cannot resolve must not leak the raw numeric id into
-// the log — the line keeps its text, the id is dropped.
+// A report whose actor id the model cannot resolve must not leak the raw
+// numeric id into the log — the line keeps its text, the id is dropped
+// (no numeric ids in the log).
 void UiWiringTest::unresolvedNumericIdNeverShown()
 {
     MainWindow w;
@@ -946,7 +937,7 @@ void UiWiringTest::unresolvedNumericIdNeverShown()
     QVERIFY(text.contains(QStringLiteral("Some Brand New Report")));
 }
 
-// Round 9 point 4: chat = mockup F — the chevron collapses the chat DELTA to
+// Chat = mockup F — the chevron collapses the chat DELTA to
 // the mockup pill; messages arriving while collapsed count as unread (badge);
 // opening the chat clears the badge and keeps the stored messages.
 void UiWiringTest::chatCollapsesToPillWithUnreadBadge()
@@ -975,7 +966,7 @@ void UiWiringTest::chatCollapsesToPillWithUnreadBadge()
     QVERIFY(text.contains(QStringLiteral("again")));
 }
 
-// Round 9: run the REAL parser against a LIVE capture (reports_capturer
+// Run the REAL parser against a LIVE capture (reports_capturer
 // .jsonl of a real match — game 1956995). Ground truth for field alignment:
 // every report yields >=1 line, no raw JSON leaks into the text, the block
 // dice come out structured (blockFaces), and the known report ids hit their
@@ -1028,9 +1019,8 @@ void UiWiringTest::capturedLiveReportsParse()
     QVERIFY2(sawPlayerActionSubject, "playerAction lost its subject (actingPlayerId?)");
 }
 
-// Round 9 point 2: the action log chevron points where the click takes the
-// log — compact shows ▴ ("click to expand"), expanded shows ▾ ("click to
-// collapse"). The round-8 mapping was inverted.
+// The action log chevron points where the click takes the log — compact
+// shows ▴ ("click to expand"), expanded shows ▾ ("click to collapse").
 void UiWiringTest::actionLogChevronPointsToNextState()
 {
     MainWindow w;
@@ -1072,7 +1062,7 @@ void UiWiringTest::actionLogChevronPointsToNextState()
     QCOMPARE(c->text(), QString::fromUtf8("\u25b4"));
 }
 
-// Round 9 point 7: selection != action wheel. The click selection must NOT
+// Selection != action wheel. The click selection must NOT
 // open the wheel; only an explicit target does (play mode: right-click on a
 // player sets it + emits; spectator mode: right-click stays a view reset).
 void UiWiringTest::selectionDoesNotOpenActionWheel()
@@ -1100,8 +1090,8 @@ void UiWiringTest::selectionDoesNotOpenActionWheel()
     QCOMPARE(field->actionWheelTarget(), QString());
 
     // Spectator (default): a right CLICK on the player does NOT open the
-    // wheel and — round 13 — no longer resets the view either (reset moved
-    // to the MIDDLE click; the right button is the drag-pan again).
+    // wheel and no longer resets the view either (reset moved to the
+    // MIDDLE click; the right button is the drag-pan again).
     field->setPlayMode(false);
     const QPoint at = cellCenter(field, p->fieldX, p->fieldY);
     {
@@ -1131,7 +1121,7 @@ void UiWiringTest::selectionDoesNotOpenActionWheel()
     QCOMPARE(field->actionWheelTarget(), pid);
 }
 
-// Round 9 point 10: with a narrow card the skill chips wrap to several rows
+// With a narrow card the skill chips wrap to several rows
 // and the widget must be as tall as the wrapped content (the old Fixed
 // vertical policy made the box layout use the one-row sizeHint and clipped
 // every extra row in half).
@@ -1163,10 +1153,11 @@ void UiWiringTest::skillChipsWrapWithoutClipping()
 }
 
 // ---------------------------------------------------------------------------
-// Round 10 tests
+// Chat default, upward log, remote glow, chromeless card, logo fallback,
+// state-mark tests
 // ---------------------------------------------------------------------------
 
-// Round 10 point 3: the chat starts COLLAPSED (the mockup F pill in the
+// The chat starts COLLAPSED (the mockup F pill in the
 // bottom-right corner) — it opens on click.
 void UiWiringTest::chatStartsCollapsedByDefault()
 {
@@ -1178,9 +1169,9 @@ void UiWiringTest::chatStartsCollapsedByDefault()
     QCOMPARE(chat->size(), ChatWidget::pillSize());
 }
 
-// Round 10 point 4: the action log EXPANDS UPWARD — pinned to the bottom of
-// the stage. Expanding grows the height and lifts the top edge; the bottom
-// edge stays put (round 9 grew it downwards, off the visible bottom).
+// The action log EXPANDS UPWARD — pinned to the bottom of the stage.
+// Expanding grows the height and lifts the top edge; the bottom edge stays
+// put (an earlier version grew it downwards, off the visible bottom).
 void UiWiringTest::actionLogExpandsUpward()
 {
     MainWindow w;
@@ -1196,9 +1187,9 @@ void UiWiringTest::actionLogExpandsUpward()
     const int expandedH = ActionLogWidget::expandedHeight();
     QVERIFY(expandedH > compactH);
     QCOMPARE(log->height(), compactH);
-    // Round 10 regression: expanding must grow the log UPWARD (top edge
-    // lifts) while the bottom edge stays pinned — the round-9 bug let it
-    // grow downwards, off the visible bottom. We assert that relationship
+    // Regression: expanding must grow the log UPWARD (top edge lifts)
+    // while the bottom edge stays pinned — an earlier version let it grow
+    // downwards, off the visible bottom. We assert that relationship
     // directly (±1px: the offscreen window can settle by a pixel).
     const int yCompact = log->geometry().y();
     const int bottomBefore = log->geometry().bottom();
@@ -1237,7 +1228,7 @@ void UiWiringTest::actionLogExpandsUpward()
     QVERIFY2(qAbs(log->geometry().y() - yCompact) <= 1, "back to the compact slot");
 }
 
-// Round 12: NO local mouse input moves the rim glow — it is the REMOTE
+// NO local mouse input moves the rim glow — it is the REMOTE
 // human's selection (model-driven). Hover and click only drive the info
 // card; only an actingPlayerSetPlayerId model change moves the glow.
 void UiWiringTest::hoverAndClickDoNotMoveGlow()
@@ -1298,7 +1289,7 @@ void UiWiringTest::hoverAndClickDoNotMoveGlow()
     QCOMPARE(field->selectedPlayer(), b->playerId);
 }
 
-// Round 10 (player_info.png): the hover card is CHROMELESS — no "Player
+// The hover card is CHROMELESS — no "Player
 // Info" title text, no close button; the content fills the whole panel.
 // The protocol panel keeps its full chrome.
 void UiWiringTest::playerInfoCardIsChromeless()
@@ -1322,7 +1313,7 @@ void UiWiringTest::playerInfoCardIsChromeless()
     QVERIFY(protoClose && !protoClose->isHidden());
 }
 
-// Round 10 point 2: the game state often carries logoUrl = null, but the
+// The game state often carries logoUrl = null, but the
 // match list (fetched by the Spectate dialog) always has the team logos —
 // MainWindow must fall back to them, resolved against the CDN base.
 void UiWiringTest::matchListLogoFallbackUsedWhenGameStateNull()
@@ -1344,7 +1335,7 @@ void UiWiringTest::matchListLogoFallbackUsedWhenGameStateNull()
     QVERIFY(!text.contains(QStringLiteral("no logo source")));
 }
 
-// Round 10 point 7: player state marks on the field — prone = "/", stunned
+// Player state marks on the field — prone = "/", stunned
 // = "X", drawn over the face (white strokes). Pixel-level check: the marked
 // tokens carry significantly more near-white pixels in the token center
 // than a standing token.
@@ -1353,7 +1344,7 @@ void UiWiringTest::proneAndStunnedMarksRendered()
     struct Shot { QImage img; QPoint c; qreal cell; };
     const auto renderState = [](int state) -> Shot {
         FieldView field;
-        field.resize(1440, 600); // round 13: stadium scene, field in the pit
+        field.resize(1440, 600); // stadium scene, field in the pit
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1403,10 +1394,10 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 }
 
 // ---------------------------------------------------------------------------
-// Round 11 tests
+// Wide zone lines, downed faces, pre-scaled dice, card growth, rain tests
 // ---------------------------------------------------------------------------
 
-// Round 11: the field is missing the WIDE ZONE boundary lines. Ground truth
+// The WIDE ZONE boundary lines. Ground truth
 // (ffb-common FieldCoordinateBounds): upper wide zone = y 0..3, lower =
 // y 11..14, centre field = y 4..10 — so emphasized lines run at y=4 and
 // y=11, full pitch length. Pixel check: those rows carry a significantly
@@ -1415,7 +1406,7 @@ void UiWiringTest::proneAndStunnedMarksRendered()
 void UiWiringTest::wideZoneLinesDrawn()
 {
     FieldView field;
-    field.resize(1520, 600); // round 13: stadium scene, field in the pit
+    field.resize(1520, 600); // stadium scene, field in the pit
     field.show();
     QApplication::processEvents();
     const QImage img = field.grab().toImage();
@@ -1448,8 +1439,8 @@ void UiWiringTest::wideZoneLinesDrawn()
                             .arg(wzBottom)));
 }
 
-// Round 11: the round-8 down-player rendering stretched the face into a flat
-// ellipse ("faccia schiacciata" — user report, faces-work player_face.png).
+// Down-player rendering: an earlier version stretched the face into a
+// flat ellipse ("faccia schiacciata" — see faces-work player_face.png).
 // Down players now keep the FULL round token; pixel check at 12 o'clock in
 // the gold ring between the face clip (r~16.2) and the circle edge (r~18.4):
 // a full circle puts team color there, a squashed ellipse puts grass.
@@ -1458,7 +1449,7 @@ void UiWiringTest::downedFaceNotSquashed()
     struct Shot { QImage img; QPoint c; qreal cell; };
     const auto render = [](int state) -> Shot {
         FieldView field;
-        field.resize(1440, 600); // round 13: stadium scene, field in the pit
+        field.resize(1440, 600); // stadium scene, field in the pit
         FieldView::PlayerToken t;
         t.x = 13;
         t.y = 7;
@@ -1470,11 +1461,10 @@ void UiWiringTest::downedFaceNotSquashed()
         return { field.grab().toImage(), field.cellCenterPx(13, 7),
                  field.fieldRect().width() / 26.0 };
     };
-    // Round 13 turn 6: the token's ring is the TEAM RING (home = thick
-    // blue, away = thick red) — the sanity pixel checks for that blue.
-    // Turn 12: the 0.07 ring is thinner than a pixel — every ring pixel is
-    // an AA blend of ring-blue over disc/grass, so test for BLUE-DOMINANT,
-    // not full-saturation blue.
+    // The token's ring is the TEAM RING (home = thick blue, away = thick
+    // red) — the sanity pixel checks for that blue. The 0.07 ring is
+    // thinner than a pixel — every ring pixel is an AA blend of ring-blue
+    // over disc/grass, so test for BLUE-DOMINANT, not full-saturation blue.
     const auto homeBlueRing = [](const QImage &im, int x, int y) {
         const QRgb c = im.pixel(x, y);
         return qBlue(c) > 80 && qBlue(c) > qRed(c) + 25 && qBlue(c) > qGreen(c) + 15;
@@ -1484,9 +1474,9 @@ void UiWiringTest::downedFaceNotSquashed()
     const Shot prone = render(3);
     // 12 o'clock of the team ring (between the face and the token edge):
     // a full round circle puts ring color there, a squashed ellipse puts
-    // grass. The radius scales with the actual cell size. Turn 12: the
-    // ring thinned to 0.07 (token s = 0.92 cell) -> band spans
-    // 0.432..0.46 cell: sample the middle of the band.
+    // grass. The radius scales with the actual cell size; the ring width
+    // is 0.07 (token s = 0.92 cell) -> band spans 0.432..0.46 cell: sample
+    // the middle of the band.
     const int ringY1 = standing.c.y() - int(standing.cell * 0.43);
     const int ringY2 = prone.c.y() - int(prone.cell * 0.43);
     QVERIFY2(homeBlueRing(standing.img, standing.c.x(), ringY1),
@@ -1495,8 +1485,8 @@ void UiWiringTest::downedFaceNotSquashed()
              "downed token must keep the FULL round circle (face not squashed)");
 }
 
-// Round 11: the dice in the log use pre-scaled assets rendered small (the
-// 256px originals were fast-scaled by the rich text layout — grainy d6,
+// The dice in the log use pre-scaled assets rendered small (the 256px
+// originals fast-scaled by the rich text layout come out grainy: d6,
 // square pips, unreadable skulls). Verify the assets exist in the resource
 // at the pre-scaled size.
 void UiWiringTest::diceAssetsPreScaled()
@@ -1506,15 +1496,15 @@ void UiWiringTest::diceAssetsPreScaled()
         const QString bl = QStringLiteral(":/dice/block%1_s.png").arg(n);
         QVERIFY2(QFileInfo(d6).exists(), qPrintable(d6));
         QVERIFY2(QFileInfo(bl).exists(), qPrintable(bl));
-        // Round 13 turn 4: 96px sources rendered at 24px in the BB3-like log
-        // (downscaling stays crisp at any DPI / 4K; the old 20px sources had
-        // to be UPscaled at 24px -> grainy, "troppo piccoli").
+        // 96px sources rendered at 24px in the BB3-like log (downscaling
+        // stays crisp at any DPI / 4K; the old 20px sources had to be
+        // UPscaled at 24px -> grainy, "troppo piccoli").
         QCOMPARE(QImage(d6).size(), QSize(96, 96));
         QCOMPARE(QImage(bl).size(), QSize(96, 96));
     }
 }
 
-// Round 13 (user): hovering a player's NAME in the action log opens that
+// Hovering a player's NAME in the action log opens that
 // player's card (like the field hover). The name label is a hoverable
 // widget; entering it emits playerHoveredId(id) -> MainWindow opens the
 // card, leaving it hides it. (Regression: the log used to pass empty ids,
@@ -1569,7 +1559,7 @@ void UiWiringTest::actionLogNameHoverOpensCard()
     QVERIFY2(info->shownPlayerId().isEmpty(), "card should hide on leave");
 }
 
-// Round 13 (user): a moved token does NOT jump to the new cell — it glides
+// A moved token does NOT jump to the new cell — it glides
 // through the grid, square by square. Verify: at rest the visual position is
 // the cell center; right after a move it is mid-glide (between old and new);
 // after enough time it converges exactly to the destination.
@@ -1614,7 +1604,7 @@ void UiWiringTest::movementAnimationGlidesThroughGrid()
     QCOMPARE(field.tokenVisualPos(t), QPointF(9.5, 5.5));
 }
 
-// Round 11: cards with many skills must not clip — the panel is sized to the
+// Cards with many skills must not clip — the panel is sized to the
 // content (measured at the final width so the chip wrap height counts).
 void UiWiringTest::playerCardGrowsWithSkillCount()
 {
@@ -1650,8 +1640,8 @@ void UiWiringTest::playerCardGrowsWithSkillCount()
                             .arg(h12)));
 
     // MainWindow level: the panel must be at least as tall as the card's
-    // content (the round-11 fix sizes it that way; the old fixed height
-    // clipped the bottom). The offscreen maximized window is flaky (it can
+    // content (the panel is sized to it; the old fixed height clipped the
+    // bottom). The offscreen maximized window is flaky (it can
     // settle smaller after the first pinning, and clampPanelsToStage would
     // then squeeze the card) — pin a deterministic size first.
     MainWindow w;
@@ -1681,7 +1671,7 @@ void UiWiringTest::playerCardGrowsWithSkillCount()
                             .arg(info->sizeHint().height())));
 }
 
-// Round 12: the rain simulation — deterministic drops fall, landings become
+// The rain simulation — deterministic drops fall, landings become
 // splash ripples, and drops landing in the puddle make PUDDLE splashes
 // (which live longer than the grass ones).
 void UiWiringTest::rainSimulationDropsAndSplashes()
@@ -1727,7 +1717,7 @@ void UiWiringTest::rainSimulationDropsAndSplashes()
     QVERIFY2(sawOldPuddleSplash, "a puddle ripple outlived the grass lifetime");
 }
 
-// Round 12: the field starts/stops the rain animation with the weather.
+// The field starts/stops the rain animation with the weather.
 void UiWiringTest::fieldRainAnimationActive()
 {
     FieldView field;
@@ -1744,11 +1734,11 @@ void UiWiringTest::fieldRainAnimationActive()
     QVERIFY(field.isRaining());
 }
 
-// Round 13 turn 8 CRASH REGRESSION (user: the client crashed on hover, "
-// soprattutto quelli del dugout"): the bench hover path resolved the player
-// by name into a LOCAL roster copy and kept a pointer into it — the copy
-// died at the end of the else-if block and the later showPlayerCard(p) was
-// use-after-free (valgrind: read in a block freed by
+// CRASH REGRESSION (hover, especially on dugout faces): the bench hover
+// path resolved the player by name into a LOCAL roster copy and kept a
+// pointer into it — the copy died at the end of the else-if block and the
+// later showPlayerCard(p) was use-after-free (valgrind: read in a block
+// freed by
 // QArrayDataPointer<FFBPlayer>::~QArrayDataPointer; the corrupted data
 // later aborted in GameModel::findPlayerById, ASSERT "p" in
 // qarraydatapointer.h). Hover a dugout face, sync the model (box vectors
@@ -1872,17 +1862,17 @@ void UiWiringTest::dugoutHoverSurvivesModelSync()
     QCOMPARE(info->shownName(), homeName.toUpper());
 }
 
-// Round 13 turn 11 (user): the BLOCK MARKER — a football helmet between
-// attacker and defender while the die is pending, the chosen die's SYMBOL
-// (transparent) after the choice. Two adjacent tokens, marker at the
-// shared-edge midpoint: the midpoint pixel must NOT be plain grass, and it
-// must differ between the helmet and a die face.
-// Round 13 turn 9 (user): the action log autoscrolls when the user is (or
-// comes back) at the bottom; scrolling up pauses it; the tiny 'auto'
-// checkbox in the title bar reflects the state.
-// Round 13 turn 12 (user: "TUTTI i dadi non appaiono"): the dice IMAGES
-// must actually render in the log rows — not empty broken-image boxes.
-// Regression for the missing-HTML-quotes bug in renderMiddle's dieImg.
+// The BLOCK MARKER: a football helmet between attacker and defender while
+// the die is pending, the chosen die's SYMBOL (transparent) after the
+// choice. Two adjacent tokens, marker at the shared-edge midpoint: the
+// midpoint pixel must NOT be plain grass, and it must differ between the
+// helmet and a die face.
+// The action log autoscrolls when the user is (or comes back) at the
+// bottom; scrolling up pauses it; the 'auto' checkbox in the title bar
+// reflects the state.
+// The dice IMAGES must actually render in the log rows — not empty
+// broken-image boxes (regression for the missing-HTML-quotes bug in
+// renderMiddle's dieImg).
 void UiWiringTest::actionLogDiceImagesRender()
 {
     ActionLogWidget log;
@@ -1902,7 +1892,7 @@ void UiWiringTest::actionLogDiceImagesRender()
     log.resize(420, log.height());
     QApplication::processEvents();
 
-    // Turn 16: the dice are their OWN widgets (per-die tooltips) — the
+    // The dice are their OWN widgets (per-die tooltips) — the
     // label with the text is the first child of the row's middle layout.
     // Grab the MIDDLE container (text + dice) and look for the die's RED
     // pixels (a missing pixmap has none).
@@ -1931,7 +1921,7 @@ void UiWiringTest::actionLogDiceImagesRender()
              "the d6 die image rendered (red face pixels found) — "
              "if this fails the die pixmaps are broken again");
 
-    // Turn 16 (user): hover on a SINGLE block die shows its official
+    // Hover on a SINGLE block die shows its official
     // meaning. Regression: every block-die widget carries its tooltip.
     DiceLogLine b;
     b.text = "Block roll";
@@ -1965,8 +1955,8 @@ void UiWiringTest::actionLogAutoscrollStickToBottom()
     QVERIFY2(scroll, "the log has a scroll area");
     auto *sb = scroll->verticalScrollBar();
     QVERIFY2(sb, "the log has a vertical scrollbar");
-    // Turn 16: the toggle is the custom white-square AutoScrollToggle
-    // (no more QCheckBox).
+    // The toggle is the custom white-square AutoScrollToggle (not a
+    // QCheckBox).
     AutoScrollToggle *check = log.findChild<AutoScrollToggle *>();
     QVERIFY2(check, "the log title bar has the 'auto-scroll' toggle");
 
@@ -2024,7 +2014,7 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     const QPoint col10 = QPoint(int(c00.x() + 10.5 * (c10.x() - c00.x())),
                                 int(c00.y() + 7.5 * (c01.y() - c00.y())));
     const int cell = qMax(1, c10.x() - c00.x());
-    // The marker colors (turn 12): the unified marker is a WHITE DISC with
+    // The unified marker is a WHITE DISC with
     // a dark-ink rim (46,40,34) and either the GREY Qwen helmet
     // (96,100,108) or a GOLD symbol (224,158,0). Detect helmet-grey, gold
     // or ink-rim pixels — none of those exist elsewhere on the field
@@ -2068,9 +2058,9 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     const QPoint tokA = field.cellCenterPx(10, 6);
     const QPoint tokD = field.cellCenterPx(10, 8);
     // Exclude the WHOLE token (disc radius 0.46 cell + the number badge at
-    // ~0.55 cell): turn 16 changed the badge from gold-rim to white/black —
-    // the old 0.2-cell radius "excluded" nothing, and the test used to pass
-    // on the badge's gold rim pixels, not on the marker.
+    // ~0.55 cell): the badge was once gold-rimmed (now white/black) — the
+    // old 0.2-cell radius "excluded" nothing, and the test used to pass on
+    // the badge's gold rim pixels, not on the marker.
     const int d2 = int(0.55 * cell * 0.55 * cell);
     const auto inTokDisc = [&](int x, int y) {
         const auto d = [&](const QPoint &c) {
@@ -2136,18 +2126,17 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
 }
 
 // ---------------------------------------------------------------------------
-// Round 13 turn 17 (animated gold ball glow)
+// Animated gold ball glow
 // ---------------------------------------------------------------------------
 
-// Round 13 turn 17 (user: "The ball must glow gold (animated glow)"): the
-// ball's gold halo BREATHES with the pulse timer — the halo's radius and
-// alpha oscillate sinusoidally. Sample frames over time around the ball:
-// the count of gold-tinted pixels must oscillate (animated, not a static
-// halo) and never disappear.
+// The ball's gold halo BREATHES with the pulse timer — the halo's radius
+// and alpha oscillate sinusoidally. Sample frames over time around the
+// ball: the count of gold-tinted pixels must oscillate (animated, not a
+// static halo) and never disappear.
 void UiWiringTest::ballGlowBreathes()
 {
     FieldView field;
-    field.resize(1440, 600); // round 13: stadium scene, field in the pit
+    field.resize(1440, 600); // stadium scene, field in the pit
     field.setBall(13, 7, true); // ball on an empty square
     field.show();
     QApplication::processEvents();
@@ -2198,10 +2187,9 @@ void UiWiringTest::ballGlowBreathes()
                             .arg(hi)));
 }
 
-// Round 13 turn 18 (user repeat of "The ball must glow gold (animated
-// glow)"): the pulse handler used to advance the phase and early-return
-// WITHOUT update() when only the ball was visible — in the live app the
-// glow sat FROZEN (ballGlowBreathes above forces repaints via grab() and
+// The pulse handler used to advance the phase and early-return WITHOUT
+// update() when only the ball was visible — in the live app the glow sat
+// FROZEN (ballGlowBreathes above forces repaints via grab() and
 // cannot catch this). Count the widget's own Paint events during a 400 ms
 // window with NO grab() and NO external state changes: the breathing gold
 // glow must drive ~30 fps repaints by itself.

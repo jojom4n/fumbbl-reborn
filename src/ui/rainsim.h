@@ -1,17 +1,13 @@
 // =============================================================================
-// RainSim — the animated rain simulation (round 12, user request)
+// RainSim — the animated rain simulation
 //
-// TOP-DOWN rain (round 13 turn 4, user): the field is seen from ABOVE. There
-// is no side-view "falling from the top" — a drop is a short bright streak
-// that appears at a random spot of the WHOLE field, grows slightly as it
-// descends (top-down pseudo-depth), and ends in a SPLASH ripple where it
-// lands. Drops landing inside a puddle (the water patches drawn on the
-// field) make a bigger, longer ripple.
-//
-// Round 13 turn 4 fix: the old sim spawned every new drop at the TOP of the
-// field and let it "fall" a short distance — after a few seconds the rain
-// only covered the upper band of the pitch. Now drops spawn/land uniformly
-// over the entire field at all times.
+// TOP-DOWN rain: the field is seen from ABOVE. There is no side-view
+// "falling from the top" — a drop is a short bright streak that appears at
+// a random spot of the WHOLE field, grows slightly as it descends (top-down
+// pseudo-depth), and ends in a SPLASH ripple where it lands. Drops landing
+// inside a puddle (the water patches drawn on the field) make a bigger,
+// longer ripple. Drops spawn/land uniformly over the entire field at all
+// times (a top-band-only spawn read as a flat platform layer).
 //
 // Pure simulation (no painting, no widget): FieldView drives step() from a
 // QTimer and draws the state; the unit tests drive it deterministically.
@@ -48,9 +44,9 @@ public:
     // Puddle rectangles (field space). Drops landing inside make a
     // puddle ripple.
     void configure(float width, float height, const QVector<QRectF> &puddles);
-    // Update the puddles WITHOUT resetting the drops (round 13: the puddles
-    // are dynamic — they grow over match time). configure() reseeds; this
-    // only swaps the water patches so the running rain keeps flowing.
+    // Update the puddles WITHOUT resetting the drops (the puddles are
+    // dynamic — they grow over match time). configure() reseeds; this only
+    // swaps the water patches so the running rain keeps flowing.
     void setPuddles(const QVector<QRectF> &puddles);
     void setIntensity(int level); // 0..100 (more drops at higher levels)
     void seed(qint64 s);          // deterministic simulation (tests)

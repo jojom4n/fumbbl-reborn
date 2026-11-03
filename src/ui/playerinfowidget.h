@@ -15,8 +15,8 @@
 //
 //                     MOVING  (player state, colored, centered)
 //
-// State only — no "Active"/"ACTING" chip (Mockup F round 6). Red is reserved
-// for injury/failure. Filled by MainWindow from the GameModel.
+// State only — no "Active"/"ACTING" chip (Mockup F). Red is reserved for
+// injury/failure. Filled by MainWindow from the GameModel.
 // =============================================================================
 #pragma once
 

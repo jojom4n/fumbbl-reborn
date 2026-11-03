@@ -16,16 +16,14 @@ namespace {
 
 const QColor INK(34, 40, 50);       // primary text
 const QColor INK2(104, 114, 128);   // secondary text
-const QColor GREEN(56, 142, 60);      // team on turn (round 12: green, was gold)
+const QColor GREEN(56, 142, 60);      // team on turn
 const QColor GREEN_DARK(27, 94, 32); // emboss shadow
 
 // Team name of the team on turn: green, raised (embossed dark shadow below)
-// and GLOWING — a soft wide green halo is stroked around the glyph outline
-// before the text itself (round 12: the gold emboss was replaced with a
-// glowing green one, user request). ROUND 13: the glow BREATHES (breath
-// 0..1): halo width and alpha pulse so the active team's name visibly
-// pulses. yTop is the text TOP (Mockup F coordinates); drawText needs the
-// baseline.
+// and GLOWING: a soft wide green halo is stroked around the glyph outline
+// before the text itself. The glow BREATHES (breath 0..1): halo width and
+// alpha pulse so the active team's name visibly pulses. yTop is the text
+// TOP (Mockup F coordinates); drawText needs the baseline.
 void greenEmboss(QPainter &p, int x, int yTop, const QString &s, const QFont &f,
                  qreal breath = 0.0)
 {
@@ -106,13 +104,13 @@ HeaderView::HeaderView(QWidget *parent)
 {
     setFixedHeight(62);
     setAutoFillBackground(true);
-    // Round 8: expand to the full toolbar width so the ZONES land where the
-    // mockup puts them (left team / center info / right team) instead of
+    // Expand to the full toolbar width so the ZONES land where the mockup
+    // puts them (left team / center info / right team) instead of
     // clustering at the left edge.
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    // Round 13: the breathing glow of the active team name (~0.6 Hz — slow
-    // and calm, like the field selection pulse). Started/stopped by
+    // The breathing glow of the active team name (~0.6 Hz — slow and calm,
+    // like the field selection pulse). Started/stopped by
     // setTeams (a live match has team names; the idle header must not
     // repaint at 30 fps).
     m_glowTimer = new QTimer(this);
@@ -143,7 +141,7 @@ void HeaderView::setTeams(const QString &home, const QString &away)
 {
     m_home = home;
     m_away = away;
-    ensureGlowTimer(); // round 13: glow timer on with a live match
+    ensureGlowTimer(); // glow timer on with a live match
     update();
 }
 
@@ -233,8 +231,8 @@ void HeaderView::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    // Round 11: smooth pixmap scaling — the 240px crests were drawn at 40px
-    // with fast scaling and came out grainy (user report).
+    // Smooth pixmap scaling — the 240px crests drawn at 40px with fast
+    // scaling come out grainy.
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     const int W = width();
     const int H = height();
@@ -254,7 +252,7 @@ void HeaderView::paintEvent(QPaintEvent *)
     // --- names + sublines -----------------------------------------------------
     // NOTE: QPainter::drawText(x, y, ...) takes y as the BASELINE, while the
     // Mockup F coordinates are text TOPS — so every draw adds the ascent.
-    // Round 12: team names are BIGGER and bold (user request).
+    // Team names: 17pt bold.
     QFont nameF = font();
     nameF.setPointSizeF(17);
     nameF.setBold(true);
@@ -267,17 +265,15 @@ void HeaderView::paintEvent(QPaintEvent *)
 
     const QString homeName = m_home.toUpper();
     const QString awayName = m_away.toUpper();
-    // Round 13: the two team-name lines are spaced a bit more (user: "a
-    // volta la distanza tra riga nome e riga sottostante è poca") — name
-    // top 5, subline top 36 in the 62px strip.
+    // Team-name lines: name top 5, subline top 36 in the 62px strip (a
+    // real gap between the two).
     const int nameY = 5 + int(fmName.ascent());
     const int subY = 36 + int(fmSub.ascent());
-    // ROUND 13 FONT BUG FIX (user: "il nome del team inattivo a volte è a
-    // dimensione diversa da quello attivo, quando si apre una partita"): in
-    // the !m_homePlaying branch the home name was drawn BEFORE greenEmboss
-    // set nameF — with the widget's DEFAULT font (10pt, not bold) instead
-    // of the 17pt bold name font. Both names now set the font explicitly,
-    // in every branch.
+    // The inactive name must be drawn with the NAME font: in the
+    // !m_homePlaying branch the home name was once drawn before nameF was
+    // set, with the widget's default font (10pt, not bold) instead of the
+    // 17pt bold name font. Both names now set the font explicitly, in
+    // every branch.
     const qreal breath = 0.5 - 0.5 * std::cos(m_glowPhase);
     if (m_homePlaying) {
         greenEmboss(p, 64, 5, homeName, nameF, breath);
@@ -295,8 +291,8 @@ void HeaderView::paintEvent(QPaintEvent *)
     p.drawText(64, subY, subH);
     p.drawText(W - 64 - fmSub.horizontalAdvance(subA), subY, subA);
 
-    // --- reroll dots (turn 12: as many as the team has; gold = still
-    //     available this turn, white = used) ----------------------------
+    // --- reroll dots (one per team reroll; gold = still available this
+    //     turn, white = used) --------------------------------------------
     // Home: 16px right of the home name; away: mirrored, 16px left of the
     // away name (mockup layout).
     const int dotGap = 19;
@@ -309,8 +305,8 @@ void HeaderView::paintEvent(QPaintEvent *)
         coin(p, xa + i * dotGap, 16, 7, i < m_rerollsAway);
 
     // --- center: score ---------------------------------------------------------
-    // Round 9: the score/center-row gap was too small — score moved up
-    // (font 20, top 3) and the center row down (y 38) in the 62px strip.
+    // Score up (font 20, top 3), center row down (y 38) in the 62px strip:
+    // a real gap between the two.
     QFont scoreF = font();
     scoreF.setPointSizeF(20);
     scoreF.setWeight(QFont::Black);
@@ -343,10 +339,9 @@ void HeaderView::paintEvent(QPaintEvent *)
     const qreal w3 = fmTime.horizontalAdvance(timeT);
     const qreal w4 = 26 + fmLab.horizontalAdvance(m_weather);
     const qreal total = w1 + 8 + w2 + 16 + w3 + 16 + w4;
-    const qreal y = 38; // round 9: below the score with a real gap (was 34)
-    // Round 10: the TURN / HALF pills were 16px tall and the glyph's descent
-    // touched the bottom border. Taller pills (20px) with the text vertically
-    // centered leave a real gap below the font.
+    const qreal y = 38; // below the score with a real gap
+    // The TURN / HALF pills are 20px tall with the text vertically
+    // centered: at 16px the glyph's descent touched the bottom border.
     const qreal chipH = 20.0;
     const auto chipBase = [y, chipH](const QFontMetricsF &fm) {
         return y + (chipH - (fm.ascent() + fm.descent())) / 2.0 + fm.ascent();

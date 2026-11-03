@@ -1,5 +1,5 @@
 // =============================================================================
-// ActionLogWidget — implementation (BB3-like readability, round 13 turn 4)
+// ActionLogWidget — implementation (BB3-like readability)
 // =============================================================================
 #include "ui/actionlog.h"
 
@@ -20,11 +20,10 @@
 
 namespace {
 
-// Round 13 turn 4 (user): BB3-like readability. The dice must be
-// "estremamente leggibili e coerenti col testo" — 24px dice against a
-// 10.5pt line (the 20px/10pt of round 13 turn 3 read as "tiny, not
-// coherent"). Rows get real height and the dice sit at ~1.5x the text cap
-// height, like Blood Bowl 3's log.
+// BB3-like readability: the dice must be extremely readable and coherent
+// with the text — 24px dice against a 10.5pt line (20px/10pt reads as
+// "tiny, not coherent"). Rows get real height and the dice sit at ~1.5x
+// the text cap height, like Blood Bowl 3's log.
 const int kRowH = 30;
 const int kDice = 24;
 const int kHeaderH = 26;   // title + chevron strip
@@ -37,16 +36,15 @@ const QColor kFailRed(198, 40, 40);
 const QColor kMuted(110, 116, 128);
 
 // A player/team NAME in the log — the hover is handled by the LOG's event
-// filter (round 13 turn 4: the old std::function captured the row widget;
-// clearing the log with the mouse on a name ran enter/leave on freed
-// memory -> crash). The label only carries its id in a dynamic property.
+// filter (a std::function captured by the row widget, run on a freed name
+// label while the log was cleared under the mouse -> crash). The label
+// only carries its id in a dynamic property.
 const char kNameIdProp[] = "logNameId";
 const char kNameIsPlayerProp[] = "logNameIsPlayer";
 
-// Round 16 (user: "riga incompleta. Possiamo andare a capo qualche
-// volta"): the middle of a log row is a FLOW, not a single-line HBox — a
-// long action text ("Catch (Inaccurate Pass or Scattered)") used to be
-// CLIPPED mid-word because the scroll area has no horizontal scrollbar.
+// The middle of a log row is a FLOW, not a single-line HBox: a long
+// action text ("Catch (Inaccurate Pass or Scattered)") would be CLIPPED
+// mid-word because the scroll area has no horizontal scrollbar.
 // Item 0 is the action text (stretchy, word-wraps); the rest are atomic
 // (dice, "vs N Result"). The flow: the text wraps WORD BY WORD across the
 // available width; the atomics then sit right after the END OF THE LAST
@@ -208,10 +206,8 @@ private:
 } // namespace
 
 // ---------------------------------------------------------------------------
-// AutoScrollToggle — white square + check (turn 16, user: "fai un
-// quadratino bianco dove si posiziona il segno di spunta ... così che il
-// giocatore umano percepisca subito che può disattivare o attivare
-// l'opzione").
+// AutoScrollToggle — white square + check: reads as a real checkbox at a
+// glance, so the follow behavior is easy to toggle.
 // ---------------------------------------------------------------------------
 AutoScrollToggle::AutoScrollToggle(QWidget *parent)
     : QWidget(parent)
@@ -285,19 +281,17 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     QFont tf = m_title->font();
     tf.setPointSizeF(9);
     m_title->setFont(tf);
-    // Round 9 (user): the chevron points where the click TAKES the log —
-    // compact shows ▴ ("click to expand"), expanded shows ▾ ("click to
-    // collapse"). The old mapping was inverted.
+    // The chevron points where the click TAKES the log: compact shows ▴
+    // ("click to expand"), expanded shows ▾ ("click to collapse").
     m_chevron = new QLabel(QString::fromUtf8("\u25b4"), header); // ▴
     m_chevron->setCursor(Qt::PointingHandCursor);
     m_chevron->setStyleSheet(QStringLiteral("color: #222832; font-size: 13px; font-weight: bold;"));
     m_chevron->setFixedWidth(16);
-    // Round 13 turn 9 (user): the autoscroll toggle in the title bar.
-    // It reflects the live stick-to-bottom state: unchecks when the user
-    // scrolls up, re-checks when the user brings the log back to the
-    // bottom; the user can also tick it to force following.
-    // Turn 16 (user): a visible WHITE SQUARE checkbox so it reads as a
-    // toggle at a glance.
+    // The autoscroll toggle in the title bar. It reflects the live
+    // stick-to-bottom state: unchecks when the user scrolls up, re-checks
+    // when the user brings the log back to the bottom; the user can also
+    // tick it to force following. A visible WHITE SQUARE checkbox so it
+    // reads as a toggle at a glance.
     m_autoCheck = new AutoScrollToggle(header);
     m_autoCheck->setChecked(true);
     connect(m_autoCheck, &AutoScrollToggle::toggled, this, [this](bool on) {
@@ -316,8 +310,8 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
     m_scroll->setFrameShape(QFrame::NoFrame);
     m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    // Round 13 turn 9: the inner stack is sized MANUALLY (not widgetResizable):
-    // a widgetResizable QScrollArea re-lays out the inner widget only from
+    // The inner stack is sized MANUALLY (not widgetResizable): a
+    // widgetResizable QScrollArea re-lays out the inner widget only from
     // its own resizeEvent, so a burst of appends (live game) left the
     // scrollbar range stale (maximum frozen at the old content height).
     // Manual geometry = the classic pattern, fully deterministic.
@@ -367,10 +361,9 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
 
 void ActionLogWidget::onScrollbarMoved()
 {
-    // Round 13 turn 9: USER scroll detection. A value change that is NOT
-    // ours = the user moved the view: at the bottom (or a hair above) ->
-    // autoscroll re-arms ("dovrebbe scrollare automaticamente se l'utente
-    // lo riporta in fondo"); up -> it pauses and the checkbox unchecks.
+    // USER scroll detection. A value change that is NOT ours = the user
+    // moved the view: at the bottom (or a hair above) -> autoscroll
+    // re-arms; up -> it pauses and the checkbox unchecks.
     if (m_progScroll)
         return;
     const bool at = atBottom();
@@ -407,12 +400,12 @@ void ActionLogWidget::settleScroll()
         // Manual inner geometry: as wide as the viewport, as tall as the
         // content needs (at least the viewport, so an empty log fills it).
         //
-        // Round 16 (wrap): a flow row's height DEPENDS ON ITS WIDTH, and
-        // the layout sizeHint caches go stale mid-layout (measured while
-        // a row was still a stub width) — using m_stackLayout->sizeHint()
-        // over-grew the stack until the bottom stretch swallowed the
-        // newest lines. Instead: (1) lay the rows out at the REAL width,
-        // (2) measure the content from the ACTUAL row heights.
+        // A flow row's height DEPENDS ON ITS WIDTH, and the layout
+        // sizeHint caches go stale mid-layout (measured while a row was
+        // still a stub width) — using m_stackLayout->sizeHint() over-grew
+        // the stack until the bottom stretch swallowed the newest lines.
+        // Instead: (1) lay the rows out at the REAL width, (2) measure the
+        // content from the ACTUAL row heights.
         const int w = m_scroll->viewport()->width();
         m_stack->setGeometry(0, 0, w, qMax(1, m_stack->height()));
         m_stackLayout->activate(); // synchronous pass at the real width
@@ -455,8 +448,8 @@ void ActionLogWidget::scrollToEnd()
 
 bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
 {
-    // Round 13 turn 4: the NAME hover. `watched` is a name label (the id is
-    // in a dynamic property); entering emits the id, leaving emits empty.
+    // The NAME hover. `watched` is a name label (the id is in a dynamic
+    // property); entering emits the id, leaving emits empty.
     // This filter is owned by the LOG (which outlives its rows) and Qt
     // removes it automatically when the row is deleted — no freed-memory
     // callbacks, ever.
@@ -475,7 +468,7 @@ bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
 
 bool ActionLogWidget::atBottom() const
 {
-    // Stick-to-bottom (round 13 turn 4): true when the user is already at
+    // Stick-to-bottom: true when the user is already at
     // (or within a hair of) the newest line. New entries only auto-scroll
     // in that case; a user reading the history is never yanked down.
     const QScrollBar *sb = m_scroll ? m_scroll->verticalScrollBar() : nullptr;
@@ -484,12 +477,12 @@ bool ActionLogWidget::atBottom() const
     return sb->maximum() - sb->value() <= 8;
 }
 
-// Turn 16 (user): HOVER ON A SINGLE BLOCK DIE shows its official meaning —
-// so each die is its OWN widget (a rich-text <img> cannot carry a
-// per-image tooltip). The row's middle is rebuilt as a small layout:
+// HOVER ON A SINGLE BLOCK DIE shows its official meaning — so each die is
+// its OWN widget (a rich-text <img> cannot carry a per-image tooltip). The
+// row's middle is rebuilt as a small layout:
 // [action text] [block dice... with tooltips] [d6 dice...] [result tail].
 //
-// Official BB2025 block die face names (user-provided, match the GW die).
+// Official BB2025 block die face names (match the GW die).
 const char *const kBlockDieTip[7] = {
     "",                // 0: unused
     "Player Down",     // 1: skull
@@ -501,10 +494,10 @@ const char *const kBlockDieTip[7] = {
 };
 
 // One middle row split into renderable parts (dice become widgets, the
-// text/tail stay rich text). NOTE (round 9, user rule): a participant the
-// UI could not resolve is DROPPED, never shown as raw ids — "MAI id
-// numerici a schermo". Dice assets: the PRE-SCALED *_s.png (96px),
-// downscaled to kDice when the widget paints them (4K-ready).
+// text/tail stay rich text). NOTE: a participant the UI could not resolve
+// is DROPPED, never shown as a raw id (no numeric ids in the log). Dice
+// assets: the PRE-SCALED *_s.png (96px), downscaled to kDice when the
+// widget paints them (4K-ready).
 struct MidParts {
     QString text;
     QList<int> blockFaces;
@@ -521,8 +514,7 @@ static MidParts splitMiddle(const DiceLogLine &line)
             parts.blockFaces << v;
     // d6 rolls: red die faces + target + result. d6Rolls covers multi-die
     // reports (throw-in, scatter, injury rolls, ...); d6Roll alone the
-    // single-die skill rolls (round 9: every roll shows the DIE, never a
-    // number).
+    // single-die skill rolls (every roll shows the DIE, never a number).
     if (!line.d6Rolls.isEmpty()) {
         for (const QString &face : line.d6Rolls)
             if (const int v = face.toInt(); v >= 1 && v <= 6)
@@ -535,8 +527,8 @@ static MidParts splitMiddle(const DiceLogLine &line)
             parts.tailHtml += QStringLiteral(" <span style=\"color:%1\">vs %2</span>")
                                   .arg(kMuted.name())
                                   .arg(line.d6Target);
-        // Round 13 turn 4 (BB3): the RESULT is emphasized — green SUCCESS /
-        // red Failure, bold, like Blood Bowl 3's log.
+        // BB3: the RESULT is emphasized — green SUCCESS / red Failure,
+        // bold, like Blood Bowl 3's log.
         if (line.d6ShowResult)
             parts.tailHtml += line.d6Ok
                                   ? QStringLiteral(" <b style=\"color:%1\">SUCCESS</b>").arg(kOkGreen.name())
@@ -552,7 +544,7 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
                                const QString &defenderId, const QColor &actorColor,
                                const QColor &defenderColor)
 {
-    // BB3-like row (round 13 turn 4):
+    // BB3-like row:
     //   ActorName (TEAM color, bold, hoverable): action + dice + result  →
     //   DefenderName (TEAM color, bold, hoverable)
     // Separator lines (turn/half/coin): centered, muted, hairline above.
@@ -638,12 +630,11 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         rl->addWidget(colon, 0, Qt::AlignVCenter);
     }
 
-    // Turn 16 (user): the middle is a LAYOUT, not one rich-text label —
-    // every die is its own QLabel so a hover on ONE block die shows THAT
-    // die's tooltip (1 Player Down ... 6 POW). (Rich text <img> cannot
-    // carry per-image tooltips.)
-    // Round 16: a FLOW layout (LogMidLayout) — long lines WRAP ("possiamo
-    // andare a capo qualche volta") instead of being clipped mid-word.
+    // The middle is a LAYOUT, not one rich-text label: every die is its
+    // own QLabel so a hover on ONE block die shows THAT die's tooltip (1
+    // Player Down ... 6 POW) — rich text <img> cannot carry per-image
+    // tooltips. It is a FLOW layout (LogMidLayout): long lines WRAP
+    // instead of being clipped mid-word.
     const MidParts parts = splitMiddle(line);
     auto *mid = new QWidget(row);
     auto *ml = new LogMidLayout(3, 2);
@@ -705,11 +696,11 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
         }
     }
 
-    // Round 16: MINIMUM, not fixed — a wrapped row is taller than kRowH
-    // ("andare a capo"), a short one keeps the classic 30px rhythm.
+    // MINIMUM, not fixed — a wrapped row is taller than kRowH, a short one
+    // keeps the classic 30px rhythm.
     row->setMinimumHeight(kRowH);
     m_stackLayout->insertWidget(m_stackLayout->count() - 1, row); // before the stretch
-    settleScroll(); // turn 9: only when the user is (back) at the bottom
+    settleScroll(); // only when the user is (back) at the bottom
 
     // Plain dump: actor + text + "→ defender" (the defender is part of the
     // visible line, so it belongs in the plain form too).
@@ -721,8 +712,8 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     while (m_plain.size() > kMaxEntries)
         m_plain.removeFirst();
 
-    // (Turn 9: the scroll happens right after the row is inserted —
-    // m_stick is the live user-driven stick-to-bottom state.)
+    // (The scroll happens right after the row is inserted — m_stick is
+    // the live user-driven stick-to-bottom state.)
 }
 
 void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
@@ -736,13 +727,13 @@ void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorNa
 void ActionLogWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
-    // Manual inner geometry (turn 9): keep the stack as wide as the
-    // viewport and at least as tall as the content.
+    // Manual inner geometry: keep the stack as wide as the viewport and at
+    // least as tall as the content.
     if (m_scroll && m_stack && m_stackLayout) {
-        // Round 16 (wrap): same as settleScroll — lay the rows out at the
-        // REAL width first, then measure the content from the actual row
-        // heights (a flow row's height depends on its width; the sizeHint
-        // cache is not trustworthy mid-resize).
+        // Same as settleScroll — lay the rows out at the REAL width first,
+        // then measure the content from the actual row heights (a flow
+        // row's height depends on its width; the sizeHint cache is not
+        // trustworthy mid-resize).
         const int w = m_scroll->viewport()->width();
         m_stack->setGeometry(0, 0, w, qMax(1, m_stack->height()));
         m_stackLayout->activate();

@@ -78,8 +78,6 @@ int main(int argc, char **argv)
     fill(ta, ainfo, apos);
 
     FieldView field;
-    field.setHomeTeamName(th.value(QStringLiteral("teamName")).toString());
-    field.setAwayTeamName(ta.value(QStringLiteral("teamName")).toString());
     field.setHomeColor(QColor(0x34, 0x6c, 0xb4));
     field.setAwayColor(QColor(0xc1, 0x98, 0x37));
     field.setHomeRace(th.value(QStringLiteral("race")).toString());
@@ -142,8 +140,6 @@ int main(int argc, char **argv)
     if (ball.size() == 2)
         field.setBall(ball.at(0).toInt(), ball.at(1).toInt(),
                       fm.value(QStringLiteral("ballInPlay")).toBool(true));
-    field.setTurn(g.value(QStringLiteral("turnDataHome")).toObject()
-                      .value(QStringLiteral("turnNr")).toInt(1));
     field.setWeather(fm.value(QStringLiteral("weather")).toString());
     if (argc > 3)
         field.setWeather(QString::fromLocal8Bit(argv[3]));

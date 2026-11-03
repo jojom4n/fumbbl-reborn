@@ -1,15 +1,16 @@
 // =============================================================================
 // MainWindow — implementation
 //
-// HUD layout (phase 10): the field fills the whole window; the panels are
-// translucent FloatingPanels that float over it (draggable by their title
-// strip, resizable by their edges, hideable with ×). Layout persistence is a
-// small JSON (positions AND sizes) in QSettings; "Reset Layout" restores the
+// HUD layout: the field fills the whole window; the panels are translucent
+// FloatingPanels that float over it (draggable by their title strip,
+// resizable by their edges, hideable with ×). Layout persistence is a small
+// JSON (positions AND sizes) in QSettings; "Reset Layout" restores the
 // default arrangement with the default sizes.
 // =============================================================================
 #include "ui/mainwindow.h"
 
 #include "core/assets.h"
+#include "core/fumbblws.h"
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
@@ -74,10 +75,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_model = new GameModel(this);
     m_session = new SpectatorSession(this);
 
-    // Round 13 turn 4 (test-caught bug): QElapsedTimer::elapsed() on a timer
-    // that was NEVER started returns a huge NEGATIVE value in Qt 6 — the
-    // report-dedup window test (now - last < window) was then true for every
-    // report and the action log stayed empty. Start the clock up front.
+    // QElapsedTimer::elapsed() on a timer that was NEVER started returns a
+    // huge NEGATIVE value in Qt 6 — the report-dedup window test (now -
+    // last < window) was then true for every report and the action log
+    // stayed empty. Start the clock up front.
     m_clock.start();
 
     // Team logo downloads (field watermarks + header crests).
@@ -104,11 +105,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Field click-to-select (empty id = clicked an empty square = deselect).
     connect(m_field, &FieldView::playerClicked, this, &MainWindow::onFieldPlayerClicked);
-    // Hover card (round 8): the player info follows the mouse over the
-    // field / bench and sits on the opposite side of the field.
+    // Hover card: the player info follows the mouse over the field / bench
+    // and sits on the opposite side of the field.
     connect(m_field, &FieldView::playerHovered, this, &MainWindow::onPlayerHovered);
-    // Round 13: hover a player NAME in the action log -> show that player's
-    // card (like the field hover/click). Empty id = the mouse left the name.
+    // Hover a player NAME in the action log -> show that player's card
+    // (like the field hover/click). Empty id = the mouse left the name.
     connect(m_actionLog, &ActionLogWidget::playerHoveredId, this,
             [this](const QString &playerId) {
                 if (playerId.isEmpty()) {
@@ -118,11 +119,16 @@ MainWindow::MainWindow(QWidget *parent)
                 showPlayerCardById(playerId);
             });
 
-    connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
+    // The chat input is relayed to the session (clientTalk); no-op while
+    // not joined.
+    connect(this, &MainWindow::chatMessageSent, this,
+            [this](const QString &message) {
+                if (m_session && m_session->isJoined())
+                    m_session->ws()->sendChat(message);
+            });
     connect(m_connectAction, &QAction::triggered, this, &MainWindow::connectionRequested);
     // The menu action relays into the connectionRequested signal; this is
-    // what turns it into the actual dialog (missing since phase 6 — the
-    // menu entry was silently dead).
+    // what turns it into the actual dialog.
     connect(this, &MainWindow::connectionRequested, this, &MainWindow::onConnectRequested);
 }
 
@@ -158,11 +164,11 @@ void MainWindow::createMenus()
     fileMenu->addAction(m_quitAction);
 
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
-    // Round 8: rosters gone (field box strips cover box/KO/reserve), action
-    // log and chat are pinned overlays (always visible, not toggleable).
-    // Turn 16 (user): "Player info" is NOT in the menu anymore — the human
-    // player must not be able to toggle it: the card works (and must work)
-    // on HOVER over a player, and only the hover drives it.
+    // Rosters are not in the menu (the field box strips cover box/KO/
+    // reserve); action log and chat are pinned overlays (always visible,
+    // not toggleable). "Player Info" is NOT in the menu either: the card
+    // works (and must work) on HOVER over a player, and only the hover
+    // drives it.
     viewMenu->addAction(m_panelViewActions.value(QStringLiteral("protocol")));
     viewMenu->addSeparator();
     viewMenu->addAction(m_resetLayoutAction);
@@ -198,11 +204,11 @@ void MainWindow::createToolbar()
     addToolBar(Qt::TopToolBarArea, m_headerToolbar);
     m_headerView = new HeaderView(m_headerToolbar);
     m_headerToolbar->addWidget(m_headerView);
-    // Turn 12 (user): no header dots (or header content) before a game
-    // state arrives — the whole strip is hidden until the first sync.
+    // No header content before a game state arrives — the whole strip is
+    // hidden until the first sync.
     m_headerToolbar->setVisible(false);
-    // Round 8: no END TURN — this is a spectator client; ending the turn is
-    // not part of spectating (the button is gone from HeaderView itself).
+    // No END TURN — this is a spectator client; ending the turn is not part
+    // of spectating (the button is gone from HeaderView itself).
 }
 
 void MainWindow::createCentralWidget()
@@ -245,10 +251,10 @@ void MainWindow::createPanels()
     Q_UNUSED(homeAccent)
     Q_UNUSED(awayAccent)
 
-    // Player info: a FloatingPanel, but round 8 drives it from HOVER and
-    // pins it to the side of the field OPPOSITE the hovered player.
-    // Round 10: the hover card is CHROMELESS — no "Player Info" title text,
-    // no close button; the card content fills the whole panel.
+    // Player info: a FloatingPanel driven from HOVER, pinned to the side of
+    // the field OPPOSITE the hovered player. The hover card is CHROMELESS —
+    // no "Player Info" title text, no close button; the card content fills
+    // the whole panel.
     m_playerInfo = new PlayerInfoWidget(m_stage);
     FloatingPanel *playerInfoPanel =
         makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
@@ -258,19 +264,21 @@ void MainWindow::createPanels()
     // overlays with their own translucent chrome — NOT draggable panels.
     m_actionLog = new ActionLogWidget(m_stage);
     m_actionLog->setFixedWidth(560);
-    // Round 10: the action log EXPANDS UPWARD — it stays pinned to the
-    // bottom, so when the chevron grows it taller, re-pin it: the top edge
-    // lifts (instead of the round-9 bug where it grew downwards off the
-    // visible bottom of the screen).
+    // The action log EXPANDS UPWARD — it stays pinned to the bottom, so
+    // when the chevron grows it taller, re-pin it: the top edge lifts
+    // (growing downwards would run off the visible bottom of the screen).
     connect(m_actionLog, &ActionLogWidget::expandedChanged, this,
             [this](bool) { pinOverlays(); });
 
     m_chat = new ChatWidget(m_stage);
     m_chat->setFixedSize(560, 250);
-    // Round 9: the chat collapses to the mockup pill (128x52) — re-pin the
-    // corner overlay whenever the size changes.
+    // Relay the chat input to the session (the send is a no-op while
+    // not joined — see the chatMessageSent relay in the connect block).
+    connect(m_chat, &ChatWidget::messageSent, this, &MainWindow::chatMessageSent);
+    // The chat collapses to the pill (128x52) — re-pin the corner overlay
+    // whenever the size changes.
     connect(m_chat, &ChatWidget::collapsedChanged, this, [this](bool) { pinOverlays(); });
-    // Round 10: the chat starts COLLAPSED (mockup F shows the pill).
+    // The chat starts COLLAPSED (the mockup shows the pill).
     m_chat->setCollapsed(true);
 
     m_protocolLog = new QPlainTextEdit(m_stage);
@@ -437,8 +445,6 @@ void MainWindow::setTeams(const QString &homeName, const QString &awayName)
         m_headerView->setRaces(m_model->teamHomeRace(), m_model->teamAwayRace());
         m_headerView->setCoaches(m_model->teamHomeCoach(), m_model->teamAwayCoach());
     }
-    m_field->setHomeTeamName(homeName);
-    m_field->setAwayTeamName(awayName);
     m_field->setHomeColor(PlayerInfoWidget::teamColor(homeName, true));
     m_field->setAwayColor(PlayerInfoWidget::teamColor(awayName, false));
     if (m_model) {
@@ -455,7 +461,6 @@ void MainWindow::setScore(int home, int away)
 void MainWindow::setTurn(int turn)
 {
     m_headerView->setTurn(turn, m_model ? m_model->half() : 1);
-    m_field->setTurn(turn);
 }
 
 void MainWindow::setSpectators(int count)
@@ -473,13 +478,11 @@ void MainWindow::setConnectionStatus(const QString &status, bool connected)
 
 void MainWindow::appendDiceLog(const DiceLogLine &line)
 {
-    // Round 13 (user): the 4th/5th args are the RAW ids — the log's name
-    // labels are HOVERABLE and need the id to open the player's card.
-    // (The old call left them empty, so hovering a name did nothing.)
-    //
-    // Round 13 turn 4 (BB3-like log): names are tinted with the TEAM color
-    // (like Blood Bowl 3's log), and the is-player flags tell the log which
-    // names are hoverable (a TEAM id has no card — its name stays plain).
+    // The 4th/5th args are the RAW ids — the log's name labels are
+    // HOVERABLE and need the id to open the player's card.
+    // Names are tinted with the TEAM color (like Blood Bowl 3's log), and
+    // the is-player flags tell the log which names are hoverable (a TEAM
+    // id has no card — its name stays plain).
     DiceLogLine l = line; // the model is authoritative: recompute the flags
     l.actorIsPlayer = l.actorId.isEmpty() || m_model->findPlayerById(l.actorId);
     l.defenderIsPlayer = l.defenderId.isEmpty() || m_model->findPlayerById(l.defenderId);
@@ -532,13 +535,12 @@ void MainWindow::applyModelToUi()
 
     // Header (Mockup F): reroll dots, on-turn gold emphasis, weather, team
     // accents — all straight from the model.
-    // Turn 12 (user): N dots = the team's rerolls (0..6); gold while
-    // available this turn, white once used (turnData.reRolls).
+    // N dots = the team's rerolls (0..6); gold while available this turn,
+    // white once used (turnData.reRolls).
     m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway(),
                              m_model->turnReRollsHome(), m_model->turnReRollsAway());
-    // Turn 12 (user: "al client startup non ci siano dei puntini"): the
-    // header only exists once a game state has loaded — this function is
-    // only reached after initialize(), so make the strip visible now.
+    // The header strip exists only once a game state has loaded — this
+    // function is only reached after initialize(), so make it visible now.
     m_headerToolbar->setVisible(true);
     m_headerView->setHomePlaying(m_model->homePlaying());
     m_headerView->setWeather(m_model->weather());
@@ -570,10 +572,10 @@ void MainWindow::applyModelToUi()
     }
     m_field->setPlayers(homeTokens, awayTokens);
 
-    // Round 13: the actor's CUMULATIVE move trail (one polyline per move
-    // action, drawn progressively behind the player as the server steps him
-    // square by square; cleared when the actor changes or a new turn
-    // starts — see GameModel::moveTrace()).
+    // The actor's CUMULATIVE move trail (one polyline per move action,
+    // drawn progressively behind the player as the server steps him square
+    // by square; cleared when the actor changes or a new turn starts —
+    // see GameModel::moveSegments()).
     m_field->setMoveTrace(m_model->moveSegments(),
                           m_model->blockStepMarks());
 
@@ -591,13 +593,13 @@ void MainWindow::applyModelToUi()
             e.positionName = pl.position;
             e.race = race;
             e.state = pl.state;
-            e.number = pl.number; // turn 5: number badge on the bench face
+            e.number = pl.number; // number badge on the bench face
             out.append(e);
         }
-        // Turn 15 (user, point 13): the dugout is SORTED — reserves first,
-        // then KO (downed, state base 5), then injured (badly hurt 6 /
-        // serious injury 7); the rest (dead/banned) last. Roster order is
-        // kept inside each group (stable sort).
+        // The dugout is SORTED: reserves first, then KO (downed, state
+        // base 5), then injured (badly hurt 6 / serious injury 7); the rest
+        // (dead/banned) last. Roster order is kept inside each group
+        // (stable sort).
         // PlayerState bases (ffb-common PlayerState.java):
         //   5 KNOCKED_OUT, 6 BADLY_HURT, 7 SERIOUS_INJURY, 8 RIP, 9 RESERVE
         const auto rank = [](int state) {
@@ -619,40 +621,39 @@ void MainWindow::applyModelToUi()
     };
     m_field->setBoxes(boxEntries(true), boxEntries(false));
 
-    // Round 12: the field rim GLOW is the REMOTE human's selection — it
-    // follows the game state's actingPlayer (set live by the
-    // actingPlayerSetPlayerId model change when the coach picks a player to
-    // act, cleared when the action ends). The spectator does NOT select
-    // players: clicks only drive the info card.
+    // The field rim GLOW is the REMOTE human's selection — it follows the
+    // game state's actingPlayer (set live by the actingPlayerSetPlayerId
+    // model change when the coach picks a player to act, cleared when the
+    // action ends). The spectator does NOT select players: clicks only
+    // drive the info card.
     const QString acting = m_model->activePlayerId();
     if (!acting.isEmpty() && m_model->findPlayerById(acting))
         m_field->setSelectedPlayer(acting);
     else
         m_field->setSelectedPlayer(QString());
 
-    // Round 13 turn 4 (user): the RED glow on the player being blocked
-    // (armed by the blockRoll/block report, cleared by the model when the
-    // block resolves).
-    // Turn 16 (user): a FOUL target is red-glow-only (no helmet/die marker
-    // between the pair — there is no die in a foul).
+    // The RED glow on the player being blocked (armed by the blockRoll/
+    // block report, cleared by the model when the block resolves). A FOUL
+    // target is red-glow-only (no helmet/die marker between the pair —
+    // there is no die in a foul).
     if (m_model->blockGlowOnly())
         m_field->setBlockMarker(QString(), m_model->blockTargetId(), 0);
     else
         m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
                                 m_model->blockDieFace());
 
-    // Turn 13 (user, "come su FUMBBL"): the per-turn token marks, straight
-    // from the model. (The move numbers are derived by the field view from
-    // the move trace itself: number k sits BETWEEN step k's two cells.)
+    // The per-turn token marks ("come su FUMBBL"), straight from the
+    // model. (The move numbers are derived by the field view from the move
+    // trace itself: number k sits BETWEEN step k's two cells.)
     m_field->setActedPlayers(m_model->actedThisTurn());
     m_field->setBlitzingPlayer(m_model->blitzingPlayerId());
-    // Turn 14: the pass receiver's WHITE glow (fieldModelSetTargetSelectionState
+    // The pass receiver's WHITE glow (fieldModelSetTargetSelectionState
     // SELECTED -> model->passTargetId()).
     m_field->setPassTarget(m_model->passTargetId());
-    // Turn 15 (user, point 11): the KICKOFF flight — the model bumps its
-    // seq when the kickoff landing cell arrives (the wire sends only the
-    // landing; the trajectory + bounces + kicker glow are synthesized in
-    // the field view).
+    // The KICKOFF flight — the model bumps its seq when the kickoff
+    // landing cell arrives (the wire sends only the landing; the
+    // trajectory + bounces + kicker glow are synthesized in the field
+    // view).
     if (m_model->kickoffSeq() != m_lastKickoffSeq) {
         m_lastKickoffSeq = m_model->kickoffSeq();
         m_field->beginKickoffFlight(m_model->kickoffOrigin(),
@@ -661,8 +662,8 @@ void MainWindow::applyModelToUi()
 
     // The info card tracks the player it currently shows: a model sync
     // refreshes its content (state changes to box, injuries, ...) and a
-    // player removed from the game hides the card (round 12: the card is
-    // opened by hover/click, but its DATA stays live).
+    // player removed from the game hides the card (the card is opened by
+    // hover/click, but its DATA stays live).
     if (m_playerInfo && !m_playerInfo->shownPlayerId().isEmpty()) {
         const FFBPlayer *cp = m_model->findPlayerById(m_playerInfo->shownPlayerId());
         if (cp)
@@ -680,8 +681,8 @@ void MainWindow::applyModelToUi()
     // Weather: drives the field's rain overlay ("Nice Weather" = none).
     m_field->setWeather(m_model->weather());
 
-    // Round 8: no roster panels — box/bench/KO/reserve are visible in the
-    // field's box strips (setBoxes above).
+    // No roster panels: box/bench/KO/reserve live in the field's box
+    // strips (setBoxes above).
 }
 
 static QString reportFingerprint(const QJsonObject &report)
@@ -690,9 +691,8 @@ static QString reportFingerprint(const QJsonObject &report)
     // event re-sent) share a fingerprint; two genuinely different events
     // almost never do (different dice / players / ids).
     //
-    // Round 13 turn 8 (user: "tiro su armatura e tiro su injury viene
-    // ripetuto"): the server sends the SAME injury report TWICE — first
-    // with skipInjuryParts=CAS, then skipInjuryParts=EVERYTHING_BUT_CAS
+    // The server sends the SAME injury report TWICE — first with
+    // skipInjuryParts=CAS, then skipInjuryParts=EVERYTHING_BUT_CAS
     // (ground truth: tests/live_reports_capture.jsonl, def 18416181, both
     // sends armorRoll [1,2]). skipInjuryParts is a DISPLAY-CONTROL flag,
     // not event data — hash the report WITHOUT it, so the re-send is
@@ -711,8 +711,7 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
     if (!changes.isEmpty())
         m_model->applyModelChanges(changes); // emits stateUpdated -> applyModelToUi
 
-    // ROUND 13 TURN 4 (user: "Armor broken e Injury vengono ripetuti") — the
-    // FUMBBL server re-sends reports (a failed step is retried and its
+    // The FUMBBL server re-sends reports (a failed step is retried and its
     // reports flow again; re-joins re-sync). The official client does not
     // dedupe; we do, three ways:
     //  1. A batch of >= kResyncBatch reports while the log is already
@@ -740,23 +739,22 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         m_reportFpTimes.insert(fp, now);
         ++m_loggedReportCount;
 
-        // Round 13 turn 8 (user, FINAL rule): the RED GLOW on the DEFENDER
-        // (the player being blocked) must be on for the whole block action
-        // and die when the ATTACKER's blue actor glow disappears. Ground
-        // truth (game_1957772 capture): `blockRoll` carries defenderId =
-        // NULL — the reports that DO carry it are `block` and
-        // `blockChoice` (sequence: selectBlitzTarget -> block -> blockRoll
-        // -> blockChoice -> injury). Arm on those; the attacker is the
-        // model's current actor (the block reports arrive while the
-        // attacker is the actor). NOT on `injury`: it lands with the
-        // resolution changes (actor already gone) and would re-arm a dead
-        // glow. Re-arming on the same defender is a no-op; a new defender
-        // replaces the glow — one red glow at a time, no stacking (user:
-        // multiple blocks per turn must not stack glows).
+        // The RED GLOW on the DEFENDER (the player being blocked) must be
+        // on for the whole block action and die when the ATTACKER's blue
+        // actor glow disappears. Ground truth (game_1957772 capture):
+        // `blockRoll` carries defenderId = NULL — the reports that DO carry
+        // it are `block` and `blockChoice` (sequence: selectBlitzTarget ->
+        // block -> blockRoll -> blockChoice -> injury). Arm on those; the
+        // attacker is the model's current actor (the block reports arrive
+        // while the attacker is the actor). NOT on `injury`: it lands with
+        // the resolution changes (actor already gone) and would re-arm a
+        // dead glow. Re-arming on the same defender is a no-op; a new
+        // defender replaces the glow — one red glow at a time, no stacking
+        // (multiple blocks per turn must not stack glows).
         const QString rid = report.value(QStringLiteral("reportId")).toString();
-        // Turn 16 (user: "il target del blitz fallo gloware di rosso"): the
-        // foul's VICTIM (the report's defenderId — see ReportFoul ground
-        // truth) gets the block-defender's red glow, glow-only (no marker).
+        // The foul's VICTIM (the report's defenderId — see ReportFoul
+        // ground truth) gets the block-defender's red glow, glow-only (no
+        // marker).
         if (rid == QLatin1String("foul")) {
             const QString victim =
                 report.value(QStringLiteral("defenderId")).toString();
@@ -769,23 +767,23 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
             || rid == QLatin1String("blockChoice")) {
             const QString victim = report.value(QStringLiteral("defenderId")).toString();
-            // Turn 15 (user, point 8): FRENZY's second block. The server
-            // re-runs the whole block sequence for the same actor (StepEnd
-            // Blocking pushes a fresh Block sequence, same defender). On a
-            // NEW `block` report the previous choice is STALE — reset the
-            // die face so the marker starts as the pending-die helmet
-            // again, then the new blockRoll/blockChoice re-fill it.
+            // FRENZY's second block: the server re-runs the whole block
+            // sequence for the same actor (StepEnd Blocking pushes a fresh
+            // Block sequence, same defender). On a NEW `block` report the
+            // previous choice is STALE — reset the die face so the marker
+            // starts as the pending-die helmet again, then the new
+            // blockRoll/blockChoice re-fill it.
             if (rid == QLatin1String("block")) {
                 m_model->setBlockDieFace(0);
-                // Round 15 (user): the block COSTS A MOVEMENT — the `block`
-                // report starts a block sequence (also a FRENZY's second
-                // one): reserve its number and where it is painted.
+                // The block COSTS A MOVEMENT — the `block` report starts a
+                // block sequence (also a FRENZY's second one): reserve its
+                // number and where it is painted.
                 if (!victim.isEmpty())
                     m_model->noteBlockStep(victim);
             }
             QString target = victim;
             if (target.isEmpty() && !m_model->blockTargetId().isEmpty())
-                // Turn 15: the `blockRoll` report carries defenderId NULL
+                // The `blockRoll` report carries defenderId NULL
                 // (capture-verified) — for a frenzy second block this is
                 // the only arming chance between the `block` report and
                 // the `blockChoice`: reuse the current target so the
@@ -793,9 +791,9 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
                 target = m_model->blockTargetId();
             if (!target.isEmpty()) {
                 m_model->setBlockTargetId(target);
-                // Turn 11: the blockChoice carries the CHOSEN die:
-                // blockRoll[] + diceIndex (capture-verified). The marker
-                // between attacker/defender switches helmet -> die symbol.
+                // The blockChoice carries the CHOSEN die: blockRoll[] +
+                // diceIndex (capture-verified). The marker between
+                // attacker/defender switches helmet -> die symbol.
                 if (rid == QLatin1String("blockChoice")) {
                     const QJsonArray roll =
                         report.value(QStringLiteral("blockRoll")).toArray();
@@ -811,28 +809,25 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
             }
         }
 
-        // Round 15 (user: "in caso di go for it, mostriamo in rosso i
-        // movimenti extra"): a SUCCESSFUL go-for-it roll — the player's
-        // next new route is the GFI extra move, drawn red on the trail.
+        // A SUCCESSFUL go-for-it roll: the player's next new route is the
+        // GFI extra move, drawn red on the trail.
         if (rid == QLatin1String("goForItRoll")
             && report.value(QStringLiteral("successful")).toBool())
             m_model->setGoForItPending(
                 report.value(QStringLiteral("playerId")).toString());
 
-        // Structured dice: the action log renders the die faces (round 8:
-        // "non ci mettere i numeri: metti i dadi") and resolved names.
-        // Turn 15 (official BlockMessage): "X blocks Y:" — the `block`
-        // report carries only the defender; the attacker is the current
-        // actor (the block reports arrive while the attacker is the actor).
+        // Structured dice: the action log renders the die faces (never bare
+        // numbers) and resolved names. Official BlockMessage: "X blocks Y:" —
+        // the `block` report carries only the defender; the attacker is the
+        // current actor (the block reports arrive while the attacker is the
+        // actor).
         QVector<DiceLogLine> lines = parseReport(report);
-        // Turn 16 (user): the WHOLE block sequence is titled with the acting
-        // player — the blitzer for a blitz block ("la riga con il risultato
-        // dei dadi di blocco ... intitolata con il nome del giocatore che
-        // blitza"), the attacker for a regular block. The `block`/`blockRoll`/
-        // `blockChoice` reports carry the choosing TEAM (or nothing); the
-        // `foul` report carries only the VICTIM. In all cases the acting
-        // player is filled from the model (the reports arrive while the
-        // actor is the one performing the action).
+        // The WHOLE block sequence is titled with the acting player — the
+        // blitzer for a blitz block, the attacker for a regular block. The
+        // `block`/`blockRoll`/`blockChoice` reports carry the choosing TEAM
+        // (or nothing); the `foul` report carries only the VICTIM. In all
+        // cases the acting player is filled from the model (the reports
+        // arrive while the actor is the one performing the action).
         if (rid == QLatin1String("block") || rid == QLatin1String("blockRoll")
             || rid == QLatin1String("blockChoice") || rid == QLatin1String("foul")) {
             const QString attacker = m_model->activePlayerId();
@@ -857,14 +852,12 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
     }
 }
 
-// Resolves a raw server id to a display name (round 8: "ci metti i nomi
-// giusti" — no numeric ids in the action log). Player ids become
-// "Name (number)"; TEAM ids (prayers, bribes, throw-ins, team captain)
-// become the team name.
-// Round 9 (user rule: "MAI id numerici a schermo"): a PURELY NUMERIC id the
-// model cannot resolve is DROPPED (empty string) instead of being printed
-// raw. Plain name strings (e.g. the coach in timeoutEnforced, or the
-// teamName of the bb2025 prayerRoll) pass through untouched.
+// Resolves a raw server id to a display name (no numeric ids in the
+// action log). Player ids become "Name (number)"; TEAM ids (prayers,
+// bribes, throw-ins, team captain) become the team name. A PURELY NUMERIC
+// id the model cannot resolve is DROPPED (empty string) instead of being
+// printed raw. Plain name strings (e.g. the coach in timeoutEnforced, or
+// the teamName of the bb2025 prayerRoll) pass through untouched.
 QString MainWindow::resolveId(const QString &id) const
 {
     if (id.isEmpty() || !m_model)
@@ -883,8 +876,8 @@ QString MainWindow::resolveId(const QString &id) const
     return numeric ? QString() : id; // never print an unresolved numeric id
 }
 
-// Round 10: the match list carries logo paths like "/i/486335" — resolve
-// them against the FUMBBL CDN base into an absolute URL.
+// The match list carries logo paths like "/i/486335" — resolve them
+// against the FUMBBL CDN base into an absolute URL.
 static QString resolveLogoUrl(const QString &rel)
 {
     if (rel.isEmpty())
@@ -907,9 +900,9 @@ void MainWindow::loadTeamLogos()
 {
     if (!m_model || !m_logoNam)
         return;
-    // Round 10: the GAME STATE often carries logoUrl = null, but the match
-    // list (fetched by the Spectate dialog) always has the team logos —
-    // fall back to it when the state has none.
+    // The GAME STATE often carries logoUrl = null, but the match list
+    // (fetched by the Spectate dialog) always has the team logos — fall
+    // back to it when the state has none.
     QString homeUrl = m_model->teamHomeLogoUrl();
     QString awayUrl = m_model->teamAwayLogoUrl();
     if (homeUrl.isEmpty())
@@ -922,9 +915,8 @@ void MainWindow::loadTeamLogos()
                                       "and no match-list logo)"));
 
     const auto fetch = [this](const QString &url, int side) {
-        // Round 9: logo fetching was invisible (user: "LOGHI TEAM NON
-        // VISIBILI") — log every step so a live run shows exactly where it
-        // breaks (URL composition / fetch error / image decode).
+        // Log every step so a live run shows exactly where a fetch breaks
+        // (URL composition / fetch error / image decode).
         appendProtocol(QStringLiteral("< "),
                        QStringLiteral("logo request (%1): %2")
                            .arg(side == 0 ? QStringLiteral("home") : QStringLiteral("away"))
@@ -959,9 +951,8 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
         reply->deleteLater();
         return;
     }
-    // Round 9: capture the content-type BEFORE deleting the reply (the old
-    // code deleted it first and the failure path was completely silent — a
-    // 404 page or an unexpected format would be invisible).
+    // Capture the content-type BEFORE deleting the reply (the failure path
+    // must be visible: a 404 page or an unexpected format).
     const QString contentType =
         reply->header(QNetworkRequest::ContentTypeHeader).toString();
     const QByteArray data = reply->readAll();
@@ -977,13 +968,13 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
     appendProtocol(QStringLiteral("< "),
                    QStringLiteral("logo ok: %1x%2 (%3 bytes)")
                        .arg(img.width()).arg(img.height()).arg(data.size()));
-    // Round 13 (user point 10): the fetched logo often comes with a FLAT
-    // backdrop (white is the common case, but any color — the user may also
-    // upload their own image) which painted an ugly opaque box behind the
-    // field watermark. Key the backdrop out: the color is estimated from the
-    // image border (not assumed white) and removed by a border flood fill;
-    // images that already have real alpha, or whose border is not a flat
-    // backdrop, are left untouched.
+    // The fetched logo often comes with a FLAT backdrop (white is the
+    // common case, but any color — the user may also upload their own
+    // image), which paints an ugly opaque box behind the field watermark.
+    // Key the backdrop out: the color is estimated from the image border
+    // (not assumed white) and removed by a border flood fill; images that
+    // already have real alpha, or whose border is not a flat backdrop, are
+    // left untouched.
     const QImage keyed = assets::keyBackground(img);
     if (!img.hasAlphaChannel() && keyed.hasAlphaChannel()) {
         // Log only when a REAL amount of backdrop was removed (keyBackground
@@ -1082,9 +1073,9 @@ void MainWindow::openSpectateDialog()
             [this, &dialog](const QString &clientId, const QString &clientSecret,
                             const QString &username, int gameId)
             {
-                // Round 10: remember the match list's team logos NOW (the
-                // dialog is destroyed when exec() returns) — they are the
-                // fallback when the game state's logoUrl is null.
+                // Remember the match list's team logos NOW (the dialog is
+                // destroyed when exec() returns) — they are the fallback
+                // when the game state's logoUrl is null.
                 const QPair<QString, QString> logos = dialog.selectedTeamLogos();
                 m_fallbackHomeLogo = logos.first;
                 m_fallbackAwayLogo = logos.second;
@@ -1107,12 +1098,10 @@ void MainWindow::clearMatchUi()
     m_field->setPlayers({}, {});
     m_field->setBoxes({}, {});
     m_field->setBall(-1, -1, false);
-    m_field->setHomeTeamName(QString());
-    m_field->setAwayTeamName(QString());
     m_actionLog->clearLog();
     m_chat->clearChat();
-    // Round 13 turn 4: a new match = a fresh dedup universe (report
-    // fingerprints from the old game must not suppress this game's reports).
+    // A new match = a fresh dedup universe (report fingerprints from the
+    // old game must not suppress this game's reports).
     m_reportFpTimes.clear();
     m_loggedReportCount = 0;
     hidePlayerCard();
@@ -1121,7 +1110,7 @@ void MainWindow::clearMatchUi()
     setTurn(1);
     m_headerView->setTurnElapsedSeconds(0);
     m_headerView->setRerolls(0, 0, 0, 0);
-    // Turn 12: the header goes back to hidden until a new game loads.
+    // The header goes back to hidden until a new game loads.
     m_headerToolbar->setVisible(false);
     m_headerView->setWeather(QString());
     m_headerView->setLogos(QPixmap(), QPixmap());
@@ -1135,10 +1124,10 @@ void MainWindow::clearMatchUi()
 
 void MainWindow::onFieldPlayerClicked(const QString &playerId)
 {
-    // Round 12: the spectator does not select players (the rim glow is the
-    // remote coach's selection, model-driven). Clicking a player only shows
-    // its info card — exactly like hovering it. Clicking empty field hides
-    // the card; the glow is never touched by local input.
+    // The spectator does not select players (the rim glow is the remote
+    // coach's selection, model-driven). Clicking a player only shows its
+    // info card — exactly like hovering it. Clicking empty field hides the
+    // card; the glow is never touched by local input.
     if (playerId.isEmpty()) {
         if (m_playerInfo)
             m_playerInfo->showPlaceholder();
@@ -1152,14 +1141,14 @@ void MainWindow::showPlayerCardById(const QString &playerId)
     const FFBPlayer *p = m_model ? m_model->findPlayerById(playerId) : nullptr;
     if (!p)
         return; // unknown id (stale click)
-    // Round 8: fill + positioning live in showPlayerCard (shared with the
-    // hover path).
+    // Fill + positioning live in showPlayerCard (shared with the hover
+    // path).
     showPlayerCard(p, p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19));
 }
 
 // ---------------------------------------------------------------------------
-// Hover player card (round 8): appears over the mouse, far from the player,
-// on the opposite side of the field.
+// Hover player card: appears over the mouse, far from the player, on the
+// opposite side of the field.
 // ---------------------------------------------------------------------------
 void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
 {
@@ -1168,8 +1157,7 @@ void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
         return;
     }
     const FFBPlayer *p = nullptr;
-    // ROUND 13 TURN 8 CRASH FIX (user: the client crashed on hover, "soprattutto
-    // quelli del dugout"): the bench path used to hold `p = &c` where c is an
+    // Crash fix: the bench path used to hold `p = &c` where c is an
     // element of a LOCAL roster COPY (rosterHome()/rosterAway() return by
     // value) — that copy died at the end of the else-if block and the later
     // p->hasCoords / showPlayerCard(p) reads were USE-AFTER-FREE (valgrind:
@@ -1194,8 +1182,8 @@ void MainWindow::onPlayerHovered(const FieldView::PlayerToken &token)
         hidePlayerCard();
         return;
     }
-    // Round 12: hovering ONLY shows the card. The rim glow is the REMOTE
-    // coach's selection (model-driven) — no local mouse input moves it.
+    // Hovering ONLY shows the card. The rim glow is the REMOTE coach's
+    // selection (model-driven) — no local mouse input moves it.
     const int fieldX = p->hasCoords ? p->fieldX : (p->sideHome ? 6 : 19);
     showPlayerCard(p, fieldX);
 }
@@ -1260,11 +1248,10 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
     // (~62px wide) and must stay visible.
     const int x = playerLeft ? sw - pw - 80 : 80;
 
-    // Round 11: size the card to its CONTENT. The old fixed height (the
-    // panel's current size, min 300) clipped the bottom of cards with many
-    // skills — the state/injury text ran off the card edge (user
-    // screenshot). Measure at the FINAL WIDTH so the skill-chip wrap height
-    // is accounted for, then clamp to the stage.
+    // Size the card to its CONTENT. A fixed height clipped the bottom of
+    // cards with many skills (the state/injury text ran off the card
+    // edge). Measure at the FINAL WIDTH so the skill-chip wrap height is
+    // accounted for, then clamp to the stage.
     panel->setGeometry(x, 20, pw, 100);
     panel->show();
     panel->raise();
@@ -1276,8 +1263,8 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
 
 void MainWindow::hidePlayerCard()
 {
-    // Round 12: hiding the card never touches the rim glow — the glow is
-    // the remote coach's selection, model-driven.
+    // Hiding the card never touches the rim glow — the glow is the remote
+    // coach's selection, model-driven.
     if (m_playerInfo)
         m_playerInfo->showPlaceholder();
     if (FloatingPanel *panel = panelFor(m_playerInfo))

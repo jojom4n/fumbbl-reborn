@@ -1,8 +1,6 @@
 // =============================================================================
-// ChatWidget — match chat (serverTalk / clientTalk), Mockup F restyle (r8)
+// ChatWidget — match chat (serverTalk / clientTalk), Mockup F.
 //
-// Round 9 (user: "CHAT = IDENTICA AL MOCKUP F + chevron di collasso TOTALE
-// + badge non letti"):
 //   * EXPANDED: the very translucent light card with BOLD SENDER (team
 //     accent when known) + ink text, input row at the bottom, and a small
 //     "CHAT" header with a collapse chevron (▾) — clicking it collapses the

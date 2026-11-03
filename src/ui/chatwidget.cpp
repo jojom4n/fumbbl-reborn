@@ -1,5 +1,5 @@
 // =============================================================================
-// ChatWidget — implementation (see chatwidget.h for the round-9 design)
+// ChatWidget — implementation (see chatwidget.h for the design)
 // =============================================================================
 #include "ui/chatwidget.h"
 
@@ -46,8 +46,8 @@ ChatWidget::ChatWidget(QWidget *parent)
     layout->setContentsMargins(8, 6, 8, 6);
     layout->setSpacing(6);
 
-    // Header strip (expanded only): "CHAT" + collapse chevron — round 9:
-    // the chevron collapses the chat DELTA to the mockup pill.
+    // Header strip (expanded only): "CHAT" + collapse chevron (the
+    // chevron collapses the chat to the pill).
     auto *headerRow = new QHBoxLayout();
     headerRow->setContentsMargins(0, 0, 0, 0);
     m_header = new QLabel(QStringLiteral("CHAT"), this);
@@ -165,7 +165,7 @@ void ChatWidget::paintEvent(QPaintEvent *)
         return;
     }
 
-    // --- Expanded: very translucent paper card (round 8) ------------------
+    // --- Expanded: very translucent paper card ---------------------------
     const QRectF r = QRectF(rect()).adjusted(1, 1, -1, -1);
     p.setPen(Qt::NoPen);
     p.setBrush(QColor(252, 252, 254, 165));
