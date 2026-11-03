@@ -27,6 +27,7 @@
 #include <QWidget>
 
 #include "core/assets.h"
+#include "core/gamemodel.h"
 #include "ui/rainsim.h"
 
 class FieldView : public QWidget
@@ -186,13 +187,19 @@ public:
     QPointF pan() const { return m_pan; } // tests
     void resetView();
 
-    // The actor's CUMULATIVE move trail (round 13): one polyline per move
-    // action, through the field cell centers, with an arrow at the end of
-    // each path. Empty = nothing drawn. See GameModel::moveTrace() for the
-    // persistence semantics (no timeout; appends per move; cleared when the
-    // actor changes or a new turn starts).
-    void setMoveTrace(const QVector<QVector<QPoint>> &paths);
-    QVector<QVector<QPoint>> moveTrace() const { return m_moveTrace; }
+    // The actor's CUMULATIVE move trail (round 13; round 15: continuous
+    // numbering across the whole action): one polyline per move route,
+    // through the field cell centers, with an arrow at the end of each
+    // path. The BETWEEN-CELLS step numbers (segment.stepNumbers) are
+    // continuous across routes of the same action; blockStepMarks are the
+    // blocks that cost a movement (their number is painted between the
+    // attacker's and the defender's cell). Go-for-it segments are drawn
+    // red. Empty = nothing drawn. See GameModel::moveSegments() for the
+    // persistence semantics (no timeout; appends per move; cleared when
+    // the actor changes or a new turn starts).
+    void setMoveTrace(const QVector<GameModel::MoveSegment> &segments,
+                      const QVector<GameModel::BlockStepMark> &marks);
+    QVector<GameModel::MoveSegment> moveSegments() const { return m_moveSegments; }
 
     QSize sizeHint() const override;
 
@@ -347,8 +354,10 @@ private:
     QPoint m_rightDragLast;
     bool m_rightDragging = false;
 
-    // Round 13: the actor's cumulative move trail (drawn under the tokens).
-    QVector<QVector<QPoint>> m_moveTrace;
+    // Round 13 (round 15: numbered segments + block marks): the actor's
+    // cumulative move trail, drawn under the tokens.
+    QVector<GameModel::MoveSegment> m_moveSegments;
+    QVector<GameModel::BlockStepMark> m_blockMarks;
 
     // Round 13 (user): per-square MOVEMENT ANIMATION. Tokens do not jump to
     // the new cell — they glide through the grid, square by square, like the

@@ -99,13 +99,21 @@ int main(int argc, char *argv[])
     }
 
     const auto dumpTrace = [&]() {
-        const auto paths = w.model()->moveTrace();
-        fprintf(stderr, "TRACE paths=%d\n", paths.size());
-        for (int pi = 0; pi < paths.size(); ++pi) {
-            fprintf(stderr, "  path %d: %d cells\n", pi, paths[pi].size());
-            for (const QPoint &c : paths[pi])
-                fprintf(stderr, "    (%d,%d)\n", c.x(), c.y());
+        const auto segs = w.model()->moveSegments();
+        fprintf(stderr, "TRACE segments=%d\n", segs.size());
+        for (int si = 0; si < segs.size(); ++si) {
+            fprintf(stderr, "  seg %d: gfi=%d cells:", si,
+                    segs[si].goForIt ? 1 : 0);
+            for (const QPoint &c : segs[si].cells)
+                fprintf(stderr, " (%d,%d)", c.x(), c.y());
+            fprintf(stderr, " numbers:");
+            for (int n : segs[si].stepNumbers)
+                fprintf(stderr, " %d", n);
+            fprintf(stderr, "\n");
         }
+        for (const GameModel::BlockStepMark &mk : w.model()->blockStepMarks())
+            fprintf(stderr, "  BLOCK n=%d (%d,%d)->(%d,%d)\n", mk.number,
+                    mk.from.x(), mk.from.y(), mk.to.x(), mk.to.y());
         const FFBPlayer *a = w.model()->findPlayerById(actor);
         fprintf(stderr, "  actor at (%d,%d)\n",
                 a ? a->fieldX : -1, a ? a->fieldY : -1);
@@ -123,10 +131,38 @@ int main(int argc, char *argv[])
                  outDir + "/" + name);
     };
 
+    // Emulate a fresh action window (live: a different player acts, or a
+    // new turn clears the trace — the numbering restarts at 1).
+    const auto freshTurn = [&](int ax, int ay) {
+        w.model()->clearMoveTrace();
+        QJsonArray ch;
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << ax << ay);
+        w.onModelSync(ch, QJsonArray());
+        pump(150);
+    };
+
+    // Place an away player at a cell (plain re-placement, no trace).
+    const auto placeDef = [&](const QString &id, int x, int y) {
+        QJsonArray ch;
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), id,
+               QJsonArray() << x << y);
+        w.onModelSync(ch, QJsonArray());
+        pump(100);
+    };
+
+    QStringList awayOnField;
+    for (const FFBPlayer &p : w.model()->rosterAway())
+        if (p.hasCoords && GameModel::isOnField(p.fieldX, p.fieldY))
+            awayOnField << p.playerId;
+    if (awayOnField.size() < 3)
+        qFatal("need >=3 away players on the field in the fixture");
+
     // --- Sequence A: a 3-step L move (left, left, up) -------------------------
     // Numbers 1..3 BETWEEN the cells; "3" between the second-to-last and the
     // last cell (the user's key requirement: the last cell is numbered too).
     {
+        freshTurn(sx, sy);
         QJsonArray ch;
         change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
                QJsonValue(QStringLiteral("move")));
@@ -144,8 +180,10 @@ int main(int argc, char *argv[])
 
     // --- Sequence B: a 1-SQUARE move (left) ------------------------------------
     // The "1" must appear between the two cells (before: nothing was painted,
-    // the server's only TrackNumber for it being the start cell's 0).
+    // the server's only TrackNumber for that move is the 0 on the starting
+    // cell, which was not painted).
     {
+        freshTurn(sx - 2, sy - 1);
         QJsonArray ch;
         change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
                QJsonValue(QStringLiteral("move")));
@@ -157,60 +195,59 @@ int main(int argc, char *argv[])
         cropCells(sx - 4, sy - 2, sx - 1, sy, QStringLiteral("round14_move1.png"));
     }
 
-    // --- Sequence C: a BLITZ (2 squares, up then right) ------------------------
+    // --- Sequence C: a BLITZ move (2 squares, up then right) --------------------
     // Numbers 1,2 between the cells (the user: "anche in caso di blitz").
     {
+        freshTurn(sx - 3, sy - 2);
         QJsonArray ch;
         change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
                QJsonValue(QStringLiteral("blitzMove")));
         change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
-               QJsonArray() << (sx - 3) << (sy - 2));
+               QJsonArray() << (sx - 3) << (sy - 3));
         change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
-               QJsonArray() << (sx - 2) << (sy - 2));
+               QJsonArray() << (sx - 2) << (sy - 3));
         w.onModelSync(ch, QJsonArray());
         pump(900);
         dumpTrace();
-        cropCells(sx - 4, sy - 3, sx - 1, sy, QStringLiteral("round14_blitz.png"));
+        cropCells(sx - 4, sy - 4, sx - 1, sy - 1,
+                 QStringLiteral("round14_blitz.png"));
     }
 
     // --- Sequence D: the reported BUG scenario (blitz + block + push +
-    // backward follow) ----------------------------------------------
-    // #4 blitzes: 1 square sideways to the right (contact), blocks #5,
-    // #5 is pushed right, #4 does NOT follow forward but moves back 4
-    // squares. Expected by the user: ONE continuous numbering — sideways =
-    // 1, block = 2, backward steps = 3,4,5,6.
+    // backward follow) — the EXACT wire flow of ffb-server:
+    //   actingPlayerSetPlayerAction=blitzMove
+    //   -> sideways step (the blitz's 1 square)
+    //   -> `block` report (defender armed)
+    //   -> push (defender's coordinates)
+    //   -> gameSetDefenderId=null + actingPlayerSetPlayerAction=blitzMove
+    //      (StepEndBlocking re-dispatches the action for the follow move)
+    //   -> the follow steps (here: back, 4 squares)
+    // Expected numbering: sideways=1, block=2 (between attacker/defender),
+    // backward steps=3,4,5,6 — ONE continuous count.
     {
-        QString def;
-        for (const FFBPlayer &p : w.model()->rosterAway())
-            if (p.hasCoords && GameModel::isOnField(p.fieldX, p.fieldY)) {
-                def = p.playerId;
-                break;
-            }
-        if (def.isEmpty())
-            qFatal("no away player on the field in the fixture");
-        // Emulate a fresh turn (the real game clears the trace on the
-        // turn-mode change) and relocate the actor + defender in place.
-        w.model()->clearMoveTrace();
-        {
-            QJsonArray ch;
-            change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
-                   QJsonArray() << sx << sy);
-            change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), def,
-                   QJsonArray() << (sx + 2) << sy);
-            w.onModelSync(ch, QJsonArray());
-            pump(200);
-        }
+        const QString def1 = awayOnField[0];
+        freshTurn(sx, sy);
+        placeDef(def1, sx + 2, sy); // adjacent to the future contact cell
         QJsonArray ch;
         change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
                QJsonValue(QStringLiteral("blitzMove")));
         change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
                QJsonArray() << (sx + 1) << sy); // sideways step (contact)
-        w.onModelSync(ch, QJsonArray());
+        QJsonArray rep;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+            r.insert(QStringLiteral("defenderId"), def1);
+            rep.append(r);
+        }
+        w.onModelSync(ch, rep);
         pump(200);
-        w.model()->setBlockTargetId(def, actor); // block arms (UI-side)
         QJsonArray ch2;
-        change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), def,
+        change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), def1,
                QJsonArray() << (sx + 3) << sy); // push, away from the actor
+        change(ch2, QStringLiteral("gameSetDefenderId"), QString(), QJsonValue());
+        change(ch2, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("blitzMove"))); // re-dispatch
         change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
                QJsonArray() << sx << sy);       // back 1
         change(ch2, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
@@ -223,7 +260,103 @@ int main(int argc, char *argv[])
         pump(900);
         dumpTrace();
         cropCells(sx - 3, sy - 1, sx + 3, sy + 1,
-                 QStringLiteral("round14_blitzbug.png"));
+                 QStringLiteral("round15_blitz_bug.png"));
+    }
+
+    // --- Sequence E: FRENZY (blitz + block + second block + follow) ------------
+    // Expected: sideways=1, block1=2, block2 (frenzy)=3, follow=4.
+    // (Different defenders than sequence D: the UI's report dedup drops a
+    // `block` report identical to one within 2.5 s — a tool artifact, in
+    // the live game blocks are turns apart.)
+    {
+        const QString def1 = awayOnField[1];
+        const QString def2 = awayOnField[2];
+        freshTurn(sx - 1, sy);
+        placeDef(def1, sx + 1, sy);  // adjacent to the future contact cell
+        placeDef(def2, sx, sy - 1);  // down, adjacent to the contact cell
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("blitzMove")));
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << sx << sy); // sideways step (contact)
+        QJsonArray rep;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+            r.insert(QStringLiteral("defenderId"), def1);
+            rep.append(r);
+        }
+        w.onModelSync(ch, rep);
+        pump(200);
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("gameSetDefenderId"), QString(), QJsonValue());
+        // FRENZY: a fresh `block` report for the down player next door.
+        QJsonArray rep2;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+            r.insert(QStringLiteral("defenderId"), def2);
+            rep2.append(r);
+        }
+        w.onModelSync(ch2, rep2);
+        pump(200);
+        QJsonArray ch3;
+        change(ch3, QStringLiteral("gameSetDefenderId"), QString(), QJsonValue());
+        change(ch3, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("blitzMove"))); // re-dispatch
+        change(ch3, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx - 1) << sy); // follow: one back
+        w.onModelSync(ch3, QJsonArray());
+        pump(900);
+        dumpTrace();
+        cropCells(sx - 2, sy - 2, sx + 2, sy + 1,
+                 QStringLiteral("round15_frenzy.png"));
+    }
+
+    // --- Sequence F: GO FOR IT (blitz + failed block + GFI extra move) ---------
+    // Expected: sideways=1, block=2, GFI move=3 drawn RED.
+    {
+        pump(3000); // out of the report-dedup window (2.5 s)
+        const QString def1 = awayOnField[0];
+        freshTurn(sx - 1, sy);
+        placeDef(def1, sx + 1, sy); // adjacent to the future contact cell
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("blitzMove")));
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << sx << sy); // sideways step (contact)
+        QJsonArray rep;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("block"));
+            r.insert(QStringLiteral("defenderId"), def1);
+            rep.append(r);
+        }
+        w.onModelSync(ch, rep);
+        pump(200);
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("gameSetDefenderId"), QString(), QJsonValue());
+        // The GFI roll succeeds -> the next new route is the extra move.
+        QJsonArray rep2;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("goForItRoll"));
+            r.insert(QStringLiteral("playerId"), actor);
+            r.insert(QStringLiteral("successful"), true);
+            rep2.append(r);
+        }
+        w.onModelSync(ch2, rep2);
+        pump(200);
+        QJsonArray ch3;
+        change(ch3, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("move")));
+        change(ch3, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << sx << (sy - 1)); // the GFI extra step
+        w.onModelSync(ch3, QJsonArray());
+        pump(900);
+        dumpTrace();
+        cropCells(sx - 2, sy - 3, sx + 2, sy + 1,
+                 QStringLiteral("round15_gfi.png"));
     }
 
     qInfo() << "round14 preview complete ->" << outDir;

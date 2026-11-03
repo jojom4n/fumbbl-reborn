@@ -574,7 +574,8 @@ void MainWindow::applyModelToUi()
     // action, drawn progressively behind the player as the server steps him
     // square by square; cleared when the actor changes or a new turn
     // starts — see GameModel::moveTrace()).
-    m_field->setMoveTrace(m_model->moveTrace());
+    m_field->setMoveTrace(m_model->moveSegments(),
+                          m_model->blockStepMarks());
 
     // Bench box strips (left = home, right = away): players with a box
     // coordinate (x < 0 or x > 25), grouped by state inside the field view.
@@ -774,8 +775,14 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
             // NEW `block` report the previous choice is STALE — reset the
             // die face so the marker starts as the pending-die helmet
             // again, then the new blockRoll/blockChoice re-fill it.
-            if (rid == QLatin1String("block"))
+            if (rid == QLatin1String("block")) {
                 m_model->setBlockDieFace(0);
+                // Round 15 (user): the block COSTS A MOVEMENT — the `block`
+                // report starts a block sequence (also a FRENZY's second
+                // one): reserve its number and where it is painted.
+                if (!victim.isEmpty())
+                    m_model->noteBlockStep(victim);
+            }
             QString target = victim;
             if (target.isEmpty() && !m_model->blockTargetId().isEmpty())
                 // Turn 15: the `blockRoll` report carries defenderId NULL
@@ -803,6 +810,14 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
                                             m_model->blockDieFace());
             }
         }
+
+        // Round 15 (user: "in caso di go for it, mostriamo in rosso i
+        // movimenti extra"): a SUCCESSFUL go-for-it roll — the player's
+        // next new route is the GFI extra move, drawn red on the trail.
+        if (rid == QLatin1String("goForItRoll")
+            && report.value(QStringLiteral("successful")).toBool())
+            m_model->setGoForItPending(
+                report.value(QStringLiteral("playerId")).toString());
 
         // Structured dice: the action log renders the die faces (round 8:
         // "non ci mettere i numeri: metti i dadi") and resolved names.

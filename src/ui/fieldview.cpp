@@ -784,11 +784,16 @@ void FieldView::smoothPanTick()
     update();
 }
 
-void FieldView::setMoveTrace(const QVector<QVector<QPoint>> &paths)
+void FieldView::setMoveTrace(const QVector<GameModel::MoveSegment> &segments,
+                             const QVector<GameModel::BlockStepMark> &marks)
 {
-    if (paths == m_moveTrace)
-        return;
-    m_moveTrace = paths;
+    // (No cheap equality check — the segments carry numbering state the
+    // cell-only view can't express; the re-set is harmless.)
+    if (qEnvironmentVariableIsSet("FUMBBL_DEBUG_BADGES"))
+        fprintf(stderr, "SET_TRACE segs=%d marks=%d\n", segments.size(),
+                marks.size());
+    m_moveSegments = segments;
+    m_blockMarks = marks;
     update();
 }
 
@@ -903,7 +908,7 @@ QPointF FieldView::cellCenter(int x, int y) const
 // the player walks on top of it).
 void FieldView::drawMoveTrail(QPainter &p)
 {
-    if (m_moveTrace.isEmpty())
+    if (m_moveSegments.isEmpty() && m_blockMarks.isEmpty())
         return;
     const QRectF f = fieldRect();
     if (f.isEmpty())
@@ -911,7 +916,10 @@ void FieldView::drawMoveTrail(QPainter &p)
     const qreal cellW = f.width() / kFieldWidth;
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
-    for (const QVector<QPoint> &path : m_moveTrace) {
+    for (const GameModel::MoveSegment &seg : m_moveSegments) {
+        const QVector<QPoint> &path = seg.cells;
+        // Round 15 (user): the go-for-it extra move is drawn RED.
+        const bool gfi = seg.goForIt;
         if (path.size() < 2)
             continue; // a single square: nothing to trace yet
         // Defensive (round 13): a path with NO real movement (every cell
@@ -970,15 +978,20 @@ void FieldView::drawMoveTrail(QPainter &p)
         p.setPen(QPen(QColor(24, 24, 30, 200), cellW * 0.16,
                       Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawPolyline(linePts.constData(), linePts.size());
-        p.setPen(QPen(QColor(255, 255, 255, 235), cellW * 0.075,
-                      Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setPen(QPen(gfi ? QColor(226, 44, 44, 235) : QColor(255, 255, 255, 235),
+                      cellW * 0.075, Qt::SolidLine, Qt::RoundCap,
+                      Qt::RoundJoin));
         p.drawPolyline(linePts.constData(), linePts.size());
         // Arrowhead at the end of the trail, pointing along the last step.
         const QPointF perp(-u.y(), u.x());
+        if (qEnvironmentVariableIsSet("FUMBBL_DEBUG_BADGES"))
+            fprintf(stderr, "ARROW tip=(%.0f,%.0f) base=(%.0f,%.0f) gfi=%d last=(%d,%d)\n",
+                    tip.x(), tip.y(), base.x(), base.y(), gfi ? 1 : 0,
+                    path.last().x(), path.last().y());
         QPolygonF tri;
         tri << tip << (base + perp * arrowLen * 0.62)
             << (base - perp * arrowLen * 0.62);
-        p.setBrush(QColor(255, 255, 255, 240));
+        p.setBrush(gfi ? QColor(226, 44, 44, 240) : QColor(255, 255, 255, 240));
         p.setPen(QPen(QColor(24, 24, 30, 200), qMax(1.5, cellW * 0.05)));
         p.drawPolygon(tri);
     }
@@ -1059,27 +1072,56 @@ void FieldView::drawMoveTrail(QPainter &p)
             QPoint end;         // endpoint cell (may hold the resting token)
         };
         QVector<Num> nums;
-        for (const QVector<QPoint> &path : m_moveTrace) {
-            for (int i = 0; i + 1 < path.size(); ++i) {
-                if (path[i] == path[i + 1])
+        // Round 15: the numbers come from the MODEL (segment.stepNumbers —
+        // continuous across the whole action: sideways step 1, block 2,
+        // follow 3,4,5..., frenzy block next, GFI move continues).
+        for (const GameModel::MoveSegment &seg : m_moveSegments) {
+            for (int i = 0;
+                 i + 1 < seg.cells.size() && i < seg.stepNumbers.size();
+                 ++i) {
+                if (seg.cells[i] == seg.cells[i + 1])
                     continue; // degenerate no-op segment: no number
-                const QPointF a = cellCenter(path[i].x(), path[i].y());
-                const QPointF b = cellCenter(path[i + 1].x(), path[i + 1].y());
+                const QPointF a = cellCenter(seg.cells[i].x(), seg.cells[i].y());
+                const QPointF b =
+                    cellCenter(seg.cells[i + 1].x(), seg.cells[i + 1].y());
                 const QPointF dir = b - a;
                 const qreal segLen = std::hypot(dir.x(), dir.y());
                 if (segLen < 1e-6)
                     continue;
                 const QPointF u(dir.x() / segLen, dir.y() / segLen);
                 Num num;
-                num.n = i + 1;
+                num.n = seg.stepNumbers[i];
                 num.mid = (a + b) / 2.0;
                 num.cStart = a;
                 num.cEnd = b;
                 num.u = u;
                 num.perp = QPointF(u.y(), -u.x()); // left of the travel
-                num.end = path[i + 1];
+                num.end = seg.cells[i + 1];
                 nums.append(num);
             }
+        }
+        // Round 15 (user): the block COSTS A MOVEMENT — its number is
+        // painted between the attacker's cell and the defender's cell,
+        // like the other between-cells numbers (the endpoint cell is the
+        // defender's — the placement logic anchors it in the (empty)
+        // attacker cell, off the defender's glow/badges).
+        for (const GameModel::BlockStepMark &mk : m_blockMarks) {
+            const QPointF a = cellCenter(mk.from.x(), mk.from.y());
+            const QPointF b = cellCenter(mk.to.x(), mk.to.y());
+            const QPointF dir = b - a;
+            const qreal segLen = std::hypot(dir.x(), dir.y());
+            if (segLen < 1e-6)
+                continue;
+            const QPointF u(dir.x() / segLen, dir.y() / segLen);
+            Num num;
+            num.n = mk.number;
+            num.mid = (a + b) / 2.0;
+            num.cStart = a;
+            num.cEnd = b;
+            num.u = u;
+            num.perp = QPointF(u.y(), -u.x()); // left of the travel
+            num.end = mk.to;
+            nums.append(num);
         }
         // The FINAL number's anchor: the penultimate cell's CENTER — beside
         // the trail's last leg, outside the actor's halo (the halo swallows

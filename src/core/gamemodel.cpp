@@ -128,8 +128,7 @@ void GameModel::clearState()
     m_ballY = -1;
     m_weather.clear();
     m_traceActor.clear();
-    m_tracePaths.clear();
-    m_movePending = false;
+    clearMoveTrace();
     m_trackNumbers.clear();
     m_actedThisTurn.clear();
     m_actorActivated = false;
@@ -145,8 +144,70 @@ void GameModel::reset()
 
 void GameModel::clearMoveTrace()
 {
-    m_tracePaths.clear();
+    m_moveSegments.clear();
+    m_blockStepMarks.clear();
+    m_nextStepNumber = 1;
+    m_blockResolved = false;
+    m_gfiPendingFor.clear();
     m_movePending = false;
+}
+
+// Round 15: the CELL view of the segments (round 13 API, kept for the
+// tests and the old drawing path).
+QVector<QVector<QPoint>> GameModel::moveTrace() const
+{
+    QVector<QVector<QPoint>> v;
+    for (const MoveSegment &s : m_moveSegments)
+        v.append(s.cells);
+    return v;
+}
+
+// Round 15 (user): the block is a movement. `attacker` empty = the current
+// actor at arming time (the block reports arrive while the attacker is the
+// actor).
+void GameModel::setBlockTargetId(const QString &playerId,
+                                 const QString &attacker)
+{
+    m_blockTargetId = playerId;
+    m_blockGlowOnly = false; // a block is not glow-only
+    if (!m_blockTargetId.isEmpty())
+        m_blockAttackerId = attacker.isEmpty() ? m_activePlayerId : attacker;
+}
+
+// Round 15 (user): reserve the drive's next number for a block and record
+// where its number is painted (between the attacker's cell and the
+// defender's cell). A re-send of the `block` report for the SAME still-
+// open block (a server step retry outliving the UI's dedup window) is
+// dropped; a FRENZY second block (the previous block RESOLVED —
+// gameSetDefenderId null landed) always gets its own number, even against
+// the same defender.
+void GameModel::noteBlockStep(const QString &defenderId, const QString &attackerId)
+{
+    const QString att = attackerId.isEmpty() ? m_activePlayerId : attackerId;
+    if (defenderId.isEmpty() || att.isEmpty() || att != m_traceActor)
+        return;
+    const FFBPlayer *a = findPlayerById(att);
+    const FFBPlayer *d = findPlayerById(defenderId);
+    if (!a || !d || !isOnField(a->fieldX, a->fieldY)
+        || !isOnField(d->fieldX, d->fieldY))
+        return;
+    const QPoint from(a->fieldX, a->fieldY);
+    const QPoint to(d->fieldX, d->fieldY);
+    if (!m_blockResolved && m_blockTargetId == defenderId
+        && !m_blockStepMarks.isEmpty()
+        && m_blockStepMarks.last().from == from
+        && m_blockStepMarks.last().to == to)
+        return; // the re-send of the same open block
+    m_blockResolved = false;
+    m_blockStepMarks.append({from, to, m_nextStepNumber++});
+}
+
+// Round 15 (user): a successful go-for-it roll — the player's next NEW
+// route is the extra move, drawn red.
+void GameModel::setGoForItPending(const QString &playerId)
+{
+    if (!playerId.isEmpty() && playerId == m_traceActor)
+        m_gfiPendingFor = playerId;
 }
 
 bool GameModel::initialize(const QJsonObject &game)
@@ -466,9 +527,9 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
             int nx = -1, ny = -1;
             if (readCoords(value, nx, ny) && !isOnField(nx, ny) && key == m_traceActor) {
                 // The actor left the field (into a box: knocked out, sent
-                // to the bench...) — its route is over.
-                m_tracePaths.clear();
-                m_movePending = false;
+                // to the bench...) — its route is over (round 15: the
+                // numbers and the block marks die with it).
+                clearMoveTrace();
             }
             if (readCoords(value, nx, ny) && isOnField(nx, ny) && key == m_traceActor) {
                 // Round 13 (user): the arrow must NOT appear before the
@@ -484,14 +545,31 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                     && isOnField(player->fieldX, player->fieldY)
                     && player->fieldX == nx && player->fieldY == ny;
                 if (!sameCell) {
+                    // Round 15: a route starts. Its FIRST step number is
+                    // the drive's next number — the count is CONTINUOUS
+                    // across routes of the same action (the blitz's
+                    // sideways step, the block — noteBlockStep — and the
+                    // follow all share one counter), and a go-for-it
+                    // extra move is marked red.
+                    const auto newRoute = [this, key, &nx, &ny](
+                                               const FFBPlayer *player) {
+                        MoveSegment seg;
+                        if (player->hasCoords
+                            && isOnField(player->fieldX, player->fieldY))
+                            seg.cells << QPoint(player->fieldX, player->fieldY);
+                        seg.cells << QPoint(nx, ny);
+                        seg.stepNumbers << m_nextStepNumber++;
+                        seg.goForIt = (m_gfiPendingFor == key);
+                        m_gfiPendingFor.clear();
+                        m_moveSegments.append(seg);
+                    };
                     if (m_movePending) {
-                        // First step of a NEW move (a moving action was just
-                        // set): start a fresh route from the old cell.
-                        QVector<QPoint> path;
-                        if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
-                            path << QPoint(player->fieldX, player->fieldY);
-                        path << QPoint(nx, ny);
-                        m_tracePaths.append(path);
+                        // First step of a NEW move (a moving action was
+                        // just set — or re-set: the server re-dispatches
+                        // the action after a block for the follow/GFI
+                        // move, StepEndBlocking): start a fresh route from
+                        // the old cell, continuing the numbering.
+                        newRoute(player);
                         m_movePending = false;
                         // Turn 12 (user): a NEW action by the attacker also
                         // ends the block — the marker is not "left
@@ -499,12 +577,14 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                         if (key == m_blockAttackerId && m_blockDieFace > 0)
                             clearBlockMarker();
                     } else {
-                        const bool cont = !m_tracePaths.isEmpty()
-                            && m_tracePaths.last().last()
+                        const bool cont = !m_moveSegments.isEmpty()
+                            && m_moveSegments.last().cells.last()
                                    == QPoint(player->fieldX, player->fieldY);
                         if (cont) {
                             // Next step of the ongoing route.
-                            m_tracePaths.last().append(QPoint(nx, ny));
+                            m_moveSegments.last().cells.append(QPoint(nx, ny));
+                            m_moveSegments.last().stepNumbers
+                                .append(m_nextStepNumber++);
                         } else if (!m_blockTargetId.isEmpty() && key == m_blockAttackerId) {
                             // Turn 11 (user): the FOLLOW — after the block
                             // choice the attacker follows the defender
@@ -516,11 +596,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                             // actingPlayerSetPlayerAction), so without this
                             // it would be untraced. Any actor step while a
                             // block is open IS the follow.
-                            QVector<QPoint> path;
-                            if (player->hasCoords && isOnField(player->fieldX, player->fieldY))
-                                path << QPoint(player->fieldX, player->fieldY);
-                            path << QPoint(nx, ny);
-                            m_tracePaths.append(path);
+                            newRoute(player);
                             // Turn 12 (user): "se l'attacker segue, il
                             // simbolo deve sparire, non deve rimanergli
                             // attaccato" — the helmet/die marker dies the
@@ -550,6 +626,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         if (value.isNull()) {
             const bool glowOnly = m_blockGlowOnly;
             clearBlockMarker();
+            m_blockResolved = true; // round 15: a FRENZY second block now
+                                    // gets its own number
             // Turn 16: for a FOUL the null defender id is the foul's
             // resolution (ffb-server StepEndFouling does exactly this) —
             // the glow-only mark dies with it. A block's red glow keeps
@@ -747,8 +825,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         // null actor wipes the previous player's whole trace.
         if (!m_activePlayerId.isEmpty() && m_activePlayerId != m_traceActor) {
             m_traceActor = m_activePlayerId;
-            m_tracePaths.clear();
-            m_movePending = false;
+            clearMoveTrace(); // round 15: numbers + block marks die too
         }
         // Round 13 turn 8 (user, FINAL rule): the red block glow on the
         // DEFENDER lives exactly as long as the block action — it dies when

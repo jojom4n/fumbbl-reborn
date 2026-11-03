@@ -42,6 +42,7 @@ private slots:
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void moveTrailAccumulatesAndClears();
+    void moveNumbersContinuousAcrossBlitzBlockAndFrenzy();
     void turnMarksAndBlockMarkerLifecycle();
     void staticHelpers();
     void positionNames();
@@ -388,6 +389,118 @@ void GameModelTest::moveTrailAccumulatesAndClears()
     changes.append(change(QStringLiteral("gameSetTurnMode"), QString(), QJsonValue(ko)));
     model.applyModelChanges(changes);
     QCOMPARE(model.moveTrace().size(), 0);
+}
+
+// Round 15 (user): the between-cells numbers are CONTINUOUS across the
+// whole action — the reported bug was a BLITZ whose follow move restarted
+// the count at 1. Spec (user, verbatim): the sideways square is move 1,
+// the block itself is a movement (2), the follow steps continue (3,4,...),
+// a frenzy's second block is the next number, and a go-for-it extra move
+// continues the count and is flagged red.
+void GameModelTest::moveNumbersContinuousAcrossBlitzBlockAndFrenzy()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadFixtureGame()));
+    // Fixture: 18109690 at (3,2); 18109691 at (4,3).
+
+    QJsonArray changes;
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+    auto coords = [](int x, int y) { QJsonArray a; a << x << y; return QJsonValue(a); };
+    const QString actor = QStringLiteral("18109690");
+    const QString defender = QStringLiteral("18109691");
+
+    // BLITZ: sideways step (3,2) -> (3,3) = move 1.
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue(actor)));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("blitzMove"))));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(3, 3)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 1);
+    QCOMPARE(model.moveSegments().first().stepNumbers.size(), 1);
+    QCOMPARE(model.moveSegments().first().stepNumbers.first(), 1);
+
+    // BLOCK (the `block` report lands while the attacker is the actor):
+    // the block COSTS A MOVEMENT — number 2, painted between the
+    // attacker's cell (3,3) and the defender's cell (4,3).
+    model.setBlockTargetId(defender);
+    model.noteBlockStep(defender);
+    QCOMPARE(model.blockStepMarks().size(), 1);
+    QCOMPARE(model.blockStepMarks().first().number, 2);
+    QCOMPARE(model.blockStepMarks().first().from, QPoint(3, 3));
+    QCOMPARE(model.blockStepMarks().first().to, QPoint(4, 3));
+
+    // A re-sent `block` report for the same still-open block adds NO second
+    // mark.
+    model.noteBlockStep(defender);
+    QCOMPARE(model.blockStepMarks().size(), 1);
+
+    // Push (defender moves — never traced), the block resolves (null
+    // defender id), and the server RE-DISPATCHES the action for the follow
+    // move (StepEndBlocking). The follow steps CONTINUE the count: 3,4.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), defender,
+                          coords(5, 3)));
+    changes.append(change(QStringLiteral("gameSetDefenderId"), QString(),
+                          QJsonValue()));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("blitzMove"))));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(3, 2)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(2, 2)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 2);
+    const QVector<int> follow = model.moveSegments().last().stepNumbers;
+    QCOMPARE(follow.size(), 2);
+    QCOMPARE(follow.first(), 3);
+    QCOMPARE(follow.last(), 4);
+    QVERIFY(!model.moveSegments().last().goForIt);
+
+    // FRENZY: a second block (fresh `block` report after the resolution)
+    // costs another movement — number 5.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), defender,
+                          coords(1, 2)));
+    model.applyModelChanges(changes);
+    model.noteBlockStep(defender);
+    QCOMPARE(model.blockStepMarks().size(), 2);
+    QCOMPARE(model.blockStepMarks().last().number, 5);
+    QCOMPARE(model.blockStepMarks().last().from, QPoint(2, 2));
+    QCOMPARE(model.blockStepMarks().last().to, QPoint(1, 2));
+
+    // GO FOR IT: a successful roll — the next new route is the extra move,
+    // continuing the count (6) and flagged red.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("gameSetDefenderId"), QString(),
+                          QJsonValue()));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("move"))));
+    model.applyModelChanges(changes);
+    model.setGoForItPending(actor);
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(2, 1)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 3);
+    QCOMPARE(model.moveSegments().last().stepNumbers.size(), 1);
+    QCOMPARE(model.moveSegments().last().stepNumbers.first(), 6);
+    QVERIFY(model.moveSegments().last().goForIt);
+
+    // A new actor wipes segments, marks and the counter alike.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue(defender)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 0);
+    QCOMPARE(model.blockStepMarks().size(), 0);
 }
 
 void GameModelTest::staticHelpers()

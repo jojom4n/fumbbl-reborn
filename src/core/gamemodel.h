@@ -175,13 +175,15 @@ public:
     // lives as long as the block action — it dies when the ATTACKER loses
     // his (blue) actor glow. `attacker` empty = the current actor at arming
     // time (the block reports arrive while the attacker is the actor).
-    void setBlockTargetId(const QString &playerId, const QString &attacker = QString())
-    {
-        m_blockTargetId = playerId;
-        m_blockGlowOnly = false; // a block is not glow-only
-        if (!m_blockTargetId.isEmpty())
-            m_blockAttackerId = attacker.isEmpty() ? m_activePlayerId : attacker;
-    }
+    void setBlockTargetId(const QString &playerId, const QString &attacker = QString());
+    // Round 15 (user: "mostriamo anche il movimento che costa il blocco
+    // durante il blitz"): a block COSTS A MOVEMENT. Called by the UI on a
+    // (deduped) `block` report — the start of a block sequence, including
+    // a FRENZY's second block — it reserves the next number of the drive
+    // and records where the number is painted (between the attacker's
+    // cell and the defender's cell).
+    void noteBlockStep(const QString &defenderId,
+                       const QString &attackerId = QString());
     // Turn 11: the attacker of an open block (the marker pair) + the CHOSEN
     // block die face (0 = not chosen yet, 1..6 = blockChoice blockRoll[diceIndex]).
     QString blockAttackerId() const { return m_blockAttackerId; }
@@ -264,8 +266,33 @@ public:
     //   actingPlayerSetPlayerId    = who is acting (null between actions)
     //   actingPlayerSetPlayerAction = "move"/"standUp"/... (plain string)
     //   fieldModelSetPlayerCoordinate [x,y] per stepped square
-    QVector<QVector<QPoint>> moveTrace() const { return m_tracePaths; }
+    // Round 15 (user): continuous numbering across the WHOLE action — the
+    // blitz's sideways step is 1, the block (a movement in itself) is 2,
+    // the follow steps are 3,4,5..., a frenzy's second block is the next
+    // number, and a go-for-it extra move continues the count (drawn red).
+    struct MoveSegment {
+        QVector<QPoint> cells; // the route's cells, center to center
+        QVector<int> stepNumbers; // the number between cells[i] and cells[i+1]
+        bool goForIt = false; // a Go-For-It extra move: the trail is red
+    };
+    // A block that cost a movement (blitz block, frenzy block, plain
+    // block): its number is painted between the attacker's cell and the
+    // defender's cell, like the other between-cells numbers.
+    struct BlockStepMark {
+        QPoint from; // the attacker's cell when the block started
+        QPoint to; // the defender's cell
+        int number;
+    };
+    QVector<MoveSegment> moveSegments() const { return m_moveSegments; }
+    QVector<BlockStepMark> blockStepMarks() const { return m_blockStepMarks; }
+    // The cell view of the segments (round 13 API, kept for the tests).
+    QVector<QVector<QPoint>> moveTrace() const;
     QString moveTraceActor() const { return m_traceActor; }
+    // Round 15 (user: "in caso di go for it, mostriamo in rosso i
+    // movimenti extra"): a successful go-for-it roll — the player's next
+    // NEW route is the GFI extra move and is drawn red. Called by the UI
+    // on the (deduped) `goForItRoll` report with successful=true.
+    void setGoForItPending(const QString &playerId);
     void clearMoveTrace();
 
     // --- Coordinate helpers (port of ffb-common FieldCoordinate) -------------
@@ -363,9 +390,16 @@ private:
     QString m_blockAttackerId; // turn 8: whose actor glow holds the block open
     int m_blockDieFace = 0; // turn 11: chosen block die (0 = pending)
 
-    // Move trail of the acting player (round 13 — see moveTrace()).
+    // Move trail of the acting player (round 13; round 15: continuous
+    // numbering across the whole action — see MoveSegment/BlockStepMark).
     QString m_traceActor;                  // player whose trace is tracked
-    QVector<QVector<QPoint>> m_tracePaths; // one entry per move action
+    QVector<MoveSegment> m_moveSegments;   // one entry per move route
+    QVector<BlockStepMark> m_blockStepMarks; // blocks that cost a movement
+    int m_nextStepNumber = 1;              // next number of the drive
+    bool m_blockResolved = false;          // gameSetDefenderId null landed
+                                           // since the last block opened
+    QString m_gfiPendingFor;               // player with a successful GFI
+                                           // roll: its next NEW segment is red
     bool m_movePending = false;            // a move action was dispatched:
                                            // the next coordinate change of
                                            // the actor starts a NEW path
