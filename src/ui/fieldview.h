@@ -141,9 +141,6 @@ public:
     //   * bottom-left: white disc + gold "?"     -> confused (state bit 512)
     void setActedPlayers(const QSet<QString> &ids);
     void setBlitzingPlayer(const QString &playerId); // empty = none
-    // Turn 13: the numbered trail cells from the server
-    // (fieldModelAddTrackNumber {coordinate, number}).
-    void setTrackNumbers(const QHash<QPoint, int> &numbers);
 
     // Round 13 turn 14 (user): the PASS RECEIVER glows — a WHITE radial
     // halo + ring (user: "il glow intorno a chi riceve fallo bianco"),
@@ -272,7 +269,6 @@ private:
     // Turn 13: per-turn token marks (pushed by MainWindow from the model).
     QSet<QString> m_actedPlayers;      // green check top-right
     QString m_blitzingPlayer;          // gold lightning top-left
-    QHash<QPoint, int> m_trackNumbers; // numbered trail cells
     QString m_passTarget;              // turn 14: white glow (pass receiver)
 
     // Turn 14 (user): the BALL FLIGHT — while the ball steps through the
@@ -386,6 +382,9 @@ public:
     // Round 9: selection glow pulse + explicit action-wheel target.
     QTimer *m_pulseTimer = nullptr; // breathes the selection halo
     qreal m_pulsePhase = 0.0;       // 0..2π, ~1.2 Hz
+    qreal m_ballPulsePhase = 0.0;   // 0..2π, ~0.25 Hz (round 15: the ball's
+                                    // glow breathes much slower — 1.2 Hz was
+                                    // too distracting)
     QString m_wheelTarget;          // explicit action-wheel target (play mode)
     bool m_playMode = false;        // spectator client: false (default)
     QString m_rightPressPlayerId;   // player under the right button at press

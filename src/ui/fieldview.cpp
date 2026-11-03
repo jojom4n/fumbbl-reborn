@@ -96,6 +96,13 @@ FieldView::FieldView(QWidget *parent)
         m_pulsePhase += 2.0 * M_PI * 1.2 * 0.033;
         if (m_pulsePhase > 2.0 * M_PI)
             m_pulsePhase -= 2.0 * M_PI;
+        // Round 15 (user: "il glow sulla palla molto più lento — così
+        // veloce distrae troppo"): the ball's gold glow breathes on its
+        // OWN slower phase (~0.25 Hz, one breath every ~4 s) — the other
+        // glows keep the 1.2 Hz pulse.
+        m_ballPulsePhase += 2.0 * M_PI * 0.25 * 0.033;
+        if (m_ballPulsePhase > 2.0 * M_PI)
+            m_ballPulsePhase -= 2.0 * M_PI;
         // Turn 18 (user: "The ball must glow gold (animated glow)"): the
         // ball's gold glow breathes on EVERY tick — it must be repainted
         // even when no selection/block/pass glow is armed (the old
@@ -701,14 +708,6 @@ void FieldView::setBlitzingPlayer(const QString &playerId)
     update();
 }
 
-void FieldView::setTrackNumbers(const QHash<QPoint, int> &numbers)
-{
-    if (m_trackNumbers == numbers)
-        return;
-    m_trackNumbers = numbers;
-    update();
-}
-
 void FieldView::setPassTarget(const QString &playerId)
 {
     if (m_passTarget == playerId)
@@ -984,47 +983,64 @@ void FieldView::drawMoveTrail(QPainter &p)
         p.drawPolygon(tri);
     }
 
-    // Turn 13 (user, "come su FUMBBL"): the numbered cells — the server's
-    // TrackNumbers (fieldModelAddTrackNumber {coordinate, number}).
-    // Turn 15 (user, points 3 + 9 + 10):
-    //   * the STARTING cell's 0 is NOT painted ("non mostrare lo 0");
-    //   * a number that sometimes sat right ON the trail line (it was
-    //     centered just above the cell middle, where the trail runs) is
-    //     now painted in the cell's TOP-LEFT CORNER — a fixed, orderly
-    //     position that never overlaps the trail (which runs through
-    //     centers), and stays visible in the FINAL cell even with the
-    //     moving token on it (the corner is outside the token disc) —
-    //     this is the "clean" spot for the final cell number too.
-    if (!m_trackNumbers.isEmpty()) {
+    // BETWEEN-CELLS move numbers (user): the step number is painted
+    // BETWEEN two consecutive cells of the route — never on a cell, never
+    // on the trail line. A route of N steps shows 1..N: number k sits on
+    // the shared edge of step k's two cells, offset perpendicular to the
+    // line so it never touches or overlaps the trail (dark under-stroke
+    // included). Consequences:
+    //   * the LAST cell is numbered too: the last number of the move
+    //     appears between the second-to-last and the last cell;
+    //   * a 1-SQUARE move shows its "1" between the two cells (before:
+    //     nothing — the server's only TrackNumber for that move is the 0
+    //     on the starting cell, which was not painted);
+    //   * a BLITZ and a follow are move routes too: same numbers.
+    // The numbers live at the shared border of the two cells of the step
+    // (the border line is perpendicular to the trail), slid along the
+    // border away from the trail's crossing point so they never overlap
+    // the line. Two tiers:
+    //   * intermediate steps (endpoint cell EMPTY): 0.26*minDim from the
+    //     crossing — clear of the dark under-stroke (half-width 0.08), tight
+    //     to the "between the cells" spot;
+    //   * the FINAL step (endpoint cell = the actor's resting cell): the
+    //     actor's selection halo (r ~0.95-1.03) swallows the whole shared
+    //     border of that cell, so ANY border number reads as "sul token"
+    //     (user, round 14 — three explicit rejections of border
+    //     placements: 0.30-slide, corner vertex, 0.15-hug). The final
+    //     number therefore sits in the PENULTIMATE (empty) cell, 0.30
+    //     off the trail's last leg, anchored at that cell's center: the
+    //     only spot that is beside the trail AND outside the token's halo
+    //     (badge center 1.044 from the token center). It marks the last
+    //     step exactly like the other numbers mark theirs.
+    // The side is "left of the direction of travel" (an orderly row along
+    // the route); a number whose endpoint cell is occupied takes whichever
+    // side clears the occupant's corner badges (number/ball/check/
+    // lightning/'?'/disc) and the other placed numbers best. Badge = the
+    // approved token-number-badge language: opaque white disc, dark rim,
+    // bold black digit.
+    {
         const qreal cellH = f.height() / kFieldHeight;
         const qreal minDim = qMin(cellW, cellH);
-        // Turn 16 (user: "i numeri cella ancora intersecano spesso il trail
-        // e non sono chiari nel riferirsi alla cella, sono spostati da
-        // essa. Ancora, non appare il numero della cella finale"):
-        //   - the old bare text in the corner was covered by the resting
-        //     token (dark disc r = 0.46*minDim reaches into the corner) —
-        //     the FINAL cell's number vanished under the token;
-        //   - bare white text on the grass/trail read as "floating",
-        //     detached from its cell.
-        // Now each number is a small OPAQUE white badge with a black digit
-        // (the same language as the approved token-number badge): it sits
-        // tight in the cell's top-left corner, clearly inside its own cell,
-        // covers any trail that bends into the corner (the trail never
-        // crosses the digit), and stays visible on the final cell because
-        // it is opaque and outside the token disc (badge nearest point
-        // 0.54*minDim from center vs token radius 0.46*minDim).
-        const auto nfFor = [this, &p, minDim](int n) {
-            QFont nf = p.font();
-            // Same visual family as the token-number badge (turn 16, user:
-            // numbers at badge scale): 1.3x the old bare text.
-            nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
-            nf.setBold(true);
-            return nf;
+        // The endpoint cell may be occupied (the FINAL cell is the actor's
+        // resting cell). Its corner badges, in minDim units relative to the
+        // token center: number (bottom-right, always), ball (top-left),
+        // green check (top-right, acted this turn), lightning (top-left,
+        // blitzed), "?" (bottom-left, confused), and the token disc.
+        struct CornerBadge { QPointF c; qreal r; };
+        const auto occupantBadges = [this](const PlayerToken &t) {
+            QVector<CornerBadge> v;
+            v.append({QPointF(0.276, 0.294), 0.15}); // jersey number
+            if (t.hasBall)
+                v.append({QPointF(-0.313, -0.350), 0.16}); // ball-in-hand
+            if (m_actedPlayers.contains(t.playerId))
+                v.append({QPointF(0.239, -0.258), 0.15}); // green check
+            if (t.playerId == m_blitzingPlayer)
+                v.append({QPointF(-0.239, -0.258), 0.15}); // lightning
+            if (t.state & 0x00200)
+                v.append({QPointF(-0.239, 0.258), 0.15}); // confused "?"
+            v.append({QPointF(0.0, 0.0), 0.46}); // the token disc
+            return v;
         };
-        // The resting token's OWN corner badges (check top-right, lightning
-        // top-left, "?" bottom-left, ball-in-hand top-left, number
-        // bottom-right) can sit on a numbered cell (the FINAL cell is the
-        // actor's cell). The track badge picks the first FREE corner.
         const auto occupantAt = [this](int x, int y) -> const PlayerToken * {
             for (const auto &team : { m_homePlayers, m_awayPlayers })
                 for (const PlayerToken &t : team)
@@ -1032,38 +1048,104 @@ void FieldView::drawMoveTrail(QPainter &p)
                         return &t;
             return nullptr;
         };
-        for (auto it = m_trackNumbers.constBegin(); it != m_trackNumbers.constEnd(); ++it) {
-            const int n = it.value();
-            if (n == 0)
-                continue; // the starting square keeps its cell clean
-            const QPoint cell = it.key();
-            const QPointF cc = cellCenter(cell.x(), cell.y());
-            const PlayerToken *occ = occupantAt(cell.x(), cell.y());
-            const bool occBlitz = occ && occ->playerId == m_blitzingPlayer;
-            const bool occActed = occ && m_actedPlayers.contains(occ->playerId);
-            const bool occConf = occ && (occ->state & 0x00200);
-            // top-left -> bottom-left -> top-right -> bottom-right.
-            // The offsets hug the corner close enough that the DIGIT always
-            // stays outside the resting token disc (token r = 0.46, digit
-            // nearest point = 0.55 - 0.08 = 0.47 > 0.46).
-            QPointF off(-0.40, -0.375);
-            if (occBlitz || (occ && occ->hasBall))
-                off = occConf ? QPointF(0.40, 0.375) : QPointF(-0.40, 0.375);
-            else if (occConf)
-                off = occActed ? QPointF(0.40, 0.375) : QPointF(0.40, -0.375);
-            const QPointF at(cc.x() + off.x() * minDim, cc.y() + off.y() * minDim);
+        // One entry per numbered segment of every route.
+        struct Num {
+            int n = 0;          // the digit (segment index + 1)
+            QPointF mid;        // the shared border's midpoint
+            QPointF cStart;     // the penultimate cell's center (a)
+            QPointF cEnd;       // the endpoint cell's center (b)
+            QPointF u;          // unit travel direction (a -> b)
+            QPointF perp;       // unit vector ALONG the border, left of travel
+            QPoint end;         // endpoint cell (may hold the resting token)
+        };
+        QVector<Num> nums;
+        for (const QVector<QPoint> &path : m_moveTrace) {
+            for (int i = 0; i + 1 < path.size(); ++i) {
+                if (path[i] == path[i + 1])
+                    continue; // degenerate no-op segment: no number
+                const QPointF a = cellCenter(path[i].x(), path[i].y());
+                const QPointF b = cellCenter(path[i + 1].x(), path[i + 1].y());
+                const QPointF dir = b - a;
+                const qreal segLen = std::hypot(dir.x(), dir.y());
+                if (segLen < 1e-6)
+                    continue;
+                const QPointF u(dir.x() / segLen, dir.y() / segLen);
+                Num num;
+                num.n = i + 1;
+                num.mid = (a + b) / 2.0;
+                num.cStart = a;
+                num.cEnd = b;
+                num.u = u;
+                num.perp = QPointF(u.y(), -u.x()); // left of the travel
+                num.end = path[i + 1];
+                nums.append(num);
+            }
+        }
+        // The FINAL number's anchor: the penultimate cell's CENTER — beside
+        // the trail's last leg, outside the actor's halo (the halo swallows
+        // the whole shared border of the final cell, see above).
+        const auto finalAnchor = [](const Num &num) { return num.cStart; };
+        // Pass 1: the default side (left of travel) at the tiered distance.
+        QVector<QPointF> pos(nums.size());
+        for (int k = 0; k < nums.size(); ++k) {
+            const bool occupied =
+                occupantAt(nums[k].end.x(), nums[k].end.y()) != nullptr;
+            if (occupied)
+                pos[k] = finalAnchor(nums[k]) + nums[k].perp * minDim * 0.30;
+            else
+                pos[k] = nums[k].mid + nums[k].perp * minDim * 0.26;
+        }
+        // Pass 2: a number whose endpoint cell is occupied (the actor's
+        // resting cell) takes whichever side clears the occupant's corner
+        // badges and the other placed numbers best.
+        for (int k = 0; k < nums.size(); ++k) {
+            const PlayerToken *occ =
+                occupantAt(nums[k].end.x(), nums[k].end.y());
+            if (!occ)
+                continue;
+            const auto clearance = [&](const QPointF &c) {
+                qreal m = 1e9;
+                for (const CornerBadge &bd : occupantBadges(*occ)) {
+                    const QPointF d = c - (nums[k].cEnd + bd.c * minDim);
+                    m = qMin(m, std::hypot(d.x(), d.y()) - bd.r * minDim);
+                }
+                for (int j = 0; j < nums.size(); ++j) {
+                    if (j == k)
+                        continue;
+                    m = qMin(m, std::hypot(pos[j].x() - c.x(),
+                                           pos[j].y() - c.y())
+                               - minDim * 0.26); // two badges (r 0.13 each)
+                }
+                return m;
+            };
+            const QPointF anchor = finalAnchor(nums[k]);
+            const QPointF candA = anchor + nums[k].perp * minDim * 0.30;
+            const QPointF candB = anchor - nums[k].perp * minDim * 0.30;
+            if (clearance(candB) > clearance(candA))
+                pos[k] = candB;
+        }
+        for (int k = 0; k < nums.size(); ++k) {
+            const int n = nums[k].n;
+            const QPointF at = pos[k];
+            if (qEnvironmentVariableIsSet("FUMBBL_DEBUG_BADGES"))
+                fprintf(stderr, "BADGE n=%d at=(%.2f,%.2f) end=(%d,%d) occupied=%d\n",
+                        n, at.x(), at.y(), nums[k].end.x(), nums[k].end.y(),
+                        occupantAt(nums[k].end.x(), nums[k].end.y())
+                            ? 1 : 0);
             const qreal br = minDim * 0.13;
-            p.setFont(nfFor(n));
+            QFont nf = p.font();
+            nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
+            nf.setBold(true);
+            p.setFont(nf);
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(250, 250, 246, 240));
             p.drawEllipse(at, br, br);
             p.setPen(QPen(QColor(46, 40, 34, 200), qMax(1.0, minDim * 0.02)));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(at, br, br);
-            const QString num = QString::number(n);
-            QRectF box(at.x() - br, at.y() - br, br * 2, br * 2);
+            const QRectF box(at.x() - br, at.y() - br, br * 2, br * 2);
             p.setPen(QColor(20, 20, 24, 255));
-            p.drawText(box, Qt::AlignCenter, num);
+            p.drawText(box, Qt::AlignCenter, QString::number(n));
         }
     }
     p.restore();
@@ -1945,8 +2027,18 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
             p.setBrush(teamRingColor(leftSide));
             p.drawEllipse(bc, br, br);
             p.setPen(Qt::white);
+            // Round 15 (user): the dugout's jersey number is the SAME
+            // SIZE as on the field — the exact font formula of the field
+            // token badge (drawTeam), not a face-relative one.
+            const QRectF fr = fieldRect();
+            const qreal minDimF = fr.isEmpty()
+                                     ? faceD
+                                     : qMin(fr.width() / kFieldWidth,
+                                            fr.height() / kFieldHeight);
+            const qreal fbr = minDimF * 0.15; // the field badge radius
+            const int nd = e->number > 99 ? 3 : (e->number > 9 ? 2 : 1);
             QFont nf = p.font();
-            nf.setPointSizeF(qMax(4.5, br * 1.4));
+            nf.setPointSizeF(qMax(3.5, fbr * (nd == 1 ? 1.5 : 1.05)));
             nf.setBold(true);
             p.setFont(nf);
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2),
@@ -2255,7 +2347,7 @@ void FieldView::paintEvent(QPaintEvent *)
         // oro"): a soft GOLD halo under the ball, at rest and in flight.
         // Turn 17 (user): the glow is ANIMATED — it breathes with the
         // pulse timer (the timer stays armed while the ball is visible).
-        const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+        const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
         drawBallGlow(p, bctr, qMax(bw, bh) * 1.15, breath);
         drawFootball(p, bctr, bw, bh, -18);
     }
@@ -2437,7 +2529,7 @@ void FieldView::paintEvent(QPaintEvent *)
                 // Turn 17 (user): ANIMATED — breathes with the pulse timer.
                 const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
                 const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
-                const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+                const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
                 drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25, breath);
                 drawFootball(p, bc2, bw2, bh2, -18);
             }

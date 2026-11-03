@@ -261,6 +261,41 @@ target_link_libraries(round13_preview PRIVATE
     Qt6::WebSockets
 )
 
+# Round 14 offscreen visual verification (between-cells move numbers:
+# 3-step move, 1-square move, blitz).
+add_executable(round14_preview
+    tools/round14_preview.cpp
+    src/core/lzstring.cpp
+    src/core/fumbblauth.cpp
+    src/core/fumbblws.cpp
+    src/core/spectatorsession.cpp
+    src/core/gamemodel.cpp
+    src/core/reportparser.cpp
+    src/core/assets.cpp
+    src/core/matchlist.cpp
+    src/ui/mainwindow.cpp
+    src/ui/spectatedialog.cpp
+    src/ui/fieldview.cpp
+    src/ui/rainsim.cpp
+    src/ui/actionlog.cpp
+    src/ui/chatwidget.cpp
+    src/ui/headerview.cpp
+    src/ui/playerinfowidget.cpp
+    src/ui/panel.cpp
+
+    ${DICE_RCC}
+)
+target_include_directories(round14_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(round14_preview PRIVATE
+    FUMBBL_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_link_libraries(round14_preview PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::WebSockets
+)
+
 # Offscreen FieldView renderer for visual verification of the Mockup F
 # design (feeds a real serverGameState fixture, saves a PNG).
 add_executable(field_preview

@@ -640,11 +640,11 @@ void MainWindow::applyModelToUi()
         m_field->setBlockMarker(m_model->blockAttackerId(), m_model->blockTargetId(),
                                 m_model->blockDieFace());
 
-    // Turn 13 (user, "come su FUMBBL"): the per-turn token marks + the
-    // numbered trail cells, straight from the model.
+    // Turn 13 (user, "come su FUMBBL"): the per-turn token marks, straight
+    // from the model. (The move numbers are derived by the field view from
+    // the move trace itself: number k sits BETWEEN step k's two cells.)
     m_field->setActedPlayers(m_model->actedThisTurn());
     m_field->setBlitzingPlayer(m_model->blitzingPlayerId());
-    m_field->setTrackNumbers(m_model->trackNumbers());
     // Turn 14: the pass receiver's WHITE glow (fieldModelSetTargetSelectionState
     // SELECTED -> model->passTargetId()).
     m_field->setPassTarget(m_model->passTargetId());
