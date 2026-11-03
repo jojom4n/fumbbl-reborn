@@ -1,15 +1,3 @@
-# Release pipeline: push a tag `vX.Y.Z` (or run manually) and the bundled,
-# self-contained builds land on the GitHub Release (or as artifacts for
-# manual runs).
-#
-#   linux   : Qt (official, aqt) + tools/make_bundle.sh  -> tar.gz
-#   windows : Qt MinGW (official, aqt) + windeployqt     -> zip
-#
-# Linux bundle: the exe carries RUNPATH $ORIGIN (RPATH, transitive) and the
-# folder holds the Qt libs + platforms/imageformats/styles plugins + assets,
-# so it runs without Qt installed. The build host's glibc is the floor:
-# built on ubuntu-24.04 (glibc 2.39) it runs on any current desktop Linux.
-
 name: release
 
 on:
@@ -17,131 +5,187 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
+# Qt is BUILT FROM SOURCE in this workflow (official github.com/qt/* mirrors,
+# tag v${QT_VERSION}). Reason (03/nov/2026): Qt's "online installer" repository
+# (qtsdkrepository) is in flux — old versions (6.8/6.9) were pruned from the
+# CDN, the linux desktop repo is gone entirely, and aqtinstall (the tool every
+# CI recipe uses) is unmaintained since mid-2025 and still parses the OLD repo
+# layout. The official git mirrors are stable, and 6.12.0 is the same Qt the
+# client is developed against locally.
+#
+# Only qtbase + qtwebsockets are built (the whole Qt is NOT — the
+# qt-everywhere tarball pulls in 30+ modules and skipping qtdeclarative
+# cascades into most of them).
+#
+# qt.conf next to the executable pins the flat deploy layout, so plugin
+# discovery does not depend on the compiled-in Qt prefix.
 env:
-  # The Qt CDN only keeps the CURRENT series on the official_releases
-  # server (6.10+ as of 03/nov/2026 — 6.8.3 files were pruned and aqt
-  # exits 1 on the download). 6.12.0 = also the local dev version.
   QT_VERSION: "6.12.0"
 
 jobs:
   linux:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          target: desktop
-          arch: x86_64
-          modules: qtwebsockets
-          cache: true
-
-      - name: Configure, build, test
+      - name: System dependencies (Qt build + app runtime)
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
-          QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config git \
+            zlib1g-dev libfreetype-dev libpng-dev libjpeg-dev \
+            libfontconfig1-dev libdbus-1-dev libssl-dev \
+            libx11-dev libxkbcommon-dev libxcb1-dev \
+            libxcb-cursor0-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render-util0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb1-dev
 
-      - name: Bundle (self-contained folder + tar.gz)
-        run: tools/make_bundle.sh build
-
-      - name: AppImage (bundle folder -> AppDir -> appimagetool)
+      - name: Qt source (official git mirrors)
         run: |
-          VER=$(grep -E '^CMAKE_PROJECT_VERSION:' build/CMakeCache.txt | head -1 | cut -d= -f2-)
-          BUNDLE="dist/FUMBBL-Reborn-$VER-linux-x86_64"
-          APPDIR="dist/FUMBBL-Reborn-$VER.AppDir"
-          rm -rf "$APPDIR"
-          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
-                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
-          # Flat layout: the Qt libs sit next to the binary (the exe carries
-          # RPATH=$ORIGIN), so usr/bin holds both.
-          cp "$BUNDLE/FUMBBL-Reborn" "$BUNDLE"/libQt6*.so.6 "$APPDIR/usr/bin/"
-          cp -r "$BUNDLE/plugins" "$APPDIR/usr/"
-          cp -r "$BUNDLE/assets" "$APPDIR/usr/"
-          # Icon: placeholder until a dedicated app icon is produced.
-          convert assets/faces/black_orc.png -resize 256x256 \
-            "$APPDIR/usr/share/icons/hicolor/256x256/apps/fumbbl-reborn.png"
-          printf '[Desktop Entry]\nType=Application\nName=FUMBBL Reborn\nExec=FUMBBL-Reborn\nIcon=fumbbl-reborn\nCategories=Game;\n' \
-            > "$APPDIR/usr/share/applications/fumbbl-reborn.desktop"
-          # appimagetool requires the .desktop at the AppDir ROOT too.
-          cp "$APPDIR/usr/share/applications/fumbbl-reborn.desktop" "$APPDIR/"
-          printf '#!/bin/sh\nexec "%s/usr/bin/FUMBBL-Reborn" "$@"\n' "$APPDIR" \
-            > "$APPDIR/AppRun"
-          chmod +x "$APPDIR/AppRun"
-          curl -sL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
-          chmod +x appimagetool
-          ./appimagetool "$APPDIR"
-          mv dist/*.AppImage "dist/FUMBBL-Reborn-$VER-x86_64.AppImage"
-          rm -rf "$APPDIR" appimagetool
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
+
+      - name: Build qtbase
+        working-directory: qtbase
+        run: |
+          ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
+            -nomake examples -nomake tests \
+            -no-opengl -no-icu -no-glib \
+            -system-zlib -system-freetype
+          cmake --build . -j"$(nproc)"
+          cmake --install .
+
+      - name: Build qtwebsockets
+        run: |
+          cmake -S qtwebsockets -B qtwebsockets/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/qt"
+          cmake --build qtwebsockets/build -j"$(nproc)"
+          cmake --install qtwebsockets/build
+
+      - name: Configure, build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt"
+          cmake --build build -j"$(nproc)"
+
+      - name: Test (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Self-contained bundle + tar.gz
+        env:
+          QT_PREFIX: ${{ github.workspace }}/qt
+        run: |
+          tools/make_bundle.sh build
+          # headless sanity check of the bundle itself
+          QT_QPA_PLATFORM=offscreen "dist/$(ls dist | grep '^FUMBBL-Reborn-.*linux' | head -1)/FUMBBL-Reborn" --smoke
+
+      - name: Build AppImage
+        run: |
+          curl -L -o appimagetool.x86_64 \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.x86_64
+          ./appimagetool.x86_64 --appimage-extract
+          sudo mv Squashfs-root /appimage-extract
+
+          DIST_DIR=$(ls -d dist/FUMBBL-Reborn-*/ | grep -v tar.gz)
+          TARBALL=$(ls dist/*.tar.gz)
+          BASE=$(basename "$TARBALL" .tar.gz)          # FUMBBL-Reborn-<ver>-linux-x86_64
+          APPIMG="dist/${BASE/-linux/}.AppImage"       # FUMBBL-Reborn-<ver>-x86_64.AppImage
+
+          # AppDir: flat layout in usr/bin (RPATH=$ORIGIN), qt.conf included
+          APPDIR=/tmp/AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          cp -a "${DIST_DIR}FUMBBL-Reborn" "${DIST_DIR}qt.conf" "$APPDIR/usr/bin/"
+          cp -a "${DIST_DIR}"libQt6*.so* "$APPDIR/usr/bin/"
+          cp -a "${DIST_DIR}plugins" "$APPDIR/usr/bin/"
+          cp -a "${DIST_DIR}assets" "$APPDIR/"
+          # appimagetool requires the .desktop at the AppDir root
+          cp "$APPDIR/usr/share/applications/FUMBBL-Reborn.desktop" "$APPDIR/"
+
+          sudo /appimage-extract/AppImageRunner --appimage-extract "$APPDIR" \
+            -o "$APPIMG" --mksquashfs-opt="-no-I"
 
       - name: Attach to release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.AppImage
             dist/*.tar.gz
 
-      - name: Upload artifacts (manual runs)
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fumbbl-reborn-linux
-          path: |
-            dist/*.AppImage
-            dist/*.tar.gz
-
   windows:
     runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      QT_PREFIX: ${{ github.workspace }}\qt6120
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt (MinGW)
-        uses: jurplel/install-qt-action@v4
+      - name: MSYS2 + MinGW toolchain
+        uses: msys2/setup-msys2@v2
         with:
-          version: ${{ env.QT_VERSION }}
-          target: desktop
-          arch: win64_mingw
-          modules: qtwebsockets
-          tools: tools_mingw1510
-          cache: true
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-openssl
+
+      - name: Qt source (official git mirrors)
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
+
+      - name: Build qtbase (MinGW)
+        shell: bash
+        run: |
+          cd qtbase
+          QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
+          ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
+            -nomake examples -nomake tests \
+            -no-opengl -no-icu -no-glib
+          cmake --build . -j4
+          cmake --install .
+
+      - name: Build qtwebsockets (MinGW)
+        shell: bash
+        run: |
+          QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
+          cmake -S qtwebsockets -B qtwebsockets/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX_UNIX" \
+            -DCMAKE_INSTALL_PREFIX="$QT_PREFIX_UNIX"
+          cmake --build qtwebsockets/build -j4
+          cmake --install qtwebsockets/build
 
       - name: Configure, build
-        shell: bash
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$env:QT_PREFIX"
+          cmake --build build -j4
 
-      - name: Bundle (windeployqt + assets + zip)
-        shell: bash
+      - name: Stage + windeployqt + qt.conf
         run: |
-          VER=$(grep -E '^CMAKE_PROJECT_VERSION:' build/CMakeCache.txt | head -1 | cut -d= -f2-)
-          NAME="FUMBBL-Reborn-$VER-windows-x86_64"
-          mkdir -p "dist/$NAME"
-          cp build/FUMBBL-Reborn.exe "dist/$NAME/"
-          cp -r assets "dist/$NAME/"
-          windeployqt --release --no-translations --compiler-runtime "dist/$NAME/FUMBBL-Reborn.exe"
+          cmake --install build --prefix staging
+          & "$env:QT_PREFIX\bin\windeployqt.exe" --release --no-translations --compiler-runtime staging\FUMBBL-Reborn.exe
+          # pin the flat layout (plugins next to the exe)
+          Set-Content -Path "staging\qt.conf" -Value "[Paths]`nPrefix = .`nPlugins = plugins`n"
 
       - name: Zip
-        shell: pwsh
         run: |
-          VER = (Get-Content build/CMakeCache.txt | Select-String '^CMAKE_PROJECT_VERSION:' | ForEach-Object { ($_ -split '=', 2)[1] }).Trim()
-          Compress-Archive -Path "dist/FUMBBL-Reborn-$VER-windows-x86_64" -DestinationPath "dist/FUMBBL-Reborn-$VER-windows-x86_64.zip"
+          New-Item -ItemType Directory -Force -Path "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64"
+          Copy-Item -Recurse -Force "staging\*" "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64\"
+          Compress-Archive -Path "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64" -DestinationPath "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64.zip"
+          Get-ChildItem dist | Format-Table Name, Length
 
       - name: Attach to release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
-
-      - name: Upload artifacts (manual runs)
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fumbbl-reborn-windows
-          path: dist/*.zip

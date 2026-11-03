@@ -31,8 +31,15 @@ EXE="FUMBBL-Reborn"
 libdir=""
 root=""
 if [[ -n "${QT_PREFIX:-}" ]]; then
-    libdir="$QT_PREFIX"
-    root="$(dirname "$QT_PREFIX")"
+    # QT_PREFIX may be the prefix root (source build: <root>/lib + <root>/plugins)
+    # or the lib dir itself (official installs).
+    if [[ -d "$QT_PREFIX/lib" && "$QT_PREFIX"/lib/libQt6Core.so* ]]; then
+        root="$QT_PREFIX"
+        libdir="$QT_PREFIX/lib"
+    else
+        libdir="$QT_PREFIX"
+        root="$(dirname "$libdir")"
+    fi
 else
     qt6_dir="$(grep -E '^Qt6_DIR:' "$BUILD_DIR/CMakeCache.txt" | head -1 | cut -d= -f2-)"
     libdir="$(cd "$(dirname "$(dirname "$qt6_dir")")" && pwd)"   # strip cmake/Qt6
@@ -69,13 +76,14 @@ copy_qt_libs() {
     while IFS= read -r dep; do
         [[ -z "$dep" ]] && continue
         base="$(basename "$dep")"
-        if [[ "$dep" = /* && -f "$dep" ]]; then
+        # Prefer the copy from the Qt prefix: on machines with a system Qt,
+        # ldd can resolve libQt6* against /usr/lib (wrong build, wrong deps).
+        found="$(find "$libdir" -maxdepth 2 -name "$base" -print -quit 2>/dev/null || true)"
+        if [[ -z "$found" && "$dep" = /* && -f "$dep" ]]; then
             found="$dep"
-        else
-            found="$(find "$libdir" -maxdepth 2 -name "$base" -print -quit 2>/dev/null || true)"
         fi
         [[ -z "$found" ]] && { echo "error: missing Qt lib: $base" >&2; exit 1; }
-        cp -n "$found" "$DIST/$NAME/"
+        cp -f "$found" "$DIST/$NAME/"
     done < <(ldd "$file" 2>/dev/null | awk '
         $1 ~ /^libQt6/ {
             if ($3 != "not found" && $3 != "") print $3; else print $1
@@ -83,15 +91,22 @@ copy_qt_libs() {
 }
 
 copy_qt_libs "$EXE_PATH"
-# The XCB platform plugin pulls in more Qt libs than the executable does.
-if [[ -f "$QT_PLUGINS/platforms/libqxcb.so" ]]; then
+# Platform plugins: xcb (X11 desktops), offscreen (headless smoke tests),
+# minimal (last-resort). Wayland/VNC are skipped on purpose: they drag in
+# system libraries (libwayland-*) that a plain X11 desktop may not have.
+if [[ -d "$QT_PLUGINS/platforms" ]]; then
     mkdir -p "$DIST/$NAME/plugins/platforms"
-    cp -n "$QT_PLUGINS/platforms/libqxcb.so" "$DIST/$NAME/plugins/platforms/"
-    copy_qt_libs "$DIST/$NAME/plugins/platforms/libqxcb.so"
+    for p in libqxcb.so libqoffscreen.so libqminimal.so; do
+        if [[ -f "$QT_PLUGINS/platforms/$p" ]]; then
+            cp -f "$QT_PLUGINS/platforms/$p" "$DIST/$NAME/plugins/platforms/"
+            copy_qt_libs "$DIST/$NAME/plugins/platforms/$p"
+        fi
+    done
 fi
-# Image formats + widget styles (small; keeps PNG/JPEG loading and the
+# tls (the OpenSSL backend: the client talks HTTPS to fumbbl.com),
+# image formats + widget styles (small; keeps PNG/JPEG loading and the
 # default style working without system Qt).
-for d in imageformats styles; do
+for d in tls imageformats styles; do
     if [[ -d "$QT_PLUGINS/$d" ]]; then
         cp -rn "$QT_PLUGINS/$d" "$DIST/$NAME/plugins/" 2>/dev/null || true
     fi
@@ -104,6 +119,14 @@ if [[ -n "$remaining" ]]; then
     echo "error: bundle still misses: $remaining" >&2
     exit 1
 fi
+
+# qt.conf pins the flat layout (Prefix=. relative to the executable), so the
+# plugin search does not depend on the compiled-in Qt prefix.
+cat > "$DIST/$NAME/qt.conf" <<'EOF'
+[Paths]
+Prefix = .
+Plugins = plugins
+EOF
 
 tar czf "$DIST/$NAME.tar.gz" -C "$DIST" "$NAME"
 echo "bundle ready: $DIST/$NAME.tar.gz"
