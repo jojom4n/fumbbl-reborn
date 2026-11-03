@@ -31,12 +31,14 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
 # tools/mockup/dice_queue.py + dice_process.py). This Qt build does not
 # auto-process .qrc target sources, so rcc runs explicitly.
 set(DICE_RCC ${CMAKE_CURRENT_BINARY_DIR}/qrc_dice.cpp)
-# This Qt build does not export Qt6_rcc_EXECUTABLE — locate rcc explicitly.
+# This Qt build does not export Qt6_rcc_EXECUTABLE — locate rcc explicitly:
+# first the Qt install's own bin (Qt6_DIR is <qt>/lib/cmake/Qt6, so the
+# tools are at <qt>/bin = three levels up), then the system paths.
 if(NOT Qt6_rcc_EXECUTABLE)
     find_program(DICE_RCC_EXECUTABLE
-        NAMES rcc
+        NAMES rcc rcc.exe
+        HINTS "${Qt6_DIR}/../../../bin"
         PATHS /usr/lib/qt6 /usr/lib/qt6/bin /usr/bin
-        NO_DEFAULT_PATH
     )
     if(NOT DICE_RCC_EXECUTABLE)
         message(FATAL_ERROR "rcc not found (needed for assets/dice.qrc)")
