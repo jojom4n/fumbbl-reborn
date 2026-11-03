@@ -47,18 +47,51 @@ jobs:
       - name: Bundle (self-contained folder + tar.gz)
         run: tools/make_bundle.sh build
 
+      - name: AppImage (bundle folder -> AppDir -> appimagetool)
+        run: |
+          VER=$(grep -E '^CMAKE_PROJECT_VERSION:' build/CMakeCache.txt | head -1 | cut -d= -f2-)
+          BUNDLE="dist/FUMBBL-Reborn-$VER-linux-x86_64"
+          APPDIR="dist/FUMBBL-Reborn-$VER.AppDir"
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
+                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          # Flat layout: the Qt libs sit next to the binary (the exe carries
+          # RPATH=$ORIGIN), so usr/bin holds both.
+          cp "$BUNDLE/FUMBBL-Reborn" "$BUNDLE"/libQt6*.so.6 "$APPDIR/usr/bin/"
+          cp -r "$BUNDLE/plugins" "$APPDIR/usr/"
+          cp -r "$BUNDLE/assets" "$APPDIR/usr/"
+          # Icon: placeholder until a dedicated app icon is produced.
+          convert assets/faces/black_orc.png -resize 256x256 \
+            "$APPDIR/usr/share/icons/hicolor/256x256/apps/fumbbl-reborn.png"
+          printf '[Desktop Entry]\nType=Application\nName=FUMBBL Reborn\nExec=FUMBBL-Reborn\nIcon=fumbbl-reborn\nCategories=Game;\n' \
+            > "$APPDIR/usr/share/applications/fumbbl-reborn.desktop"
+          # appimagetool requires the .desktop at the AppDir ROOT too.
+          cp "$APPDIR/usr/share/applications/fumbbl-reborn.desktop" "$APPDIR/"
+          printf '#!/bin/sh\nexec "%s/usr/bin/FUMBBL-Reborn" "$@"\n' "$APPDIR" \
+            > "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          curl -sL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
+          chmod +x appimagetool
+          ./appimagetool "$APPDIR"
+          mv dist/*.AppImage "dist/FUMBBL-Reborn-$VER-x86_64.AppImage"
+          rm -rf "$APPDIR" appimagetool
+
       - name: Attach to release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: |
+            dist/*.AppImage
+            dist/*.tar.gz
 
       - name: Upload artifacts (manual runs)
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: fumbbl-reborn-linux
-          path: dist/*.tar.gz
+          path: |
+            dist/*.AppImage
+            dist/*.tar.gz
 
   windows:
     runs-on: windows-latest
