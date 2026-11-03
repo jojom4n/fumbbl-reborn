@@ -136,6 +136,8 @@ private slots:
     void actionLogDiceImagesRender();
     // ---- Round 13 turn 17 (animated gold ball glow) ----
     void ballGlowBreathes();
+    // ---- Round 13 turn 18 (glow must repaint on its own) ----
+    void ballGlowRepaintsOnItsOwn();
 };
 
 namespace {
@@ -2194,6 +2196,46 @@ void UiWiringTest::ballGlowBreathes()
              qPrintable(QStringLiteral("ball glow is STATIC, not animated (lo=%1 hi=%2)")
                             .arg(lo)
                             .arg(hi)));
+}
+
+// Round 13 turn 18 (user repeat of "The ball must glow gold (animated
+// glow)"): the pulse handler used to advance the phase and early-return
+// WITHOUT update() when only the ball was visible — in the live app the
+// glow sat FROZEN (ballGlowBreathes above forces repaints via grab() and
+// cannot catch this). Count the widget's own Paint events during a 400 ms
+// window with NO grab() and NO external state changes: the breathing gold
+// glow must drive ~30 fps repaints by itself.
+void UiWiringTest::ballGlowRepaintsOnItsOwn()
+{
+    FieldView field;
+    field.resize(1440, 600);
+    field.setBall(13, 7, true); // ball on an empty square, nothing else armed
+    field.show();
+    QApplication::processEvents(); // baseline paint
+
+    // Count the widget's own Paint events (no grab() — that would force
+    // repaints and mask the bug).
+    struct PaintCounter : public QObject {
+        int n = 0;
+        explicit PaintCounter(QObject *parent = nullptr) : QObject(parent) {}
+        bool eventFilter(QObject *, QEvent *e) override {
+            if (e->type() == QEvent::Paint)
+                ++n;
+            return false;
+        }
+    } counter;
+    field.installEventFilter(&counter);
+    for (int t = 0; t < 400; t += 16) {
+        QThread::msleep(16);
+        QApplication::processEvents();
+    }
+    field.removeEventFilter(&counter);
+    const int paints = counter.n;
+    QVERIFY2(paints >= 8,
+             qPrintable(QStringLiteral(
+                 "ball glow did not repaint on its own (paints=%1 in 400ms) — "
+                 "static glow, not animated")
+                            .arg(paints)));
 }
 
 QTEST_MAIN(UiWiringTest)

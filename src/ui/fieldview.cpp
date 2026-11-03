@@ -96,6 +96,19 @@ FieldView::FieldView(QWidget *parent)
         m_pulsePhase += 2.0 * M_PI * 1.2 * 0.033;
         if (m_pulsePhase > 2.0 * M_PI)
             m_pulsePhase -= 2.0 * M_PI;
+        // Turn 18 (user: "The ball must glow gold (animated glow)"): the
+        // ball's gold glow breathes on EVERY tick — it must be repainted
+        // even when no selection/block/pass glow is armed (the old
+        // early-return advanced the phase but never scheduled a repaint,
+        // so in the live app the glow sat FROZEN at the phase of the last
+        // unrelated paint). Full field update while the ball is visible:
+        // the ball is on a square, gliding in flight, or in a carrier's
+        // hand — always correct, and cheap (same cost the block/pass
+        // glows already pay).
+        if (ballGlowVisible()) {
+            update();
+            return;
+        }
         if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty()
             && m_passTarget.isEmpty())
             return;
