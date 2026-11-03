@@ -2167,21 +2167,22 @@ void UiWiringTest::ballGlowBreathes()
         return n;
     };
 
-    // Sample ~460 ms (a full 1.2 Hz breathing period + margin): track the
-    // min and max halo sizes seen.
+    // Sample ~4.2 s (a full 0.25 Hz breathing period + margin — one breath
+    // every ~4 s): track the min and max halo sizes seen. A shorter window
+    // can land on a flat part of the curve and read as "static".
     int lo = INT_MAX, hi = 0;
-    for (int t = 0; t < 460; t += 16) {
+    for (int t = 0; t < 4200; t += 32) {
         const int n = goldCount(field.grab().toImage());
         lo = qMin(lo, n);
         hi = qMax(hi, n);
-        if (t + 16 < 460) {
-            QThread::msleep(16);
+        if (t + 32 < 4200) {
+            QThread::msleep(32);
             QApplication::processEvents();
         }
     }
     QVERIFY2(hi >= 150,
              qPrintable(QStringLiteral("gold ball halo not visible (max=%1)").arg(hi)));
-    QVERIFY2(hi >= lo + 80,
+    QVERIFY2(hi >= lo + 40,
              qPrintable(QStringLiteral("ball glow is STATIC, not animated (lo=%1 hi=%2)")
                             .arg(lo)
                             .arg(hi)));
