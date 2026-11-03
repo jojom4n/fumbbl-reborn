@@ -33,6 +33,7 @@
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QToolButton>
+#include <QThread>
 
 #include "core/assets.h"
 #include "core/gamemodel.h"
@@ -133,6 +134,8 @@ private slots:
     // ---- Round 13 turn 9 (autoscroll checkbox + stick-to-bottom) ----
     void actionLogAutoscrollStickToBottom();
     void actionLogDiceImagesRender();
+    // ---- Round 13 turn 17 (animated gold ball glow) ----
+    void ballGlowBreathes();
 };
 
 namespace {
@@ -2128,6 +2131,69 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
     field.setBlockMarker(QString(), QString(), 0);
     QApplication::processEvents();
     QVERIFY2(!findMarker().any, "clearing the block removes the marker");
+}
+
+// ---------------------------------------------------------------------------
+// Round 13 turn 17 (animated gold ball glow)
+// ---------------------------------------------------------------------------
+
+// Round 13 turn 17 (user: "The ball must glow gold (animated glow)"): the
+// ball's gold halo BREATHES with the pulse timer — the halo's radius and
+// alpha oscillate sinusoidally. Sample frames over time around the ball:
+// the count of gold-tinted pixels must oscillate (animated, not a static
+// halo) and never disappear.
+void UiWiringTest::ballGlowBreathes()
+{
+    FieldView field;
+    field.resize(1440, 600); // round 13: stadium scene, field in the pit
+    field.setBall(13, 7, true); // ball on an empty square
+    field.show();
+    QApplication::processEvents();
+
+    const QPoint c = field.cellCenterPx(13, 7);
+    const int cell = int(field.fieldRect().width() / 26.0);
+    QVERIFY2(cell > 8, "field must be visible");
+
+    // Gold-ness of a pixel over the green grass: r-b rises from ~16 (grass)
+    // toward 231 (pure gold 255,190,40) with the halo's alpha. Count the
+    // pixels above the threshold inside 1.4 cells of the ball center.
+    const auto goldCount = [&](const QImage &im) {
+        int n = 0;
+        const int R = cell * 2;
+        const int lim = int(1.4 * cell) * int(1.4 * cell);
+        for (int y = c.y() - R; y <= c.y() + R; ++y) {
+            for (int x = c.x() - R; x <= c.x() + R; ++x) {
+                if (x < 0 || y < 0 || x >= im.width() || y >= im.height())
+                    continue;
+                const int dx = x - c.x(), dy = y - c.y();
+                if (dx * dx + dy * dy > lim)
+                    continue;
+                const QRgb p = im.pixel(x, y);
+                if (qRed(p) - qBlue(p) > 60)
+                    ++n;
+            }
+        }
+        return n;
+    };
+
+    // Sample ~460 ms (a full 1.2 Hz breathing period + margin): track the
+    // min and max halo sizes seen.
+    int lo = INT_MAX, hi = 0;
+    for (int t = 0; t < 460; t += 16) {
+        const int n = goldCount(field.grab().toImage());
+        lo = qMin(lo, n);
+        hi = qMax(hi, n);
+        if (t + 16 < 460) {
+            QThread::msleep(16);
+            QApplication::processEvents();
+        }
+    }
+    QVERIFY2(hi >= 150,
+             qPrintable(QStringLiteral("gold ball halo not visible (max=%1)").arg(hi)));
+    QVERIFY2(hi >= lo + 80,
+             qPrintable(QStringLiteral("ball glow is STATIC, not animated (lo=%1 hi=%2)")
+                            .arg(lo)
+                            .arg(hi)));
 }
 
 QTEST_MAIN(UiWiringTest)

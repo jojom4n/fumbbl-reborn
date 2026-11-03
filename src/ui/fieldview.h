@@ -243,6 +243,12 @@ private:
     // Map a widget point through the zoom/pan transform into field space.
     QPointF toFieldSpace(const QPointF &pos) const;
     void clampPan();
+    // Turn 17 (user: "the ball must glow gold (animated glow)"): the ball's
+    // GOLD glow breathes with the pulse timer — the timer must keep running
+    // while the ball is visible anywhere (field square, in flight, or
+    // ball-in-hand on a token).
+    bool ballGlowVisible() const;
+    bool needsPulse() const;
 
     QString m_homeName = QStringLiteral("Team 1");
     QString m_awayName = QStringLiteral("Team 2");

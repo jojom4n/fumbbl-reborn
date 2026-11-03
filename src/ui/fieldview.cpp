@@ -172,6 +172,12 @@ void FieldView::setPlayers(const QVector<PlayerToken> &home,
 {
     m_homePlayers = home;
     m_awayPlayers = away;
+    // Turn 17: the ball-in-hand marker (hasBall) carries the ball's
+    // animated gold glow — keep the pulse timer in sync.
+    if (needsPulse())
+        m_pulseTimer->start();
+    else
+        m_pulseTimer->stop();
 
     // Round 13 (user): per-square MOVEMENT ANIMATION. Build the new on-field
     // model layout; every player that MOVED gets a glide through the grid
@@ -297,6 +303,11 @@ void FieldView::setBall(int x, int y, bool inPlay)
     }
     if (anyTokenAnimActive())
         ensureAnimTimer();
+    // Turn 17: the ball's animated gold glow needs the pulse timer.
+    if (needsPulse())
+        m_pulseTimer->start();
+    else
+        m_pulseTimer->stop();
     update();
 }
 
@@ -602,17 +613,44 @@ void FieldView::drawTouchdownZones(QPainter &p, const QRectF &f) const
     p.restore();
 }
 
+// Turn 17 (user: "the ball must glow gold (animated glow)"): the ball's
+// gold glow breathes, so the pulse timer must run while the ball is
+// visible ANYWHERE: on an empty field square (m_ballInPlay), gliding in
+// flight (the __ball__ token anim), or as the ball-in-hand marker on a
+// token (hasBall). No idle repaints: when the ball is gone (and no other
+// glow is armed) the timer stops.
+bool FieldView::ballGlowVisible() const
+{
+    if (m_ballInPlay)
+        return true;
+    if (m_tokenAnim.value(QLatin1String("__ball__")).active)
+        return true;
+    for (const PlayerToken &t : m_homePlayers)
+        if (t.hasBall)
+            return true;
+    for (const PlayerToken &t : m_awayPlayers)
+        if (t.hasBall)
+            return true;
+    return false;
+}
+
+bool FieldView::needsPulse() const
+{
+    return !m_selectedPlayer.isEmpty() || !m_blockTarget.isEmpty()
+           || !m_passTarget.isEmpty() || ballGlowVisible();
+}
+
 void FieldView::setSelectedPlayer(const QString &playerId)
 {
     if (m_selectedPlayer == playerId)
         return;
     m_selectedPlayer = playerId;
-    // The pulse timer runs only while a selection is visible (round 9:
-    // no idle repaints on the field).
-    if (playerId.isEmpty())
-        m_pulseTimer->stop();
-    else
+    // The pulse timer runs only while something animated is visible
+    // (round 9: no idle repaints on the field).
+    if (needsPulse())
         m_pulseTimer->start();
+    else
+        m_pulseTimer->stop();
     update();
 }
 
@@ -626,11 +664,11 @@ void FieldView::setBlockMarker(const QString &attackerId, const QString &defende
     m_blockAttacker = attackerId;
     m_blockDieFace = dieFace;
     // Round 13 turn 4: the red block glow breathes with the same pulse
-    // timer as the selection glow.
-    if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty())
-        m_pulseTimer->stop();
-    else
+    // timer as the selection glow (turn 17: + the ball's gold glow).
+    if (needsPulse())
         m_pulseTimer->start();
+    else
+        m_pulseTimer->stop();
     update();
 }
 
@@ -663,11 +701,12 @@ void FieldView::setPassTarget(const QString &playerId)
     if (m_passTarget == playerId)
         return;
     m_passTarget = playerId;
-    // The white receiver glow breathes with the same pulse timer.
-    if (m_selectedPlayer.isEmpty() && m_blockTarget.isEmpty() && m_passTarget.isEmpty())
-        m_pulseTimer->stop();
-    else
+    // The white receiver glow breathes with the same pulse timer (turn 17:
+    // + the ball's gold glow).
+    if (needsPulse())
         m_pulseTimer->start();
+    else
+        m_pulseTimer->stop();
     update();
 }
 
@@ -1516,16 +1555,21 @@ inline void markerDisc(QPainter &p, const QPointF &c, qreal r)
 // Turn 16 (user: "la palla dovrebbe essere un poco più visibile ... Falla
 // gloware oro"): a soft GOLD halo under the ball (field + carrier), so it
 // pops on the grass and on the token alike.
-inline void drawBallGlow(QPainter &p, const QPointF &c, qreal radius)
+// Turn 17 (user: "the ball must glow gold (animated glow)"): the halo
+// BREATHES — radius and alpha pulse sinusoidally with the shared pulse
+// timer (same language as the selection/block/receiver glows). breath is
+// the 0..1 breathing factor computed by the painter.
+inline void drawBallGlow(QPainter &p, const QPointF &c, qreal radius, qreal breath)
 {
-    QRadialGradient g(c, radius);
-    g.setColorAt(0.0, QColor(255, 190, 40, 150));
-    g.setColorAt(0.55, QColor(255, 190, 40, 70));
+    const qreal r = radius * (1.0 + 0.30 * breath);
+    QRadialGradient g(c, r);
+    g.setColorAt(0.0, QColor(255, 190, 40, int(100 + 130 * breath))); // 100..230
+    g.setColorAt(0.55, QColor(255, 190, 40, int(50 + 70 * breath)));  // 50..120
     g.setColorAt(1.0, QColor(255, 190, 40, 0));
     p.save();
     p.setPen(Qt::NoPen);
     p.setBrush(g);
-    p.drawEllipse(c, radius, radius);
+    p.drawEllipse(c, r, r);
     p.restore();
 }
 
@@ -2196,7 +2240,10 @@ void FieldView::paintEvent(QPaintEvent *)
         // Turn 16 (user: "la palla dovrebbe essere un poco più visibile,
         // sia che stia sul campo sia che stia sul token. Falla gloware
         // oro"): a soft GOLD halo under the ball, at rest and in flight.
-        drawBallGlow(p, bctr, qMax(bw, bh) * 1.15);
+        // Turn 17 (user): the glow is ANIMATED — it breathes with the
+        // pulse timer (the timer stays armed while the ball is visible).
+        const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+        drawBallGlow(p, bctr, qMax(bw, bh) * 1.15, breath);
         drawFootball(p, bctr, bw, bh, -18);
     }
 
@@ -2374,9 +2421,11 @@ void FieldView::paintEvent(QPaintEvent *)
             if (t.hasBall) {
                 // Turn 16 (user): the carrier ball GLOWS GOLD on the token
                 // too ("sia che stia sul campo sia che stia sul token").
+                // Turn 17 (user): ANIMATED — breathes with the pulse timer.
                 const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
                 const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
-                drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25);
+                const qreal breath = 0.5 - 0.5 * std::cos(m_pulsePhase);
+                drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25, breath);
                 drawFootball(p, bc2, bw2, bh2, -18);
             }
         }
