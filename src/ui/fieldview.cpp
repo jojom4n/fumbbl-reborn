@@ -1879,11 +1879,13 @@ void FieldView::paintBoxStrip(QPainter &p, const QColor &accent,
         drawTeamRing(p, c, faceD, leftSide);
 
         // Number badge (bottom-right of the ring, like the field tokens).
+        // Turn 17 (user): team color — blue disc (home) / red disc (away)
+        // with a white number.
         if (e->number > 0) {
             const qreal br = faceD * 0.26;
             const QPointF bc(c.x() + faceD * 0.27, c.y() + faceD * 0.29);
-            p.setPen(QPen(QColor(0xd8, 0xb4, 0x4a), 1.0));
-            p.setBrush(QColor(0x1e, 0x1e, 0x26));
+            p.setPen(QPen(QColor(0x2a, 0x28, 0x22), qMax(1.0, br * 0.16)));
+            p.setBrush(teamRingColor(leftSide));
             p.drawEllipse(bc, br, br);
             p.setPen(Qt::white);
             QFont nf = p.font();
@@ -2346,23 +2348,22 @@ void FieldView::paintEvent(QPaintEvent *)
             }
 
             // Number badge (bottom-right of the token — follows it while it
-            // glides, not the model cell). Turn 16 (user: "numero del token
-            // nero su sfondo bianco" + "parecchio più piccoli, diciamo la
-            // grandezza dei vari simboli che appaiono sul token in altre
-            // posizioni"): the badge joins the badge family — SAME size as
-            // the check/lightning/'?' ring badges (0.15 minDim), WHITE disc
-            // with a dark rim, DARK (black) number.
+            // glides, not the model cell). Same badge family as the
+            // check/lightning/'?' ring badges (0.15 minDim) with a dark rim.
+            // Turn 17 (user): the badge is the TEAM COLOR — blue disc +
+            // white font for the "blu" (home) team, red disc + white font
+            // for the "red" (away) team.
             const qreal br = qMin(cellW, cellH) * 0.15;
             const QPointF bc(ctr.x() + s * 0.30, ctr.y() + s * 0.32);
             p.setPen(QPen(QColor(0x2a, 0x28, 0x22), qMax(1.0, br * 0.16)));
-            p.setBrush(QColor(0xf6, 0xf4, 0xee, 245));
+            p.setBrush(teamRingColor(sideHome));
             p.drawEllipse(bc, br, br);
             QFont numFont = p.font();
             const int ndigits = t.number > 99 ? 3 : (t.number > 9 ? 2 : 1);
             numFont.setPointSizeF(qMax(3.5, br * (ndigits == 1 ? 1.5 : 1.05)));
             numFont.setBold(true);
             p.setFont(numFont);
-            p.setPen(QColor(0x14, 0x12, 0x10));
+            p.setPen(Qt::white);
             p.drawText(QRectF(bc.x() - br, bc.y() - br, br * 2, br * 2), Qt::AlignCenter,
                        t.number > 0 ? QString::number(t.number) : QStringLiteral("?"));
 
