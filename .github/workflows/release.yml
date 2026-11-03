@@ -38,8 +38,13 @@ jobs:
             libfontconfig1-dev libdbus-1-dev libssl-dev \
             libx11-dev libxkbcommon-dev libxcb1-dev \
             libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev \
-            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render-util0-dev \
-            libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb-dev
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-shm0-dev \
+            libxcb-sync0-dev libxcb-util-dev \
+            libxcb-xfixes0-dev libxcb-xkb-dev
+          # note: qtbase's xcb_syslibs compile test links ALL xcb extension
+          # libs — if you touch this list, keep it complete or the xcb
+          # platform plugin silently drops out of the build
 
       - name: Qt source (official git mirrors)
         run: |
@@ -51,7 +56,7 @@ jobs:
         run: |
           ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
             -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib \
+            -no-opengl -no-icu -no-glib -no-sql \
             -system-zlib -system-freetype
           cmake --build . -j"$(nproc)"
           cmake --install .
@@ -149,7 +154,7 @@ jobs:
           QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
           ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
             -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib
+            -no-opengl -no-icu -no-glib -no-sql
           cmake --build . -j4
           cmake --install .
 
