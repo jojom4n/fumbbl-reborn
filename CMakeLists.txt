@@ -119,6 +119,10 @@ add_executable(fumbbl-qt
     ${DICE_RCC}
 )
 
+# The shipped binary is named FUMBBL-Reborn (the CMake target stays
+# fumbbl-qt).
+set_target_properties(fumbbl-qt PROPERTIES OUTPUT_NAME "FUMBBL-Reborn")
+
 target_include_directories(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Game assets: cartoon faces (assets/faces, per roster piece) + procedural
@@ -135,6 +139,21 @@ target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+
+# Release bundle: the executable finds the Qt libraries next to it
+# (tools/make_bundle.sh installs into the bundle folder). Windows resolves
+# DLLs from the exe directory natively — no rpath needed.
+if(NOT WIN32)
+    # DT_RPATH (not DT_RUNPATH): the search path propagates to the Qt
+    # libraries' own transitive dependencies (libQt6DBus, libQt6XcbQpa, ...),
+    # so the bundle resolves everything from $ORIGIN.
+    set_target_properties(fumbbl-qt PROPERTIES INSTALL_RPATH "$ORIGIN")
+    target_link_options(fumbbl-qt PRIVATE "LINKER:--disable-new-dtags")
+endif()
+
+# Install rules (release bundles via tools/make_bundle.sh).
+install(TARGETS fumbbl-qt RUNTIME DESTINATION .)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION assets)
 
 # -----------------------------------------------------------------------------
 # Headless spectator smoke tool (live network verification)

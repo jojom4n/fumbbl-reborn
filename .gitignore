@@ -4,6 +4,9 @@ cmake-build-*/
 *.user
 CMakeUserPresets.json
 
+# Release bundles (tools/make_bundle.sh)
+dist/
+
 # Local working memory — never uploaded
 memory-bank/
 
@@ -24,5 +27,5 @@ FUMBBL __*.pdf
 *.log
 __pycache__/
 
-# Agent session rules — local only, never committed (user rule, turn 8)
+# Agent session rules — local only, never committed (user rule)
 AGENTS.md

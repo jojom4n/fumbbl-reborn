@@ -68,7 +68,7 @@ cmake --build build
 ## Run
 
 ```bash
-./build/fumbbl-qt
+./build/FUMBBL-Reborn
 ```
 
 On first run, enter your FUMBBL credentials (Client ID, Client Secret,

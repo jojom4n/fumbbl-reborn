@@ -1,0 +1,111 @@
+# Release pipeline: push a tag `vX.Y.Z` (or run manually) and the bundled,
+# self-contained builds land on the GitHub Release (or as artifacts for
+# manual runs).
+#
+#   linux   : Qt (official, aqt) + tools/make_bundle.sh  -> tar.gz
+#   windows : Qt MinGW (official, aqt) + windeployqt     -> zip
+#
+# Linux bundle: the exe carries RUNPATH $ORIGIN (RPATH, transitive) and the
+# folder holds the Qt libs + platforms/imageformats/styles plugins + assets,
+# so it runs without Qt installed. The build host's glibc is the floor:
+# built on ubuntu-24.04 (glibc 2.39) it runs on any current desktop Linux.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: "6.8.3"
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          arch: x86_64
+          modules: qtwebsockets
+          cache: true
+
+      - name: Configure, build, test
+        run: |
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+
+      - name: Bundle (self-contained folder + tar.gz)
+        run: tools/make_bundle.sh build
+
+      - name: Attach to release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+
+      - name: Upload artifacts (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fumbbl-reborn-linux
+          path: dist/*.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt (MinGW)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: desktop
+          arch: win64_mingw
+          modules: qtwebsockets
+          tools: tools_mingw1310
+          cache: true
+
+      - name: Configure, build
+        shell: bash
+        run: |
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Bundle (windeployqt + assets + zip)
+        shell: bash
+        run: |
+          VER=$(grep -E '^CMAKE_PROJECT_VERSION:' build/CMakeCache.txt | head -1 | cut -d= -f2-)
+          NAME="FUMBBL-Reborn-$VER-windows-x86_64"
+          mkdir -p "dist/$NAME"
+          cp build/FUMBBL-Reborn.exe "dist/$NAME/"
+          cp -r assets "dist/$NAME/"
+          windeployqt --release --no-translations --compiler-runtime "dist/$NAME/FUMBBL-Reborn.exe"
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          VER = (Get-Content build/CMakeCache.txt | Select-String '^CMAKE_PROJECT_VERSION:' | ForEach-Object { ($_ -split '=', 2)[1] }).Trim()
+          Compress-Archive -Path "dist/FUMBBL-Reborn-$VER-windows-x86_64" -DestinationPath "dist/FUMBBL-Reborn-$VER-windows-x86_64.zip"
+
+      - name: Attach to release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+
+      - name: Upload artifacts (manual runs)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fumbbl-reborn-windows
+          path: dist/*.zip

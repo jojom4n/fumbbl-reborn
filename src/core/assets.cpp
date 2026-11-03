@@ -59,7 +59,10 @@ const QString &dir()
         }
 #endif
         if (s_dir.isEmpty()) {
+            // Release layout: assets/ sits NEXT TO the executable (linuxdeployqt
+            // / windeployqt bundles); dev layout: <exe>/../assets or cwd.
             const QStringList candidates = {
+                QCoreApplication::applicationDirPath() + QStringLiteral("/assets"),
                 QCoreApplication::applicationDirPath() + QStringLiteral("/../assets"),
                 QDir::currentPath() + QStringLiteral("/assets"),
             };
