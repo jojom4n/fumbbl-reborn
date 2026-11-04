@@ -8,9 +8,12 @@ riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 - **Release distribuibili** (GitHub Releases, tag `v*`): binario
   `FUMBBL-Reborn`, bundle Linux self-contained (tar.gz + AppImage) e zip
   Windows, con Qt e plugin inclusi (`qt.conf` pinna il layout flat; plugin
-  tls incluso per l'HTTPS verso fumbbl.com). Qt 6.12.0 compilato da
-  sorgente in CI (i repository "online installer" di Qt non sono più
-  affidabili; v. `.github/workflows/release.yml`).
+  tls incluso per l'HTTPS verso fumbbl.com). CI: Qt 6.8.3 precompilato
+  via `jurplel/install-qt-action` (niente build da sorgente) + AppImage
+  con `linuxdeploy` (v. `.github/workflows/release.yml`).
+- **Icona dell'app**: casco verde/oro generato con Qwen-Image
+  (`share/icon.png` per AppImage/bundle, `share/icon.ico` incorporato
+  nell'exe Windows).
 - Versioning reale del client (sostituisce la gestione a "round"): versione
   unica in CMake, mai hardcodata nel codice.
 - Cleanup completo del codice: commenti tecnici e brevi (nessun riferimento
