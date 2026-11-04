@@ -65,8 +65,11 @@ jobs:
           # Standard AppDir: the app installs exe+assets at the prefix root,
           # so prefix = usr/bin puts them where linuxdeploy expects them
           cmake --install build --prefix build/AppDir/usr/bin
-          # linuxdeploy expects the .desktop at the AppDir root
-          cp share/FUMBBL-Reborn.desktop build/AppDir/
+          # linuxdeploy only resolves the main .desktop from
+          # usr/share/applications (deployedDesktopFiles()) — the AppDir-root
+          # copy is created by linuxdeploy itself
+          mkdir -p build/AppDir/usr/share/applications
+          cp share/FUMBBL-Reborn.desktop build/AppDir/usr/share/applications/
           # Official Qt ships its own libicu next to the Qt libs — make sure
           # it lands in the AppImage (the app dies without it on plain systems)
           if ls "$QT_ROOT_DIR/lib/libicu"* > /dev/null 2>&1; then
@@ -122,10 +125,18 @@ jobs:
         run: |
           ctest --test-dir build --output-on-failure
           if ($LASTEXITCODE -ne 0) {
+            # the streamed lightxml log survives crashes: the last open
+            # TestFunction tag is where the process died
+            if (Test-Path build\ui_wiring.light.xml) {
+              Write-Host '=== ui_wiring.light.xml (crash site = last TestFunction) ==='
+              Get-Content build\ui_wiring.light.xml
+            }
+            # fallback: run each function in its own process (function names
+            # are POSITIONAL args in Qt 6; -functions only lists them)
             Write-Host '=== isolating the failing test, one function per process ==='
             $funcs = (Select-String -Path tests\ui_wiring_test.cpp -Pattern 'void UiWiringTest::(\w+)\(').Matches | ForEach-Object { $_.Groups[1].Value }
             foreach ($f in $funcs) {
-              build\ui_wiring_test.exe -functions $f | Out-Null
+              build\ui_wiring_test.exe $f | Out-Null
               Write-Host "test $f -> exit $LASTEXITCODE"
             }
             exit 1

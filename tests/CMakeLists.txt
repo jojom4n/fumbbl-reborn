@@ -57,7 +57,12 @@ target_compile_definitions(ui_wiring_test PRIVATE
 target_link_libraries(ui_wiring_test PRIVATE
     Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets
 )
-add_test(NAME ui_wiring_test COMMAND $<TARGET_FILE:ui_wiring_test>)
+# lightxml streams one tag per event as the test runs: if the process dies
+# mid-suite (the windows test exe is a GUI-subsystem app and loses all
+# console output), the file still shows exactly which function it was in.
+add_test(NAME ui_wiring_test
+    COMMAND $<TARGET_FILE:ui_wiring_test>
+            -o ${CMAKE_BINARY_DIR}/ui_wiring.light.xml,lightxml)
 set_tests_properties(ui_wiring_test PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
