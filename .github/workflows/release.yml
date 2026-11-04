@@ -12,7 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  QT_VERSION: "6.6.1"
+  # 6.8 = latest LTS fully served by the classic aqt repos (Qt >= 6.11 moved
+  # to the per-arch layout aqt 3.3.0 cannot parse on windows)
+  QT_VERSION: "6.8.3"
 
 jobs:
   linux:
