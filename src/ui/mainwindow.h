@@ -68,6 +68,8 @@ public:
     // Open the "Spectate Game" dialog (also triggered by File > Spectate Game…).
     // Public so it can be invoked from --spectate-now / tests.
     void openSpectateDialog();
+    // View-menu equivalent for one floating panel (tests/screenshots).
+    void setPanelVisible(const QString &name, bool visible);
 
     // Panel layout persistence (JSON via QSettings).
     QByteArray savedLayout() const;

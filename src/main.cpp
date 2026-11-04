@@ -120,6 +120,33 @@ int main(int argc, char *argv[])
         });
 
     if (smoke || !screenshotPath.isEmpty()) {
+        // --size WxH (with --screenshot): use an explicit window size
+        // instead of the offscreen screen's maximized default — the
+        // window may be larger than the (small) offscreen screen.
+        QString shotSize;
+        const int sizeIdx = app.arguments().indexOf(QStringLiteral("--size"));
+        if (sizeIdx >= 0 && sizeIdx + 1 < app.arguments().size())
+            shotSize = app.arguments().at(sizeIdx + 1);
+        QTimer::singleShot(100, &window, [&window, shotSize]() {
+            if (shotSize.isEmpty())
+                return;
+            const auto parts = shotSize.split('x');
+            if (parts.size() != 2)
+                return;
+            window.showNormal();
+            window.resize(parts[0].toInt(), parts[1].toInt());
+        });
+        // --hide-panel <name> (repeatable): after the layout is applied.
+        QStringList hiddenPanels;
+        const auto &allArgs = app.arguments();
+        for (int i = 1; i + 1 < allArgs.size(); ++i)
+            if (allArgs[i] == QLatin1String("--hide-panel"))
+                hiddenPanels << allArgs[i + 1];
+        if (!hiddenPanels.isEmpty())
+            QTimer::singleShot(600, &window, [&window, hiddenPanels]() {
+                for (const QString &p : hiddenPanels)
+                    window.setPanelVisible(p, false);
+            });
         QTimer::singleShot(1200, &app, [&app, &window, screenshotPath]() {
             if (!screenshotPath.isEmpty())
                 window.grab().save(screenshotPath);

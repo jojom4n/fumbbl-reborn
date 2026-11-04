@@ -227,6 +227,12 @@ void MainWindow::createCentralWidget()
     setCentralWidget(m_stage);
 }
 
+void MainWindow::setPanelVisible(const QString &name, bool visible)
+{
+    if (auto *a = m_panelViewActions.value(name, nullptr))
+        a->setChecked(visible);
+}
+
 FloatingPanel *MainWindow::makePanel(const QString &name, const QString &title,
                                      QWidget *content, const QColor &accent)
 {
