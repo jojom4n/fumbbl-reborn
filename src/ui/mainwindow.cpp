@@ -31,6 +31,7 @@
 #include <QEvent>
 #include <QImage>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QMenu>

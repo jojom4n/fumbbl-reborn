@@ -80,15 +80,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pin Python 3.12: the runner default (3.15) breaks aqtinstall's
+      # package-XML parsing and hits EACCES on WindowsApps\python.EXE.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Qt + MinGW
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          arch: 'win64_mingw81'
+          arch: 'win64_mingw'
           modules: 'qtwebsockets'
-          # C++20 needs GCC >= 10: newer than Qt's own MinGW, which is fine
-          # (windeployqt copies the matching runtime)
           tools: 'tools_mingw1310'
+          set-env: 'true'
           cache: 'true'
 
       - name: Configure and build
