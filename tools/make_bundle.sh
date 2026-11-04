@@ -97,6 +97,12 @@ copy_qt_libs() {
 }
 
 copy_qt_libs "$EXE_PATH"
+# The official Qt bundles its own ICU (libicu*.so.73 on 6.8): ldd lists it
+# as a Qt lib dependency, but it is not a libQt6* file, so copy it by name.
+for f in "$libdir"/libicu*.so*; do
+    [[ -e "$f" ]] || continue
+    cp -f "$f" "$DIST/$NAME/"
+done
 # Platform plugins: xcb (X11 desktops), offscreen (headless smoke tests),
 # minimal (last-resort). Wayland/VNC are skipped on purpose: they drag in
 # system libraries (libwayland-*) that a plain X11 desktop may not have.
@@ -122,7 +128,7 @@ done
 # Strip LD_LIBRARY_PATH: the check must prove the bundle resolves from
 # $ORIGIN alone, not from the Qt prefix on the environment.
 remaining="$(env -u LD_LIBRARY_PATH ldd "$EXE_PATH" 2>/dev/null | awk '
-    $1 ~ /^libQt6/ && $3 == "not" { print $1 }')"
+    $1 ~ /^lib(Qt6|icu)/ && $3 == "not" { print $1 }')"
 if [[ -n "$remaining" ]]; then
     echo "error: bundle still misses: $remaining" >&2
     exit 1

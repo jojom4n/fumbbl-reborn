@@ -14,6 +14,7 @@
 // by the live spectator_smoke tool.)
 // =============================================================================
 #include <QtTest>
+#include <cstdio>
 #include <QVBoxLayout>
 
 #include <QApplication>
@@ -2227,5 +2228,16 @@ void UiWiringTest::ballGlowRepaintsOnItsOwn()
                             .arg(paints)));
 }
 
-QTEST_MAIN(UiWiringTest)
+// Explicit main instead of QTEST_MAIN: on Windows, redirected stdio is
+// fully buffered, so a crashing test loses ALL its output to the buffer
+// (run 41836821839: ui_wiring_test failed with zero log lines). Unbuffered
+// I/O keeps every PASS/FAIL line in the CI log, pinning the crash site.
+int main(int argc, char **argv)
+{
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+    QApplication app(argc, argv);
+    UiWiringTest tc;
+    return QTest::qExec(&tc, argc, argv);
+}
 #include "ui_wiring_test.moc"
