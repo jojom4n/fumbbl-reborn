@@ -86,7 +86,11 @@ copy_qt_libs() {
         cp -f "$found" "$DIST/$NAME/"
     done < <(ldd "$file" 2>/dev/null | awk '
         $1 ~ /^libQt6/ {
-            if ($3 != "not found" && $3 != "") print $3; else print $1
+            # ldd prints "libX.so.6 => not found" as TWO fields ($3 == "not")
+            # when the lib is unresolvable — that is normal on a runner
+            # without a system Qt; fall back to the bare name and let the
+            # lookup below find it under the Qt prefix.
+            if ($3 == "not") print $1; else if ($3 != "") print $3
         }')
 }
 
@@ -114,7 +118,7 @@ done
 
 # --- Sanity: the bundle must be self-contained (no system Qt left) -----------
 remaining="$(ldd "$EXE_PATH" 2>/dev/null | awk '
-    $1 ~ /^libQt6/ && $3 == "not found" { print $1 }')"
+    $1 ~ /^libQt6/ && $3 == "not" { print $1 }')"
 if [[ -n "$remaining" ]]; then
     echo "error: bundle still misses: $remaining" >&2
     exit 1
