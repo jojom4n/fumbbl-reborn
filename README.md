@@ -83,6 +83,17 @@ permissions, only on your machine.
 - **Resilient connection** — automatic re-join with a fresh token when a
   session drops, and visible server errors instead of silent failures.
 
+## About the development — a note on AI
+
+This client was built with AI assistance: an LLM coding agent —
+**Qwen 3.8**, running on the owner's own hardware — wrote the code and
+an image model (Qwen-Image) generated the graphics (stadiums, faces,
+icons), all under the direction of the project owner, who defined every
+spec, made every engineering decision, and verified every result. The
+owner is the author; the AI is the tool. If you prefer no-AI software,
+this one has an AI footprint — you are free to use it, fork it (GPLv3) or
+not.
+
 ## Roadmap
 
 - [x] Spectate any live match
