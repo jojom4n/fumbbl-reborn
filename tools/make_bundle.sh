@@ -33,7 +33,7 @@ root=""
 if [[ -n "${QT_PREFIX:-}" ]]; then
     # QT_PREFIX may be the prefix root (source build: <root>/lib + <root>/plugins)
     # or the lib dir itself (official installs).
-    if [[ -d "$QT_PREFIX/lib" && "$QT_PREFIX"/lib/libQt6Core.so* ]]; then
+    if [[ -d "$QT_PREFIX/lib" ]] && compgen -G "$QT_PREFIX/lib/libQt6Core.so*" > /dev/null; then
         root="$QT_PREFIX"
         libdir="$QT_PREFIX/lib"
     else
@@ -84,12 +84,14 @@ copy_qt_libs() {
         fi
         [[ -z "$found" ]] && { echo "error: missing Qt lib: $base" >&2; exit 1; }
         cp -f "$found" "$DIST/$NAME/"
-    done < <(ldd "$file" 2>/dev/null | awk '
+    # Point LD_LIBRARY_PATH at the prefix: without it, ldd cannot load the
+    # direct Qt libs on a machine without a system Qt and therefore never
+    # lists their transitive dependencies (libQt6DBus & co. go missing).
+    done < <(LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$file" 2>/dev/null | awk '
         $1 ~ /^libQt6/ {
             # ldd prints "libX.so.6 => not found" as TWO fields ($3 == "not")
-            # when the lib is unresolvable — that is normal on a runner
-            # without a system Qt; fall back to the bare name and let the
-            # lookup below find it under the Qt prefix.
+            # when the lib is unresolvable — fall back to the bare name and
+            # let the lookup above find it under the Qt prefix.
             if ($3 == "not") print $1; else if ($3 != "") print $3
         }')
 }
@@ -117,7 +119,9 @@ for d in tls imageformats styles; do
 done
 
 # --- Sanity: the bundle must be self-contained (no system Qt left) -----------
-remaining="$(ldd "$EXE_PATH" 2>/dev/null | awk '
+# Strip LD_LIBRARY_PATH: the check must prove the bundle resolves from
+# $ORIGIN alone, not from the Qt prefix on the environment.
+remaining="$(env -u LD_LIBRARY_PATH ldd "$EXE_PATH" 2>/dev/null | awk '
     $1 ~ /^libQt6/ && $3 == "not" { print $1 }')"
 if [[ -n "$remaining" ]]; then
     echo "error: bundle still misses: $remaining" >&2

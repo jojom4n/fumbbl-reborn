@@ -1,14 +1,5 @@
 name: release
 
-# Builds self-contained FUMBBL-Reborn bundles (Linux AppImage + tar.gz,
-# Windows zip) and attaches them to the GitHub Release for the pushed tag.
-#
-# Qt is built from the official source mirrors (github.com/qt/*) because
-# the binary repos no longer serve linux builds. The INSTALLED Qt prefix is
-# cached (key = hash of this file, which holds the configure args): a hit
-# skips the whole ~25-minute Qt build, and any real change to the Qt build
-# invalidates the cache automatically — no manual key bumps.
-
 on:
   push:
     tags: ['v*']
@@ -21,74 +12,34 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  QT_VERSION: "6.12.0"
+  QT_VERSION: "6.6.1"
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: System dependencies (Qt build + app runtime)
+      - name: System dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build pkg-config git \
-            zlib1g-dev libfreetype-dev libpng-dev libjpeg-dev \
-            libfontconfig1-dev libdbus-1-dev libssl-dev \
-            libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
-            libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev \
-            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
-            libxcb-render-util0-dev libxcb-shape0-dev libxcb-shm0-dev \
-            libxcb-sync0-dev libxcb-util-dev \
-            libxcb-xfixes0-dev libxcb-xkb-dev
-          # note: qtbase's xcb_syslibs compile test links ALL xcb extension
-          # libs — if you touch this list, keep it complete or the xcb
-          # platform plugin silently drops out of the build
+            ninja-build pkg-config build-essential \
+            libgl1-mesa-dev libx11-dev libxkbcommon-dev libxkbcommon-x11-dev
 
-      # Cache = the installed Qt prefix only (small and complete). Key =
-      # hash of this workflow file, which contains the configure args.
-      - name: Qt prefix cache
-        uses: actions/cache@v4
-        id: qtcache
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
-          path: qt
-          key: linux-qt-${{ env.QT_VERSION }}-${{ hashFiles('.github/workflows/release.yml') }}
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtwebsockets'
+          cache: 'true'
 
-      # Complete prefix restored? → skip the whole Qt build. The checks
-      # below are the real gate; a partial cache falls through and rebuilds.
-      - name: Qt (build only if cache incomplete)
-        run: |
-          if [ -f qt/plugins/platforms/libqxcb.so ] && ls qt/lib/libQt6WebSockets.so* >/dev/null 2>&1; then
-            echo "Qt prefix restored from cache — skipping Qt build"
-            exit 0
-          fi
-          rm -rf qt
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
-          cd qtbase
-          ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
-            -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib \
-            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-            -no-sql-oci -no-sql-mimer \
-            -system-zlib -system-freetype
-          cmake --build . -j"$(nproc)"
-          cmake --install .
-          cd ..
-          cmake -S qtwebsockets -B qtwebsockets/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt" \
-            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/qt"
-          cmake --build qtwebsockets/build -j"$(nproc)"
-          cmake --install qtwebsockets/build
-
-      - name: Configure, build
+      - name: Configure and build
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt"
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build -j"$(nproc)"
 
       - name: Test (offscreen)
@@ -97,38 +48,24 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Self-contained bundle + tar.gz
-        env:
-          QT_PREFIX: ${{ github.workspace }}/qt
         run: |
-          tools/make_bundle.sh build
-          # headless sanity check of the bundle itself
-          QT_QPA_PLATFORM=offscreen "dist/$(ls dist | grep '^FUMBBL-Reborn-.*linux' | head -1)/FUMBBL-Reborn" --smoke
+          QT_PREFIX="$QT_ROOT_DIR" tools/make_bundle.sh build
+          # headless check of the bundle itself, with no Qt env at all:
+          # it must resolve everything from $ORIGIN
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH QT_QPA_PLATFORM=offscreen \
+            "dist/$(ls dist | grep '^FUMBBL-Reborn-.*linux' | head -1)/FUMBBL-Reborn" --smoke
 
-      - name: Build AppImage
+      - name: Build AppImage (linuxdeploy)
         run: |
-          curl -L -o appimagetool.x86_64 \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool.x86_64
-          ./appimagetool.x86_64 --appimage-extract
-          sudo mv Squashfs-root /appimage-extract
-
-          DIST_DIR=$(ls -d dist/FUMBBL-Reborn-*/ | grep -v tar.gz)
-          TARBALL=$(ls dist/*.tar.gz)
-          BASE=$(basename "$TARBALL" .tar.gz)          # FUMBBL-Reborn-<ver>-linux-x86_64
-          APPIMG="dist/${BASE/-linux/}.AppImage"       # FUMBBL-Reborn-<ver>-x86_64.AppImage
-
-          # AppDir: flat layout in usr/bin (RPATH=$ORIGIN), qt.conf included
-          APPDIR=/tmp/AppDir
-          mkdir -p "$APPDIR/usr/bin"
-          cp -a "${DIST_DIR}FUMBBL-Reborn" "${DIST_DIR}qt.conf" "$APPDIR/usr/bin/"
-          cp -a "${DIST_DIR}"libQt6*.so* "$APPDIR/usr/bin/"
-          cp -a "${DIST_DIR}plugins" "$APPDIR/usr/bin/"
-          cp -a "${DIST_DIR}assets" "$APPDIR/"
-          # appimagetool requires the .desktop at the AppDir root
-          cp "$APPDIR/usr/share/applications/FUMBBL-Reborn.desktop" "$APPDIR/"
-
-          sudo /appimage-extract/AppImageRunner --appimage-extract "$APPDIR" \
-            -o "$APPIMG" --mksquashfs-opt="-no-I"
+          curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+          cmake --install build --prefix build/AppDir/usr
+          # linuxdeploy expects the .desktop at the AppDir root
+          cp build/AppDir/usr/share/applications/FUMBBL-Reborn.desktop build/AppDir/
+          ./linuxdeploy-x86_64.AppImage --appdir build/AppDir \
+            --executable build/AppDir/usr/bin/FUMBBL-Reborn --plugin qt
+          mv build/AppDir/*.AppImage dist/
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
@@ -139,84 +76,38 @@ jobs:
 
   windows:
     runs-on: windows-latest
-    timeout-minutes: 90
-    env:
-      QT_PREFIX: ${{ github.workspace }}\qt6120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: MSYS2 + MinGW toolchain
-        uses: msys2/setup-msys2@v2
+      - name: Install Qt + MinGW
+        uses: jurplel/install-qt-action@v4
         with:
-          msystem: MINGW64
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-openssl
+          version: ${{ env.QT_VERSION }}
+          arch: 'win64_mingw81'
+          modules: 'qtwebsockets'
+          # C++20 needs GCC >= 10: newer than Qt's own MinGW, which is fine
+          # (windeployqt copies the matching runtime)
+          tools: 'tools_mingw1310'
+          cache: 'true'
 
-      # Cache = the installed Qt prefix only. Same key strategy as linux.
-      - name: Qt prefix cache
-        uses: actions/cache@v4
-        id: qtcache
-        with:
-          path: qt6120
-          key: windows-qt-${{ env.QT_VERSION }}-${{ hashFiles('.github/workflows/release.yml') }}
-
-      # Complete prefix restored? → skip the whole MinGW Qt build.
-      - name: Qt (build only if cache incomplete)
-        shell: bash
+      - name: Configure and build
         run: |
-          if [ -f "qt6120/bin/windeployqt.exe" ] && [ -f "qt6120/bin/Qt6WebSockets.dll" ]; then
-            echo "Qt prefix restored from cache — skipping Qt build"
-            exit 0
-          fi
-          rm -rf qt6120
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
-          cd qtbase
-          # NATIVE windows prefix (D:\a\...): a POSIX form like /d/a/...
-          # makes windows cmake install to D:\d\a\... (drive-root relative).
-          ./configure -prefix "$GITHUB_WORKSPACE/qt6120" -confirm-license \
-            -nomake examples -nomake tests \
-            -no-opengl -no-icu -no-glib \
-            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-            -no-sql-oci -no-sql-mimer
-          cmake --build . -j4
-          cmake --install .
-          cd ..
-          cmake -S qtwebsockets -B qtwebsockets/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/qt6120" \
-            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/qt6120"
-          cmake --build qtwebsockets/build -j4
-          cmake --install qtwebsockets/build
-
-      - name: Configure, build
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$env:QT_PREFIX"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build -j4
 
-      - name: Stage + windeployqt + qt.conf
+      - name: Test (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Deploy + zip
         run: |
           cmake --install build --prefix staging
-          # source builds put the tools in libexec, official installs in bin
-          $wdq = "$env:QT_PREFIX\bin\windeployqt.exe"
-          if (-not (Test-Path $wdq)) { $wdq = "$env:QT_PREFIX\libexec\windeployqt.exe" }
-          & $wdq --release --no-translations --compiler-runtime staging\FUMBBL-Reborn.exe
-          # pin the flat layout (plugins next to the exe)
-          Set-Content -Path "staging\qt.conf" -Value "[Paths]`nPrefix = .`nPlugins = plugins`n"
-
-      - name: Zip
-        run: |
-          New-Item -ItemType Directory -Force -Path "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64"
-          Copy-Item -Recurse -Force "staging\*" "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64\"
-          Compress-Archive -Path "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64" -DestinationPath "dist\FUMBBL-Reborn-${env:QT_VERSION}-windows-x86_64.zip"
-          Get-ChildItem dist | Format-Table Name, Length
+          windeployqt --release --no-translations staging\FUMBBL-Reborn.exe
+          Compress-Archive -Path "staging\*" -DestinationPath "FUMBBL-Reborn-windows-x86_64.zip"
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: FUMBBL-Reborn-windows-x86_64.zip

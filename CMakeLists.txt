@@ -155,9 +155,11 @@ if(NOT WIN32)
     target_link_options(fumbbl-qt PRIVATE "LINKER:--disable-new-dtags")
 endif()
 
-# Install rules (release bundles via tools/make_bundle.sh).
+# Install rules (release bundles via tools/make_bundle.sh, AppDir for
+# linuxdeploy via cmake --install build --prefix <appdir>/usr).
 install(TARGETS fumbbl-qt RUNTIME DESTINATION .)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION assets)
+install(FILES share/FUMBBL-Reborn.desktop DESTINATION share/applications)
 
 # -----------------------------------------------------------------------------
 # Headless spectator smoke tool (live network verification)
