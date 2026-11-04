@@ -190,20 +190,19 @@ jobs:
         shell: bash
         run: |
           cd qtbase
-          QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
-          if [ "${{ steps.qtcache.outputs.cache-hit }}" != "true" ]; then
-            ./configure -prefix "$QT_PREFIX_UNIX" -confirm-license \
-              -nomake examples -nomake tests \
-              -no-opengl -no-icu -no-glib \
-              -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-              -no-sql-oci -no-sql-mimer
-          fi
+          # NATIVE windows prefix (D:\a\...): a POSIX form like /d/a/... makes
+          # windows cmake install to D:\d\a\... (drive-root relative) and the
+          # tools end up where the rest of the pipeline cannot find them.
+          # configure is cheap on an already-built (cached) tree and fixes the
+          # cached CMakeCache prefix in place, so it always runs.
+          ./configure -prefix "$GITHUB_WORKSPACE/qt6120" -confirm-license \
+            -nomake examples -nomake tests \
+            -no-opengl -no-icu -no-glib \
+            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+            -no-sql-oci -no-sql-mimer
           cmake --build . -j4
           cmake --install .
 
-      # PowerShell (not git-bash): MSYSTEM=MINGW64 leaks from setup-msys2 and
-      # breaks git-bash drive mapping — ls on /d/a/... fails on files that
-      # exist (verified in run 41745789795). Native Windows paths sidestep it.
       - name: Qt diagnostics (tools + plugins)
         run: |
           Get-ChildItem "$env:QT_PREFIX\bin" | Where-Object { $_.Name -match 'windeployqt|rcc' } | Format-Table Name
@@ -212,11 +211,10 @@ jobs:
       - name: Build qtwebsockets (MinGW)
         shell: bash
         run: |
-          QT_PREFIX_UNIX="$(cygpath -u "$GITHUB_WORKSPACE")/qt6120"
           cmake -S qtwebsockets -B qtwebsockets/build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_PREFIX_UNIX" \
-            -DCMAKE_INSTALL_PREFIX="$QT_PREFIX_UNIX"
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/qt6120" \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/qt6120"
           cmake --build qtwebsockets/build -j4
           cmake --install qtwebsockets/build
 
