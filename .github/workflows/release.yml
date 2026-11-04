@@ -62,9 +62,11 @@ jobs:
           curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
-          cmake --install build --prefix build/AppDir/usr
+          # Standard AppDir: the app installs exe+assets at the prefix root,
+          # so prefix = usr/bin puts them where linuxdeploy expects them
+          cmake --install build --prefix build/AppDir/usr/bin
           # linuxdeploy expects the .desktop at the AppDir root
-          cp build/AppDir/usr/share/applications/FUMBBL-Reborn.desktop build/AppDir/
+          cp share/FUMBBL-Reborn.desktop build/AppDir/
           # Official Qt ships its own libicu next to the Qt libs — make sure
           # it lands in the AppImage (the app dies without it on plain systems)
           if ls "$QT_ROOT_DIR/lib/libicu"* > /dev/null 2>&1; then
@@ -109,10 +111,25 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
           cmake --build build -j4
 
+      # The test exe is a GUI-subsystem app: it has no console, so a
+      # crashing test produces NO output at all (verified in runs
+      # 41836821839/41839738633). On failure, isolate the culprit by running
+      # each test function in its own process (names grepped from the
+      # source — no dependency on the exe's output).
       - name: Test (offscreen)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          ctest --test-dir build --output-on-failure
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '=== isolating the failing test, one function per process ==='
+            $funcs = (Select-String -Path tests\ui_wiring_test.cpp -Pattern 'void UiWiringTest::(\w+)\(').Matches | ForEach-Object { $_.Groups[1].Value }
+            foreach ($f in $funcs) {
+              build\ui_wiring_test.exe -functions $f | Out-Null
+              Write-Host "test $f -> exit $LASTEXITCODE"
+            }
+            exit 1
+          }
 
       - name: Deploy + zip
         run: |
