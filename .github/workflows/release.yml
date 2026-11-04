@@ -41,7 +41,7 @@ jobs:
             ninja-build pkg-config git \
             zlib1g-dev libfreetype-dev libpng-dev libjpeg-dev \
             libfontconfig1-dev libdbus-1-dev libssl-dev \
-            libx11-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb1-dev \
+            libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
             libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
             libxcb-render-util0-dev libxcb-shape0-dev libxcb-shm0-dev \
@@ -56,33 +56,9 @@ jobs:
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
           git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
 
-      # Debian/Ubuntu never shipped xkbcommon-x11.pc (Arch does) — qtbase's
-      # FindXKB_COMMON_X11 is pkg-config based and silently disables the whole
-      # xcb platform plugin without it. Provide the .pc by hand.
-      - name: Provide missing xkbcommon-x11.pc
-        run: |
-          if ! pkg-config --exists xkbcommon-x11; then
-            sudo mkdir -p /usr/local/lib/pkgconfig
-            VER=$(pkg-config --modversion xkbcommon)
-            # printf, not a heredoc: the YAML indent would break the EOF
-            # terminator. ${...} are pkg-config variables, kept literal.
-            printf '%s\n' \
-              'prefix=/usr' \
-              'libdir=${prefix}/lib/x86_64-linux-gnu' \
-              'includedir=${prefix}/include' \
-              'Name: xkbcommon-x11' \
-              'Description: X11-specific functions for xkbcommon' \
-              "Version: ${VER}" \
-              'Requires: xkbcommon' \
-              'Libs: -L${libdir} -lxkbcommon-x11' \
-              'Cflags: -I${includedir}' \
-              | sudo tee /usr/local/lib/pkgconfig/xkbcommon-x11.pc > /dev/null
-            pkg-config --exists xkbcommon-x11 && echo "xkbcommon-x11.pc shim OK"
-          fi
-
       # Cache the configured + built qtbase tree. The runner workspace path
       # is stable, so the cached CMake tree stays valid between runs. Bump the
-      # key suffix when the configure arguments change.
+      # key suffix when the configure arguments or build deps change.
       - name: Qt cache
         uses: actions/cache@v4
         id: qtcache
@@ -90,7 +66,7 @@ jobs:
           path: |
             qtbase
             qt
-          key: qt6120-ubuntu2404-2
+          key: qt6120-ubuntu2404-3
 
       - name: Build qtbase
         working-directory: qtbase
@@ -111,7 +87,7 @@ jobs:
         run: |
           grep -iE "xcb|x11|xkb" config.summary | head -25
           ls ../qt/plugins/platforms/ 2>/dev/null || echo "no plugins dir"
-          for pc in xcb xcb-util xcb-image xcb-keysyms xcb-cursor xcb-icccm xcb-render xcb-render-util xcb-randr xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xkb xkbcommon-x11; do
+          for pc in xcb xcb-util xcb-image xcb-keysyms xcb-cursor xcb-icccm xcb-render xcb-renderutil xcb-randr xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xkb xkbcommon-x11; do
             pkg-config --exists "$pc" && echo "pc ok: $pc" || echo "pc MISSING: $pc"
           done
 
@@ -225,11 +201,13 @@ jobs:
           cmake --build . -j4
           cmake --install .
 
+      # PowerShell (not git-bash): MSYSTEM=MINGW64 leaks from setup-msys2 and
+      # breaks git-bash drive mapping — ls on /d/a/... fails on files that
+      # exist (verified in run 41745789795). Native Windows paths sidestep it.
       - name: Qt diagnostics (tools + plugins)
-        shell: bash
         run: |
-          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/bin" | grep -E "windeployqt|rcc" 
-          ls "$(cygpath -u "$GITHUB_WORKSPACE")/qt6120/plugins/platforms"
+          Get-ChildItem "$env:QT_PREFIX\bin" | Where-Object { $_.Name -match 'windeployqt|rcc' } | Format-Table Name
+          Get-ChildItem "$env:QT_PREFIX\plugins\platforms" | Format-Table Name
 
       - name: Build qtwebsockets (MinGW)
         shell: bash
