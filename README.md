@@ -1,112 +1,108 @@
-# FUMBBL Reborn — Native FUMBBL Client
+# FUMBBL Reborn
 
-A native **C++ / Qt 6** client for [FUMBBL](https://fumbbl.com).
+**A native, modern Blood Bowl spectator client for [FUMBBL](https://fumbbl.com).**
 
-> **Status: spectator for now, game client in the making.** Today the client
-> lets you **watch any live match** in real time. The end goal is a full
-> **game client** — playing your own team — and the protocol/model layer is
-> being built with that in mind. Spectating is the first milestone.
+![FUMBBL Reborn — live match](docs/screenshots/hero.png)
+
+Watch any live match on FUMBBL in real time: the full field with a face for
+every piece of all 31 BB2025 races, a dice log with real dice and player
+names, chat, roster and player stats — floating where you want it, over a
+stadium that looks the part.
+
+Built in **native C++/Qt6**: it starts in a second, uses almost no
+resources, and renders razor-sharp at 1080p, 4K and beyond. No browser,
+no web view, no installers.
+
+---
+
+## Why FUMBBL Reborn?
+
+- **Native, not a web page in a window.** C++/Qt6 with vector (QPainter)
+  rendering: instant start, tiny footprint, and a pitch that stays crisp
+  at any resolution.
+- **Built for the 2025 rules (Third Season).** All 31 races, 127 unique
+  pieces, race-aware name resolution — every piece on the field is
+  *who they are*, not a generic token.
+- **A HUD made for watching.** Floating, draggable, auto-snapping panels
+  with a layout that remembers itself: score & turn header, **dice log
+  with real d6 faces** (never bare numbers), live chat with unread badge,
+  dugout reserves/KO/injured, player info card on hover.
+- **The field feels alive.** Animated glow on the ball and the acting
+  player, movement trails with move numbers, block markers between the
+  pair, and rain when the gods get moody.
+- **One download, zero setup.** Linux AppImage / tar.gz and a Windows
+  zip — everything (Qt, assets, faces, dice) is bundled.
+
+## Screenshots
+
+| The field, live | The dugouts | The player card |
+|---|---|---|
+| ![field](docs/screenshots/field.png) | ![dugout](docs/screenshots/dugout.png) | ![card](docs/screenshots/card.png) |
+
+## Install
+
+Grab the files you need from the
+[**latest release**](https://github.com/jojom4n/fumbbl-reborn/releases).
+
+### Linux (AppImage — recommended)
+
+```bash
+chmod +x FUMBBL-Reborn-*-x86_64.AppImage
+./FUMBBL-Reborn-*-x86_64.AppImage
+```
+
+(Prefer not to use AppImages? The `*-linux-x86_64.tar.gz` is a
+self-contained folder — unpack and run `FUMBBL-Reborn`.)
+
+### Windows
+
+Unpack `FUMBBL-Reborn-*-windows-x86_64.zip` anywhere and run
+`FUMBBL-Reborn.exe`.
+
+### First run
+
+`File ▸ Spectate Game…` — enter your FUMBBL credentials (Client ID,
+Client Secret and Username; they live in your FUMBBL account settings),
+pick a live match and watch. Credentials are stored locally with `0600`
+permissions, only on your machine.
+
+## Features (spectator)
+
+- **Live spectating** — the live match list, filterable by race, coach,
+  team and division (or jump straight to a Game ID).
+- **Real-time field** — players, ball and full game state, driven by the
+  official FUMBBL protocol (OAuth2 + the public WebSocket channel).
+- **Faces for every piece** — all 31 races of the 2025 edition, with
+  race-aware name resolution (a `BBT18` werewolf is named like a werewolf).
+- **Dice log** — every roll with the player's name, the skills that
+  mattered, and the dice drawn as **dice**, not numbers.
+- **Chat & spectators** — live match chat (send when you've joined) and
+  the current spectator count.
+- **Player info card** — hover or click any player: race, position,
+  stats (MA/ST/AG/PA/AV) and skills.
+- **Resilient connection** — automatic re-join with a fresh token when a
+  session drops, and visible server errors instead of silent failures.
+
+## Roadmap
+
+- [x] Spectate any live match
+- [ ] Play your own team (in-game commands)
+- [ ] Replays
+- [ ] Team management / roster view
+
+The protocol and model layers are already built with play in mind —
+spectating is the first milestone, not the last.
 
 ## Disclaimer
 
-This is an **unofficial, fan-made** project. It is **not affiliated with,
-endorsed by, sponsored by, or connected in any way to FUMBBL** or its
-operators and maintainers. “FUMBBL”, the FUMBBL service, its name, logo and
-all related material are the property of their **legitimate owners**. This
-client only connects to the public FUMBBL service (OAuth2 + the public
-WebSocket command channel) to spectate — and eventually to play — publicly
-available matches. It does not modify, copy or redistribute any FUMBBL
-proprietary content. This software is provided **“as is”, without warranty of
-any kind**.
+This is an **unofficial, fan-made** project. It is not affiliated with,
+endorsed by, sponsored by, or connected in any way to FUMBBL or its
+operators and maintainers. “FUMBBL” and all related material are the
+property of their legitimate owners. This client only connects to the
+public FUMBBL service to spectate publicly available matches. It does not
+modify, copy or redistribute any FUMBBL proprietary content. Provided
+**“as is”, without warranty of any kind**.
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 or
-later** — see [LICENSE](LICENSE).
-
-## Features (spectator, current)
-
-- **Live spectating** — File ▸ **Spectate Game…** opens a dialog with the
-  list of live matches, filterable by **race, coach, team name and division**
-  (or enter a Game ID directly).
-- **Real-time field** — a fullscreen pitch driven by the official protocol:
-  players, the ball, and a **face per piece** for all 31 BB2025 races
-  (127 unique pieces, with race-aware name resolution).
-- **Translucent HUD** — floating panels (score, turn,
-  dice log, chat, roster, player info): fully translucent, resizable,
-  drag-and-drop, snapping to an invisible grid, with a persistent layout and
-  a *Reset Layout* action.
-- **Dice log** — every roll reported with the **player's name** and skills.
-- **Chat & spectators** — live match chat and the current spectator list.
-- **Protocol robustness** — OAuth2 client-credentials + one-time session
-  token, automatic **join retry with a fresh token**, and **visible server
-  errors** (no more silent failures).
-
-## Roadmap (game client)
-
-- [ ] Spectate (this milestone)
-- [ ] Play your own team as a coach (in-game commands)
-- [ ] Team management / roster view
-- [ ] Replays
-
-## Requirements
-
-- **Qt 6** — Core, Gui, Widgets, Network, **WebSockets**
-- CMake ≥ 3.16 and a C++17 compiler
-
-> On **Arch Linux** Qt 6 WebSockets is a separate package:
-> `sudo pacman -S qt6-websockets` (a missing package surfaces as
-> `Could NOT find Qt6WebSockets`).
-
-## Build
-
-```bash
-cmake -S . -B build -G Ninja
-cmake --build build
-```
-
-## Run
-
-```bash
-./build/FUMBBL-Reborn
-```
-
-On first run, enter your FUMBBL credentials (Client ID, Client Secret,
-Username) in the **Spectate Game…** dialog. They are stored locally with
-`0600` permissions at
-`~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json`.
-
-Then pick a live match and watch.
-
-## Tests
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
-## Project layout
-
-```
-CMakeLists.txt     top-level build (Qt 6)
-LICENSE            GPLv3
-src/
-  main.cpp         entry point
-  core/            protocol layer: OAuth (fumbblauth), WebSocket (fumbblws),
-                   session (spectatorsession), game model (gamemodel),
-                   report parser (reportparser), match list (matchlist),
-                   face assets (assets)
-  ui/              Qt widgets: main window, field view, HUD panels,
-                   roster / dice-log / chat / player-info, Spectate dialog
-assets/            face PNGs + lookup tables (faces.txt, race_roster.txt,
-                   race_faces.txt, ...)
-tests/             unit & UI-wiring tests (QtTest)
-tools/             dev tools: hud_preview, move_numbers_preview,
-                   field_preview, reports_capturer, reports_render,
-                   gen_assets, spectator_smoke
-```
-
-## Legacy
-
-The previous **TS/React + Tauri** dashboard is preserved in the
-**`legacy/ts-react`** branch. This branch (`main`) is the native Qt/C++
-client.
+[GNU General Public License v3.0 or later](LICENSE).

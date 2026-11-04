@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    // --- Load credentials (same file the Tauri app writes) -----------------
+    // --- Load credentials (shared file, see credentialsPath) --------------
     QFile credsFile(credentialsPath);
     if (!credsFile.open(QIODevice::ReadOnly)) {
         logLine(QStringLiteral("FATAL: cannot read credentials file %1").arg(credentialsPath));

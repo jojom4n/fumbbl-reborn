@@ -28,7 +28,7 @@
 #include <QVBoxLayout>
 
 namespace {
-// Same file the TS client (Tauri Store) and spectator_smoke read/write.
+// Shared credentials file (also used by tools/spectator_smoke).
 QString credentialsPath()
 {
     return QDir::homePath()
