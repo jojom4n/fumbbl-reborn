@@ -70,6 +70,9 @@ jobs:
           # copy is created by linuxdeploy itself
           mkdir -p build/AppDir/usr/share/applications
           cp share/FUMBBL-Reborn.desktop build/AppDir/usr/share/applications/
+          # hicolor icon (the .desktop's Icon=FUMBBL-Reborn resolves here)
+          mkdir -p build/AppDir/usr/share/icons/hicolor/512x512/apps
+          cp share/icon.png build/AppDir/usr/share/icons/hicolor/512x512/apps/FUMBBL-Reborn.png
           # Official Qt ships its own libicu next to the Qt libs — make sure
           # it lands in the AppImage (the app dies without it on plain systems)
           if ls "$QT_ROOT_DIR/lib/libicu"* > /dev/null 2>&1; then

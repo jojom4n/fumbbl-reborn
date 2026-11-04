@@ -155,11 +155,19 @@ if(NOT WIN32)
     target_link_options(fumbbl-qt PRIVATE "LINKER:--disable-new-dtags")
 endif()
 
+# Windows: embed the .ico into the exe (explorer shows it on the binary).
+if(WIN32)
+    target_sources(fumbbl-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/share/app.rc)
+endif()
+
 # Install rules (release bundles via tools/make_bundle.sh, AppDir for
 # linuxdeploy via cmake --install build --prefix <appdir>/usr).
 install(TARGETS fumbbl-qt RUNTIME DESTINATION .)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION assets)
 install(FILES share/FUMBBL-Reborn.desktop DESTINATION share/applications)
+# hicolor icon: the .desktop's Icon= name resolves through this path
+install(FILES share/icon.png DESTINATION share/icons/hicolor/512x512/apps
+        RENAME FUMBBL-Reborn.png)
 
 # -----------------------------------------------------------------------------
 # Headless spectator smoke tool (live network verification)

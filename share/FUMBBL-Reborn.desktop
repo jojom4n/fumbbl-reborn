@@ -4,4 +4,5 @@ Name=FUMBBL-Reborn
 Comment=Blood Bowl 2025 live spectator client
 Exec=FUMBBL-Reborn
 Terminal=false
+Icon=FUMBBL-Reborn
 Categories=Game;Sports;
