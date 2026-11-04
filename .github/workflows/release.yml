@@ -125,6 +125,12 @@ jobs:
         run: |
           ctest --test-dir build --output-on-failure
           if ($LASTEXITCODE -ne 0) {
+            # the test binary redirects stdout+stderr to a file (no
+            # console on a GUI exe): fatal messages land there
+            if (Test-Path tests\test_output.txt) {
+              Write-Host '=== tests/test_output.txt (stdout+stderr, fatal messages) ==='
+              Get-Content tests\test_output.txt -Tail 60
+            }
             # the streamed lightxml log survives crashes: the last open
             # TestFunction tag is where the process died
             if (Test-Path build\ui_wiring.light.xml) {

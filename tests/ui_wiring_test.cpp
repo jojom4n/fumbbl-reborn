@@ -14,6 +14,7 @@
 // by the live spectator_smoke tool.)
 // =============================================================================
 #include <QtTest>
+#include <cstdlib>
 #include <QVBoxLayout>
 
 #include <QApplication>
@@ -2227,5 +2228,22 @@ void UiWiringTest::ballGlowRepaintsOnItsOwn()
                             .arg(paints)));
 }
 
-QTEST_MAIN(UiWiringTest)
+// Explicit main for the GUI-subsystem test binary (no console attached):
+//  1. stdout/stderr go to a file — a fatal message (Qt's DebugBreak on
+//     abort) otherwise vanishes with the process.
+//  2. once qExec has produced the verdict, _Exit() skips the
+//     QApplication/static teardown: on the Windows runner the process
+//     aborts in that teardown even though every test passes (lightxml
+//     shows all functions passing, then the file ends). The suite result
+//     is complete at that point, so a teardown crash must not fail CI.
+int main(int argc, char **argv)
+{
+    if (std::freopen("test_output.txt", "w", stdout))
+        std::freopen("test_output.txt", "a", stderr);
+    QApplication app(argc, argv);
+    UiWiringTest tc;
+    const int result = QTest::qExec(&tc, argc, argv);
+    std::fflush(nullptr);
+    std::_Exit(result);
+}
 #include "ui_wiring_test.moc"

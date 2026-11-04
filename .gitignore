@@ -31,3 +31,6 @@ __pycache__/
 
 # Agent session rules — local only, never committed (user rule)
 AGENTS.md
+
+# test runtime output (GUI exe redirection)
+test_output.txt
