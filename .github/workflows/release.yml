@@ -1,29 +1,25 @@
 name: release
 
+# Builds self-contained FUMBBL-Reborn bundles (Linux AppImage + tar.gz,
+# Windows zip) and attaches them to the GitHub Release for the pushed tag.
+#
+# Qt is built from the official source mirrors (github.com/qt/*) because
+# the binary repos no longer serve linux builds. The INSTALLED Qt prefix is
+# cached (key = hash of this file, which holds the configure args): a hit
+# skips the whole ~25-minute Qt build, and any real change to the Qt build
+# invalidates the cache automatically — no manual key bumps.
+
 on:
   push:
-    tags: ["v*"]
-  workflow_dispatch:
+    tags: ['v*']
 
-# Explicit token scope (CodeQL best practice): the only write this workflow
-# needs is the GitHub Release created by softprops/action-gh-release.
 permissions:
   contents: write
 
-# Qt is BUILT FROM SOURCE in this workflow (official github.com/qt/* mirrors,
-# tag v${QT_VERSION}). Reason (03/nov/2026): Qt's "online installer" repository
-# (qtsdkrepository) is in flux — old versions (6.8/6.9) were pruned from the
-# CDN, the linux desktop repo is gone entirely, and aqtinstall (the tool every
-# CI recipe uses) is unmaintained since mid-2025 and still parses the OLD repo
-# layout. The official git mirrors are stable, and 6.12.0 is the same Qt the
-# client is developed against locally.
-#
-# Only qtbase + qtwebsockets are built (the whole Qt is NOT — the
-# qt-everywhere tarball pulls in 30+ modules and skipping qtdeclarative
-# cascades into most of them).
-#
-# qt.conf next to the executable pins the flat deploy layout, so plugin
-# discovery does not depend on the compiled-in Qt prefix.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   QT_VERSION: "6.12.0"
 
@@ -51,48 +47,36 @@ jobs:
           # libs — if you touch this list, keep it complete or the xcb
           # platform plugin silently drops out of the build
 
-      - name: Qt source (official git mirrors)
-        run: |
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
-
-      # Cache the configured + built qtbase tree. The runner workspace path
-      # is stable, so the cached CMake tree stays valid between runs. Bump the
-      # key suffix when the configure arguments or build deps change.
-      - name: Qt cache
+      # Cache = the installed Qt prefix only (small and complete). Key =
+      # hash of this workflow file, which contains the configure args.
+      - name: Qt prefix cache
         uses: actions/cache@v4
         id: qtcache
         with:
-          path: |
-            qtbase
-            qt
-          key: qt6120-ubuntu2404-3
+          path: qt
+          key: linux-qt-${{ env.QT_VERSION }}-${{ hashFiles('.github/workflows/release.yml') }}
 
-      - name: Build qtbase
-        working-directory: qtbase
+      # Complete prefix restored? → skip the whole Qt build. The checks
+      # below are the real gate; a partial cache falls through and rebuilds.
+      - name: Qt (build only if cache incomplete)
         run: |
-          if [ "${{ steps.qtcache.outputs.cache-hit }}" != "true" ]; then
-            ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
-              -nomake examples -nomake tests \
-              -no-opengl -no-icu -no-glib \
-              -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
-              -no-sql-oci -no-sql-mimer \
-              -system-zlib -system-freetype
+          if [ -f qt/plugins/platforms/libqxcb.so ] && ls qt/lib/libQt6WebSockets.so* >/dev/null 2>&1; then
+            echo "Qt prefix restored from cache — skipping Qt build"
+            exit 0
           fi
+          rm -rf qt
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
+          cd qtbase
+          ./configure -prefix "${GITHUB_WORKSPACE}/qt" -confirm-license \
+            -nomake examples -nomake tests \
+            -no-opengl -no-icu -no-glib \
+            -no-sql-psql -no-sql-mysql -no-sql-odbc -no-sql-db2 -no-sql-ibase \
+            -no-sql-oci -no-sql-mimer \
+            -system-zlib -system-freetype
           cmake --build . -j"$(nproc)"
           cmake --install .
-
-      - name: Qt diagnostics (XCB detection)
-        working-directory: qtbase
-        run: |
-          grep -iE "xcb|x11|xkb" config.summary | head -25
-          ls ../qt/plugins/platforms/ 2>/dev/null || echo "no plugins dir"
-          for pc in xcb xcb-util xcb-image xcb-keysyms xcb-cursor xcb-icccm xcb-render xcb-renderutil xcb-randr xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xkb xkbcommon-x11; do
-            pkg-config --exists "$pc" && echo "pc ok: $pc" || echo "pc MISSING: $pc"
-          done
-
-      - name: Build qtwebsockets
-        run: |
+          cd ..
           cmake -S qtwebsockets -B qtwebsockets/build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt" \
@@ -171,30 +155,28 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-openssl
 
-      - name: Qt source (official git mirrors)
-        shell: bash
-        run: |
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
-          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
-
-      - name: Qt cache
+      # Cache = the installed Qt prefix only. Same key strategy as linux.
+      - name: Qt prefix cache
         uses: actions/cache@v4
         id: qtcache
         with:
-          path: |
-            qtbase
-            qt6120
-          key: qt6120-windows-1
+          path: qt6120
+          key: windows-qt-${{ env.QT_VERSION }}-${{ hashFiles('.github/workflows/release.yml') }}
 
-      - name: Build qtbase (MinGW)
+      # Complete prefix restored? → skip the whole MinGW Qt build.
+      - name: Qt (build only if cache incomplete)
         shell: bash
         run: |
+          if [ -f "qt6120/bin/windeployqt.exe" ] && [ -f "qt6120/bin/Qt6WebSockets.dll" ]; then
+            echo "Qt prefix restored from cache — skipping Qt build"
+            exit 0
+          fi
+          rm -rf qt6120
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtbase qtbase
+          git clone --depth 1 --branch "v${QT_VERSION}" https://github.com/qt/qtwebsockets qtwebsockets
           cd qtbase
-          # NATIVE windows prefix (D:\a\...): a POSIX form like /d/a/... makes
-          # windows cmake install to D:\d\a\... (drive-root relative) and the
-          # tools end up where the rest of the pipeline cannot find them.
-          # configure is cheap on an already-built (cached) tree and fixes the
-          # cached CMakeCache prefix in place, so it always runs.
+          # NATIVE windows prefix (D:\a\...): a POSIX form like /d/a/...
+          # makes windows cmake install to D:\d\a\... (drive-root relative).
           ./configure -prefix "$GITHUB_WORKSPACE/qt6120" -confirm-license \
             -nomake examples -nomake tests \
             -no-opengl -no-icu -no-glib \
@@ -202,15 +184,7 @@ jobs:
             -no-sql-oci -no-sql-mimer
           cmake --build . -j4
           cmake --install .
-
-      - name: Qt diagnostics (tools + plugins)
-        run: |
-          Get-ChildItem "$env:QT_PREFIX\bin" | Where-Object { $_.Name -match 'windeployqt|rcc' } | Format-Table Name
-          Get-ChildItem "$env:QT_PREFIX\plugins\platforms" | Format-Table Name
-
-      - name: Build qtwebsockets (MinGW)
-        shell: bash
-        run: |
+          cd ..
           cmake -S qtwebsockets -B qtwebsockets/build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/qt6120" \
