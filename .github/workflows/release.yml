@@ -163,12 +163,16 @@ jobs:
           }
 
       - name: Deploy + zip
+        env:
+          VER: ${{ github.ref_name }}
         run: |
           cmake --install build --prefix staging
           windeployqt --release --no-translations staging\FUMBBL-Reborn.exe
-          Compress-Archive -Path "staging\*" -DestinationPath "FUMBBL-Reborn-windows-x86_64.zip"
+          # same naming as the linux artifacts: FUMBBL-Reborn-<ver>-windows-x86_64.zip
+          $ver = $env:VER.TrimStart('v')
+          Compress-Archive -Path "staging\*" -DestinationPath "FUMBBL-Reborn-$ver-windows-x86_64.zip"
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          files: FUMBBL-Reborn-windows-x86_64.zip
+          files: FUMBBL-Reborn-*-windows-x86_64.zip
