@@ -5,6 +5,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Explicit token scope (CodeQL best practice): the only write this workflow
+# needs is the GitHub Release created by softprops/action-gh-release.
+permissions:
+  contents: write
+
 # Qt is BUILT FROM SOURCE in this workflow (official github.com/qt/* mirrors,
 # tag v${QT_VERSION}). Reason (03/nov/2026): Qt's "online installer" repository
 # (qtsdkrepository) is in flux — old versions (6.8/6.9) were pruned from the
@@ -59,17 +64,19 @@ jobs:
           if ! pkg-config --exists xkbcommon-x11; then
             sudo mkdir -p /usr/local/lib/pkgconfig
             VER=$(pkg-config --modversion xkbcommon)
-            sudo tee /usr/local/lib/pkgconfig/xkbcommon-x11.pc > /dev/null <<EOF
-            prefix=/usr
-            libdir=${prefix}/lib/x86_64-linux-gnu
-            includedir=${prefix}/include
-            Name: xkbcommon-x11
-            Description: X11-specific functions for xkbcommon
-            Version: ${VER}
-            Requires: xkbcommon
-            Libs: -L${libdir} -lxkbcommon-x11
-            Cflags: -I${includedir}
-            EOF
+            # printf, not a heredoc: the YAML indent would break the EOF
+            # terminator. ${...} are pkg-config variables, kept literal.
+            printf '%s\n' \
+              'prefix=/usr' \
+              'libdir=${prefix}/lib/x86_64-linux-gnu' \
+              'includedir=${prefix}/include' \
+              'Name: xkbcommon-x11' \
+              'Description: X11-specific functions for xkbcommon' \
+              "Version: ${VER}" \
+              'Requires: xkbcommon' \
+              'Libs: -L${libdir} -lxkbcommon-x11' \
+              'Cflags: -I${includedir}' \
+              | sudo tee /usr/local/lib/pkgconfig/xkbcommon-x11.pc > /dev/null
             pkg-config --exists xkbcommon-x11 && echo "xkbcommon-x11.pc shim OK"
           fi
 
