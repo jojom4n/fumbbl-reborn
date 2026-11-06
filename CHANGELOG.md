@@ -4,6 +4,29 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.0 — 2026-11-06
+- **Login ufficiale FFB (coach + password)**: sostituisce l'OAuth2 a token
+  REST. Il client ora fa lo stesso handshake del client Java ufficiale:
+  `clientRequestVersion` → `clientPasswordChallenge` → risposta
+  challenge/response (HMAC-MD5 di `MD5(password)`) → `clientJoin`, tutto sul
+  WebSocket. Niente Client ID/Secret, niente token REST per l'auth.
+  Flusso verificato live contro fumbbl.com.
+- **Keychain di sistema per le credenziali** ("Remember credentials",
+  default on): il keychain (Windows Credential Manager, macOS Keychain,
+  Linux Secret Service) memorizza `{coach, MD5(password)}` — mai il
+  plaintext. Senza keychain disponibile: fallback a file locale `0600`
+  (coach + password), come prima.
+- **Dialog "Spectate Game…" riscritto**: campi Coach/Password (al posto di
+  Client ID/Secret/Username), warning sul keychain, pre-compilazione dalle
+  credenziali salvate; se il keychain ha l'MD5 la password non va più
+  riscritta.
+- **Nessun auto-retry su login rifiutato**: un `serverStatus` di rifiuto
+  (es. "Wrong Password") è un errore visibile e fermo — il server limita i
+  fallimenti ripetuti. Il retry automatico (con challenge fresca) resta
+  solo per il timeout silenzioso senza risposta.
+- Test: `passwordchallenge_test` con vettori ground truth generati dalla
+  classe Java ufficiale; contratti di auth del dialog in `ui_wiring_test`.
+
 ## 0.1.1 — 2026-11-03
 - **Release distribuibili** (GitHub Releases, tag `v*`): binario
   `FUMBBL-Reborn`, bundle Linux self-contained (tar.gz + AppImage) e zip

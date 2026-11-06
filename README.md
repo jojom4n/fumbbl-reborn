@@ -61,17 +61,21 @@ Unpack `FUMBBL-Reborn-*-windows-x86_64.zip` anywhere and run
 
 ### First run
 
-`File ▸ Spectate Game…` — enter your FUMBBL credentials (Client ID,
-Client Secret and Username; they live in your FUMBBL account settings),
-pick a live match and watch. Credentials are stored locally with `0600`
-permissions, only on your machine.
+`File ▸ Spectate Game…` — enter your FUMBBL account credentials (your
+coach name and site password — the same ones you log in to fumbbl.com
+with), pick a live match and watch. With "Remember credentials" on
+(the default), the password is stored in your **system keychain**
+(Windows Credential Manager, macOS Keychain or Linux Secret Service):
+only its MD5 hash is kept, never the plaintext. Without a keychain the
+client falls back to a local `0600` file on your machine.
 
 ## Features (spectator)
 
 - **Live spectating** — the live match list, filterable by race, coach,
   team and division (or jump straight to a Game ID).
 - **Real-time field** — players, ball and full game state, driven by the
-  official FUMBBL protocol (OAuth2 + the public WebSocket channel).
+  official FUMBBL protocol: the same coach + password challenge login
+  the official Java client uses, on the public WebSocket channel.
 - **Faces for every piece** — all 31 races of the 2025 edition, with
   race-aware name resolution (a `BBT18` werewolf is named like a werewolf).
 - **Dice log** — every roll with the player's name, the skills that
@@ -80,8 +84,9 @@ permissions, only on your machine.
   the current spectator count.
 - **Player info card** — hover or click any player: race, position,
   stats (MA/ST/AG/PA/AV) and skills.
-- **Resilient connection** — automatic re-join with a fresh token when a
-  session drops, and visible server errors instead of silent failures.
+- **Resilient connection** — automatic re-join with a fresh challenge
+  when a session drops, and visible server errors instead of silent
+  failures.
 
 ## About the development — a note on AI
 
