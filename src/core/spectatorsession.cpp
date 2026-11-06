@@ -20,11 +20,21 @@ SpectatorSession::SpectatorSession(QObject *parent)
     connect(m_ws, &FumbblWs::statusReceived, this, [this](const QString &status, const QString &message) {
         emit statusReceived(status, message);
         emit progress(QStringLiteral("serverStatus: %1 %2").arg(status, message));
-        // A status while not joined = the join was rejected (e.g. the
-        // challenge response was wrong). Retry with a FRESH challenge —
-        // never replay the old join.
-        if (!m_joined)
-            retryLogin(QStringLiteral("serverStatus %1").arg(status));
+        // A serverStatus while not joined = the join was REJECTED by the
+        // server ("Wrong Password", "Unknown Coach", "Unknown Game Id", ...
+        // see ServerStatus.java in ffb-common). The login plan (04/nov)
+        // forbids auto-retrying credentials — the server limits repeated
+        // failures — so a rejection stops immediately and is fatal: the
+        // user re-enters in the Spectate dialog. Only the SILENT watchdog
+        // timeout (no status at all) still retries with a fresh challenge.
+        if (!m_joined) {
+            m_joinWatchdog->stop();
+            const QString why = message.isEmpty() ? status
+                                                  : status + QStringLiteral(" — ") + message;
+            emit fatal(QStringLiteral("The server rejected the join: %1. Check your FUMBBL "
+                                      "credentials (Spectate Game… dialog) and try again.")
+                           .arg(why));
+        }
     });
     // Watchdog: login sent but no serverJoin (the server-side FUMBBL auth
     // check can fail or hang silently).
@@ -143,9 +153,10 @@ void SpectatorSession::onJoinWatchdog()
     retryLogin(QStringLiteral("join not confirmed after %1 ms").arg(kJoinWatchdogMs));
 }
 
-// The join was not confirmed (or was rejected): retry with a FRESH password
-// challenge on the current socket. Bounded: after kMaxJoinRetries give up
-// with a visible error.
+// The join was not confirmed (SILENT watchdog timeout only — a rejected
+// join arrives as a serverStatus and is fatal, see the statusReceived
+// handler): retry with a FRESH password challenge on the current socket.
+// Bounded: after kMaxJoinRetries give up with a visible error.
 void SpectatorSession::retryLogin(const QString &reason)
 {
     if (m_joined)
