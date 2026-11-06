@@ -2,26 +2,22 @@
 // SpectateDialog — File > Spectate Game… (spectator)
 //
 // Shows the live FUMBBL match list (GET /api/match/current, public) in a
-// filterable table (text over team/coach names, race, division) plus the
-// FUMBBL account credentials (collapsible: coach + site password,
-// remembered in a 0600 line file) and a manual game-id field. Selecting a
-// row and clicking "Spectate" (or double-clicking it) starts the spectator
-// session for that game with the official coach+password login.
+// filterable table (text over team/coach names, race, division) plus a
+// manual game-id field. Selecting a row and clicking "Spectate" (or
+// double-clicking it) starts the spectator session for that game with the
+// client's LOGIN credentials (LoginDialog — the user is already
+// authenticated with the server; no account fields here).
 // =============================================================================
 #pragma once
 
 #include "core/matchlist.h"
 
-#include <QByteArray>
 #include <QDialog>
 #include <QPair>
 
-class CredentialStore;
 class MatchListClient;
-class QCheckBox;
-class QLabel;
 class QComboBox;
-class QGroupBox;
+class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
@@ -52,46 +48,25 @@ public:
     // the manual game-id field.
     void loadMatchesForTest(const QVector<FFBLiveMatch> &matches);
     QSpinBox *manualGameIdForTest() const { return m_manualGameId; }
-    // Fill the credential fields directly (tests stay keychain- and
-    // file-free: pass remember=false so no store/file write happens).
-    void setCredentialsForTest(const QString &coach, const QString &password,
-                               bool remember);
-    // Pretend the keychain lookup already returned this MD5 (no store call).
-    void setStoredMd5ForTest(const QByteArray &md5);
 
 signals:
     // The match list table has been populated (diagnostic/tests).
     void listLoaded();
-    // Same contract ConnectDialog used: emit right before accept().
-    // passwordMd5: 16 binary bytes (MD5 of the site password — the value
-    // the challenge login needs; the plaintext is never emitted).
-    void connectRequested(const QString &coach, const QByteArray &passwordMd5, int gameId);
+    // Emitted right before accept(). The session is started with the
+    // client's login credentials (MainWindow holds them).
+    void connectRequested(int gameId);
 
 private slots:
     void onMatchesReceived(QVector<FFBLiveMatch> matches);
     void onFetchFailed(const QString &message);
     void refreshList();
     void applyFilters();
-    void onStoreGetFinished(const QString &coach, const QByteArray &passwordMd5, bool ok);
-    void onStoreSetFinished(const QString &coach, bool ok, const QString &error);
 
 private:
-    void loadCredentials();
-    void saveCredentials() const;   // fallback: no OS keychain (file keeps all)
-    void stripPasswordFromFile() const; // keychain owns the password: coach only
-    void startKeychainLookup();
     void rebuildFilterCombos();
     void spectateBtnState();    // enable/disable the Spectate button
 
     MatchListClient *m_matchList = nullptr;
-    CredentialStore *m_store = nullptr;
-    // MD5 from the keychain (empty = nothing stored yet): lets the user
-    // spectate without re-typing the password.
-    QByteArray m_storedMd5;
-    // The coach field's last value: a change means the user switched
-    // account on a shared PC (previous password/MD5 are dropped).
-    QString m_lastCoach;
-
     QVector<FFBLiveMatch> m_matches;
 
     // Filters
@@ -102,14 +77,6 @@ private:
 
     // Table
     QTableWidget *m_table = nullptr;
-
-    // Credentials (collapsible)
-    QPushButton *m_credToggle = nullptr;
-    QGroupBox *m_credGroup = nullptr;
-    QLineEdit *m_coach = nullptr;
-    QLineEdit *m_password = nullptr;
-    QCheckBox *m_remember = nullptr;
-    QPushButton *m_loadBtn = nullptr;
 
     QSpinBox *m_manualGameId = nullptr;
     QPushButton *m_spectateBtn = nullptr;

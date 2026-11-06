@@ -55,6 +55,7 @@ add_executable(ui_wiring_test
     ${CMAKE_SOURCE_DIR}/src/core/matchlist.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/spectatedialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/logindialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/fieldview.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/rainsim.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/headerview.cpp

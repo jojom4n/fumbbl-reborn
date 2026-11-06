@@ -59,7 +59,10 @@ int main(int argc, char *argv[])
 
     applyLightTheme(app);
 
-    MainWindow window;
+    // gateLogin=true: the client login is the gate to the full UI (the
+    // modal LoginDialog over the stadium; nothing is clickable — menus
+    // included — until the server verifies the credentials).
+    MainWindow window(nullptr, /*gateLogin=*/true);
     window.show();
 
     // --smoke: headless verification mode. Runs the UI offscreen for a short
@@ -108,8 +111,19 @@ int main(int argc, char *argv[])
     if (!demoPath.isEmpty())
         loadDemo();
 
-    if (spectateNow)
+    // Tool modes (--smoke / --screenshot / --demo) drive the UI directly
+    // (fixtures, offscreen captures): no login gate.
+    const bool toolMode = smoke || !screenshotPath.isEmpty() || !demoPath.isEmpty();
+    if (!toolMode) {
+        // The login gate: modal over the stadium. It returns only when the
+        // server verified the credentials (dialog accepted) or the user
+        // picked Quit (the app quits through the dialog's own wiring).
+        window.startLogin();
+        if (spectateNow && window.isAuthenticated())
+            window.openSpectateDialog();
+    } else if (spectateNow) {
         QTimer::singleShot(800, &window, [&window]() { window.openSpectateDialog(); });
+    }
 
     // --trigger-connect: emit the SAME signal a menu click emits (exact menu
     // path: connectionRequested -> onConnectRequested -> openSpectateDialog).

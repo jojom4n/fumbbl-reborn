@@ -25,12 +25,15 @@
 #include <QMainWindow>
 #include <QRect>
 
+#include "core/matchlist.h"
 #include "core/reportparser.h"
 #include "ui/fieldview.h"
 
 class ActionLogWidget;
 class ChatWidget;
 class FloatingPanel;
+class LoginDialog;
+class MatchListClient;
 class GameModel;
 class HeaderView;
 class QCloseEvent;
@@ -49,7 +52,11 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    // gateLogin: the client login gate (LoginDialog modal over the
+    // stadium at startLogin()/after Log out; the Spectate dialog is
+    // unreachable before a verified login). Production (main.cpp) passes
+    // true; tools and tests stay un-gated.
+    explicit MainWindow(QWidget *parent = nullptr, bool gateLogin = false);
 
     // --- UI state updaters (driven by the FUMBBL core) ----------------------
     void setTeams(const QString &homeName, const QString &awayName);
@@ -66,8 +73,20 @@ public:
     void appendProtocol(const QString &direction, const QString &text);
 
     // Open the "Spectate Game" dialog (also triggered by File > Spectate Game…).
-    // Public so it can be invoked from --spectate-now / tests.
+    // Public so it can be invoked from --spectate-now / tests. Gated: if
+    // the client login has not been verified yet, the LoginDialog comes
+    // first (and the spectate dialog only opens after a verified login).
     void openSpectateDialog();
+    // Client login gate (product decision 0.2.2): the modal LoginDialog
+    // over the stadium. While it runs, nothing in the client is clickable
+    // (the dialog is modal — menus included). The credentials are verified
+    // against the FUMBBL server (a join attempt — the server checks the
+    // password there); on success the dialog closes and the full UI is
+    // live (the user is already spectating the verification game).
+    // Returns true when the login was verified.
+    bool startLogin();
+    // True once the login was verified by the server (until Log out).
+    bool isAuthenticated() const { return m_authenticated; }
     // View-menu equivalent for one floating panel (tests/screenshots).
     void setPanelVisible(const QString &name, bool visible);
 
@@ -182,8 +201,9 @@ private:
     // the game state's logoUrl once per match.
     void loadTeamLogos();
     void onLogoReplyFinished(QNetworkReply *reply);
-    // File > Log out (shared PC): end the session and clear this coach's
-    // remembered credential so the next player starts from an empty dialog.
+    // File > Log out (shared PC): end the session, clear this coach's
+    // remembered credential and re-open the login gate — the user picks:
+    // new credentials or quit (the dialog's Quit button).
     void onLogout();
 
 
@@ -204,6 +224,23 @@ private:
     // The coach the session was requested for (empty = no active session).
     // Drives the Log out action's enabled state; cleared by Log out only.
     QString m_activeCoach;
+
+    // --- Client login gate (0.2.2) -----------------------------------------
+    // The LoginDialog is modal over the stadium; while it runs nothing in
+    // the client is clickable (menus included). The credentials it yields
+    // are VERIFIED against the server before the dialog can close: the
+    // join attempt is the verification (the server checks the password
+    // there). m_loginCoach/m_loginMd5 then feed every spectate.
+    bool m_gateLogin = false;
+    bool m_authenticated = false;
+    bool m_authenticating = false; // a login attempt is in flight
+    QString m_loginCoach;
+    QByteArray m_loginMd5;
+    LoginDialog *m_loginDialog = nullptr;
+    MatchListClient *m_loginList = nullptr; // picks the verification game
+    // Login gate handlers.
+    void onLoginRequested(const QString &coach, const QByteArray &passwordMd5);
+    void onLoginMatchesReceived(QVector<FFBLiveMatch> matches);
 
     // Widgets
     QWidget *m_stage = nullptr; // central container: field + overlay panels

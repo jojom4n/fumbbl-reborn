@@ -3,65 +3,21 @@
 // =============================================================================
 #include "ui/spectatedialog.h"
 
-#include "core/credentialstore.h"
-#include "core/passwordchallenge.h"
+#include "core/matchlist.h"
 
-#include <algorithm>
-
-#include <QCheckBox>
 #include <QComboBox>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QLabel>
-#include <QItemSelectionModel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QSet>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
-namespace {
-// Shared credentials file (also used by tools/spectator_smoke /
-// tools/reports_capturer; path resolved by CredentialStore::credentialsPath):
-// plain lines
-//
-//     coach=...
-//     password=...
-//
-// kept 0600 (site password of the user's FUMBBL account).
-// Returns {coach, password}; empty when the file is missing/incomplete.
-QPair<QString, QString> loadCredentialsPair()
-{
-    QString coach;
-    QString password;
-    QFile f(CredentialStore::credentialsPath());
-    if (!f.open(QIODevice::ReadOnly))
-        return {};
-    const QList<QByteArray> lines = f.readAll().split('\n');
-    for (const QByteArray &raw : lines) {
-        const int eq = raw.indexOf('=');
-        if (eq <= 0)
-            continue;
-        const QString key = QString::fromUtf8(raw.left(eq)).trimmed();
-        const QString value = QString::fromUtf8(raw.mid(eq + 1)).trimmed();
-        if (key == QLatin1String("coach"))
-            coach = value;
-        else if (key == QLatin1String("password"))
-            password = value;
-    }
-    if (coach.isEmpty() || password.isEmpty())
-        return {};
-    return {coach, password};
-}
-} // namespace
+#include <algorithm>
+#include <QSet>
 
 SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(parent)
 {
@@ -107,44 +63,6 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     connect(m_table, &QTableWidget::cellDoubleClicked, this,
             [this](int, int) { this->spectate(); });
 
-    // --- Credentials (collapsible) ------------------------------------------
-    // A plain QGroupBox toggled by a checkable button (a checkable group box
-    // only DISABLES its children on some styles, it does not collapse them).
-    m_credToggle = new QPushButton(tr("FUMBBL account  ▸"), this);
-    m_credToggle->setCheckable(true);
-    m_credToggle->setFlat(true);
-    m_credToggle->setStyleSheet(QStringLiteral("text-align: left; padding: 2px 4px;"));
-    m_credGroup = new QGroupBox(tr("FUMBBL account"), this);
-    m_coach = new QLineEdit(m_credGroup);
-    m_password = new QLineEdit(m_credGroup);
-    m_password->setEchoMode(QLineEdit::Password);
-    m_remember = new QCheckBox(tr("Remember credentials"), m_credGroup);
-    m_remember->setChecked(true);
-    m_loadBtn = new QPushButton(tr("Load matches"), m_credGroup);
-    auto *credForm = new QHBoxLayout(m_credGroup);
-    credForm->addWidget(new QLabel(tr("Coach:")), 0);
-    credForm->addWidget(m_coach, 1);
-    credForm->addWidget(new QLabel(tr("Password:")), 0);
-    credForm->addWidget(m_password, 1);
-    auto *credRow2 = new QHBoxLayout();
-    credRow2->addWidget(m_remember);
-    credRow2->addStretch(1);
-    credRow2->addWidget(m_loadBtn);
-    auto *credWarning = new QLabel(
-        tr("Spectating uses the credentials of your FUMBBL account (the site's "
-           "password). They are stored in your system keychain."),
-        m_credGroup);
-    credWarning->setStyleSheet(QStringLiteral("color: #9fb0c4; font-size: 11px;"));
-    auto *credLayout = new QVBoxLayout(m_credGroup);
-    credLayout->addLayout(credForm);
-    credLayout->addLayout(credRow2);
-    credLayout->addWidget(credWarning);
-
-    connect(m_credToggle, &QPushButton::toggled, m_credGroup, &QWidget::setVisible);
-    connect(m_credToggle, &QPushButton::toggled, this, [this](bool on) {
-        m_credToggle->setText(on ? tr("FUMBBL account  ▾") : tr("FUMBBL account  ▸"));
-    });
-
     // --- Manual game id + status + buttons ----------------------------------
     m_manualGameId = new QSpinBox(this);
     m_manualGameId->setRange(0, 2000000000);
@@ -167,8 +85,6 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     auto *root = new QVBoxLayout(this);
     root->addLayout(filterRow);
     root->addWidget(m_table, 1);
-    root->addWidget(m_credToggle);
-    root->addWidget(m_credGroup);
     root->addWidget(m_status);
     root->addLayout(btnRow);
 
@@ -177,7 +93,6 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     connect(m_raceFilter, &QComboBox::currentTextChanged, this, &SpectateDialog::applyFilters);
     connect(m_divisionFilter, &QComboBox::currentTextChanged, this, &SpectateDialog::applyFilters);
     connect(m_refreshBtn, &QPushButton::clicked, this, &SpectateDialog::refreshList);
-    connect(m_loadBtn, &QPushButton::clicked, this, &SpectateDialog::refreshList);
     connect(m_spectateBtn, &QPushButton::clicked, this, &SpectateDialog::spectate);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
@@ -186,26 +101,9 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
             this, &SpectateDialog::onMatchesReceived);
     connect(m_matchList, &MatchListClient::fetchFailed, this, &SpectateDialog::onFetchFailed);
 
-    m_store = new CredentialStore(this);
-    connect(m_store, &CredentialStore::getFinished, this, &SpectateDialog::onStoreGetFinished);
-    connect(m_store, &CredentialStore::setFinished, this, &SpectateDialog::onStoreSetFinished);
-
-    loadCredentials();
-
-    // Shared PC: the user switches to a different coach. The password
-    // text and the stored MD5 belonged to the PREVIOUS coach — drop both,
-    // then look the new one up in the keychain (a remembered coach's MD5
-    // arrives via onStoreGetFinished, no retyping).
-    connect(m_coach, &QLineEdit::editingFinished, this, [this]() {
-        const QString coach = m_coach->text().trimmed();
-        if (coach != m_lastCoach) {
-            m_lastCoach = coach;
-            m_password->clear();
-            m_storedMd5.clear();
-        }
-        startKeychainLookup();
-        spectateBtnState();
-    });
+    const int lastGame = QSettings().value(QStringLiteral("connect/lastGameId")).toInt();
+    if (lastGame > 0)
+        m_manualGameId->setValue(lastGame);
 
     connect(m_manualGameId, QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int v) {
@@ -221,8 +119,6 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
             [this](const QItemSelection &selected, const QItemSelection &)
             {
                 if (!selected.isEmpty()) {
-                    // The clicked match is now the active pick: drop the stale
-                    // manual id so it cannot override the selection.
                     m_manualGameId->blockSignals(true);
                     m_manualGameId->setValue(0);
                     m_manualGameId->blockSignals(false);
@@ -230,111 +126,20 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
                 this->spectateBtnState();
             });
 
-    // Credentials collapsed by default; expanded when they're missing.
-    const bool hasCreds = !m_coach->text().trimmed().isEmpty()
-                          && !m_password->text().trimmed().isEmpty();
-    m_credToggle->setChecked(!hasCreds);
-    m_credGroup->setVisible(!hasCreds);
-
-    // The match list is public: always auto-load (tests opt out, along
-    // with the keychain lookup — tests stay network- and store-free).
+    // The match list is public: always auto-load (tests opt out).
     if (autoLoadList) {
         refreshList();
-        startKeychainLookup();
     } else {
         m_status->setText(tr("Ready."));
     }
-    if (!hasCreds)
-        m_status->setText(tr("No saved credentials — fill in your FUMBBL account below."));
     spectateBtnState();
 }
-
-void SpectateDialog::loadCredentials()
-{
-    const QPair<QString, QString> c = loadCredentialsPair();
-    if (!c.first.isEmpty()) {
-        m_coach->setText(c.first);
-        m_password->setText(c.second);
-    }
-    // Baseline for "the user switched coach" (see the editingFinished
-    // hook in the constructor).
-    m_lastCoach = m_coach->text().trimmed();
-    const int lastGame = QSettings().value(QStringLiteral("connect/lastGameId")).toInt();
-    if (lastGame > 0)
-        m_manualGameId->setValue(lastGame);
-}
-
-void SpectateDialog::saveCredentials() const
-{
-    const QString path = CredentialStore::credentialsPath();
-    QFile f(path);
-    QDir().mkpath(QFileInfo(f).absolutePath());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
-        f.write(("password=" + m_password->text().trimmed() + "\n").toUtf8());
-    }
-    // The file holds the site password: owner read/write only.
-    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
-}
-
-
 
 void SpectateDialog::refreshList()
 {
     // Public endpoint: no credentials needed to list matches.
     m_status->setText(tr("Loading live matches…"));
     m_matchList->fetch();
-}
-
-void SpectateDialog::startKeychainLookup()
-{
-    const QString coach = m_coach->text().trimmed();
-    if (coach.isEmpty() || !CredentialStore::hasBackend())
-        return; // fallback: the file keeps coach+password
-    m_store->get(coach);
-}
-
-void SpectateDialog::onStoreGetFinished(const QString &coach, const QByteArray &passwordMd5,
-                                        bool ok)
-{
-    if (!ok || m_coach->text().trimmed() != coach)
-        return; // store error or the coach field changed: keep the file as is
-    if (!passwordMd5.isEmpty()) {
-        // The keychain owns the password: use it, and drop the plaintext
-        // line from the file (coach remembered, password in the store).
-        m_storedMd5 = passwordMd5;
-        stripPasswordFromFile();
-    } else if (!m_password->text().trimmed().isEmpty() && m_remember->isChecked()) {
-        // First run: seed the store; the file strip happens once the write
-        // is confirmed (onStoreSetFinished).
-        m_store->set(coach, fumbbl::PasswordChallenge::encodePassword(m_password->text().trimmed()));
-    }
-    spectateBtnState();
-}
-
-void SpectateDialog::onStoreSetFinished(const QString &coach, bool ok, const QString &error)
-{
-    if (m_coach->text().trimmed() != coach)
-        return;
-    if (ok) {
-        m_storedMd5 = fumbbl::PasswordChallenge::encodePassword(m_password->text().trimmed());
-        stripPasswordFromFile();
-    } else {
-        // Store write failed: keep the plaintext in the file (fallback) so
-        // the user loses nothing.
-        m_status->setText(tr("Keychain unavailable (%1) — credentials kept in the local file.")
-                              .arg(error.left(160)));
-    }
-    spectateBtnState();
-}
-
-void SpectateDialog::stripPasswordFromFile() const
-{
-    QFile f(CredentialStore::credentialsPath());
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return;
-    f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
-    QFile::setPermissions(f.fileName(), QFile::ReadOwner | QFile::WriteOwner);
 }
 
 void SpectateDialog::onFetchFailed(const QString &message)
@@ -467,20 +272,6 @@ void SpectateDialog::loadMatchesForTest(const QVector<FFBLiveMatch> &matches)
     onMatchesReceived(matches);
 }
 
-void SpectateDialog::setCredentialsForTest(const QString &coach, const QString &password,
-                                           bool remember)
-{
-    m_coach->setText(coach);
-    m_password->setText(password);
-    m_remember->setChecked(remember);
-}
-
-void SpectateDialog::setStoredMd5ForTest(const QByteArray &md5)
-{
-    m_storedMd5 = md5;
-    spectateBtnState();
-}
-
 // Selects the row for the given game id (tools/tests; same effect as a
 // click). Returns false when no visible row matches.
 bool SpectateDialog::selectGame(int gameId)
@@ -499,10 +290,9 @@ bool SpectateDialog::selectGame(int gameId)
 
 bool SpectateDialog::selectFirstGame()
 {
-    if (m_table->rowCount() < 1)
+    if (m_table->rowCount() == 0)
         return false;
-    // The table is sorted by game id (column 1) ascending; the first row
-    // is the current top of the list.
+    // The table is sorted by game id: the first row is the lowest id.
     m_table->clearSelection();
     m_table->selectRow(0);
     m_table->setCurrentCell(0, 0);
@@ -511,49 +301,23 @@ bool SpectateDialog::selectFirstGame()
 
 void SpectateDialog::spectateBtnState()
 {
-    // Enabled when a row is selected or a manual id is set, and login
-    // material is present (typed password or a keychain entry).
+    // Enabled as soon as a match is picked (row or manual id). The
+    // credentials are the client's login — always present here.
     const bool hasId = selectedGameId() > 0 || m_manualGameId->value() > 0;
-    const bool hasCreds = !m_coach->text().trimmed().isEmpty()
-                          && (!m_password->text().trimmed().isEmpty() || !m_storedMd5.isEmpty());
-    m_spectateBtn->setEnabled(hasId && hasCreds);
+    m_spectateBtn->setEnabled(hasId);
 }
 
 void SpectateDialog::spectate()
 {
-    const QString coach = m_coach->text().trimmed();
-    const QString password = m_password->text().trimmed();
-    if (coach.isEmpty() || (password.isEmpty() && m_storedMd5.isEmpty())) {
-        m_status->setText(tr("Coach and password (your FUMBBL account) are required."));
-        m_credToggle->setChecked(true);
-        return;
-    }
-
-    int gameId = m_manualGameId->value() > 0 ? m_manualGameId->value() : selectedGameId();
+    const int gameId = m_manualGameId->value() > 0 ? m_manualGameId->value()
+                                                   : selectedGameId();
     if (gameId <= 0) {
         m_status->setText(tr("Pick a match from the list (or enter a Game ID)."));
         return;
     }
 
-    // A typed password ALWAYS wins over the stored MD5: the stored entry
-    // can be stale (switched coach on a shared PC, changed site password).
-    // With an empty field, the stored entry is the only material.
-    const QByteArray pwdMd5 =
-        !password.isEmpty() ? fumbbl::PasswordChallenge::encodePassword(password)
-                            : m_storedMd5;
-
-    if (m_remember->isChecked()) {
-        if (CredentialStore::hasBackend()) {
-            if (pwdMd5 != m_storedMd5)
-                m_store->set(coach, pwdMd5); // remember / update in the keychain
-            m_storedMd5 = pwdMd5;
-            stripPasswordFromFile();
-        } else {
-            saveCredentials(); // fallback: the 0600 file keeps coach+password
-        }
-    }
     QSettings().setValue(QStringLiteral("connect/lastGameId"), gameId);
 
-    emit connectRequested(coach, pwdMd5, gameId);
+    emit connectRequested(gameId);
     accept();
 }

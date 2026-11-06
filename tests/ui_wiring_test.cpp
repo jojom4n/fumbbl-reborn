@@ -50,6 +50,8 @@
 #include "ui/mainwindow.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "core/credentialstore.h"
+#include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
 
 namespace {
@@ -103,9 +105,9 @@ private slots:
     void diceLogShowsPlayerName();
     void newGameStateReplacesOldMatch();
     void manualGameIdDoesNotOverrideSelection();
-    void spectateEmitsTypedPasswordAsMd5();
-    void spectateUsesKeychainMd5WithoutRetyping();
-    void spectateTypedPasswordWinsOverStaleKeychainMd5();
+    void loginEmitsTypedPasswordAsMd5();
+    void loginUsesKeychainMd5WithoutRetyping();
+    void loginTypedPasswordWinsOverStaleKeychainMd5();
     void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
@@ -833,146 +835,144 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
     QCOMPARE(dialog.selectedGameId(), 222222);
 }
 
-// Contract of the coach+password login: the dialog emits the MD5 of the
-// typed password (16 binary bytes — the HMAC key the challenge login
-// needs), NEVER the plaintext. remember=false keeps the test store- and
-// file-free.
-void UiWiringTest::spectateEmitsTypedPasswordAsMd5()
+// Contract of the client login: the dialog emits the MD5 of the typed
+// password (16 binary bytes — the HMAC key the challenge login needs),
+// NEVER the plaintext. remember=false keeps the test store- and
+// file-free; the dialog stays open (MainWindow verifies against the
+// server) — the contract under test is what gets emitted.
+void UiWiringTest::loginEmitsTypedPasswordAsMd5()
 {
-    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
                                  /*remember=*/false);
 
-    FFBLiveMatch m;
-    m.id = 333333;
-    m.half = 1;
-    m.turn = 5;
-    m.division = QStringLiteral("League");
-    m.scheduler = QStringLiteral("Blackbox");
-    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
-                          QStringLiteral("Orcs"), QString(), 0};
-    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
-                          QStringLiteral("Gnomes"), QString(), 0};
-    QVector<FFBLiveMatch> matches;
-    matches.push_back(m);
-    dialog.loadMatchesForTest(matches);
-    QVERIFY2(dialog.selectGame(333333), "could not select the match row");
-
     QString coach;
     QByteArray md5;
-    int gameId = -1;
-    QObject::connect(&dialog, &SpectateDialog::connectRequested,
-                     [&](const QString &c, const QByteArray &p, int g) {
+    QObject::connect(&dialog, &LoginDialog::loginRequested,
+                     [&](const QString &c, const QByteArray &p) {
         coach = c;
         md5 = p;
-        gameId = g;
     });
-    dialog.spectate();
+    dialog.loginForTest(); // the Login button path
 
     QCOMPARE(coach, QStringLiteral("coachX"));
     QCOMPARE(md5, fumbbl::PasswordChallenge::encodePassword(QStringLiteral("pwY")));
     QCOMPARE(md5.size(), 16);
-    QCOMPARE(gameId, 333333);
-    QCOMPARE(dialog.result(), int(QDialog::Accepted));
+    // The dialog does NOT accept itself: the server verification decides.
+    QCOMPARE(dialog.result(), int(QDialog::Rejected));
 }
 
 // The keychain path: when a stored MD5 exists the user does NOT retype the
-// password — the stored MD5 is used as-is (not re-hashed) for the login.
-void UiWiringTest::spectateUsesKeychainMd5WithoutRetyping()
+// password — the field shows the dot sentinel and the stored MD5 is used
+// as-is (not re-hashed) for the login.
+void UiWiringTest::loginUsesKeychainMd5WithoutRetyping()
 {
-    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     // Coach remembered, password field EMPTY, keychain MD5 present.
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QString(), /*remember=*/false);
     const QByteArray storedMd5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
     dialog.setStoredMd5ForTest(storedMd5);
-
-    FFBLiveMatch m;
-    m.id = 444444;
-    m.half = 1;
-    m.turn = 5;
-    m.division = QStringLiteral("League");
-    m.scheduler = QStringLiteral("Blackbox");
-    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
-                          QStringLiteral("Orcs"), QString(), 0};
-    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
-                          QStringLiteral("Gnomes"), QString(), 0};
-    QVector<FFBLiveMatch> matches;
-    matches.push_back(m);
-    dialog.loadMatchesForTest(matches);
-    QVERIFY2(dialog.selectGame(444444), "could not select the match row");
+    // The sentinel (dots) must be in the field: a remembered entry is
+    // visible as dots, never as text.
+    QVERIFY(dialog.storedPasswordUntouched());
 
     QString coach;
     QByteArray md5;
-    int gameId = -1;
-    QObject::connect(&dialog, &SpectateDialog::connectRequested,
-                     [&](const QString &c, const QByteArray &p, int g) {
+    QObject::connect(&dialog, &LoginDialog::loginRequested,
+                     [&](const QString &c, const QByteArray &p) {
         coach = c;
         md5 = p;
-        gameId = g;
     });
-    dialog.spectate();
+    dialog.loginForTest();
 
     QCOMPARE(coach, QStringLiteral("coachX"));
     QCOMPARE(md5, storedMd5); // used as-is, not re-hashed
-    QCOMPARE(gameId, 444444);
 }
 
 // Shared PC: a user retypes a password while a STALE stored MD5 (a
 // different coach's, or a pre-change one) still sits in the dialog — the
 // typed password must win, or the login would silently use the wrong key.
-void UiWiringTest::spectateTypedPasswordWinsOverStaleKeychainMd5()
+void UiWiringTest::loginTypedPasswordWinsOverStaleKeychainMd5()
 {
-    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachY"), QStringLiteral("newPw"),
                                  /*remember=*/false);
     const QByteArray staleMd5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
     dialog.setStoredMd5ForTest(staleMd5);
-
-    FFBLiveMatch m;
-    m.id = 555555;
-    m.half = 1;
-    m.turn = 5;
-    m.division = QStringLiteral("League");
-    m.scheduler = QStringLiteral("Blackbox");
-    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
-                          QStringLiteral("Orcs"), QString(), 0};
-    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
-                          QStringLiteral("Gnomes"), QString(), 0};
-    QVector<FFBLiveMatch> matches;
-    matches.push_back(m);
-    dialog.loadMatchesForTest(matches);
-    QVERIFY2(dialog.selectGame(555555), "could not select the match row");
+    // The field holds the TYPED password (set before the sentinel), not
+    // the untouched sentinel.
+    QVERIFY(!dialog.storedPasswordUntouched());
 
     QString coach;
     QByteArray md5;
-    int gameId = -1;
-    QObject::connect(&dialog, &SpectateDialog::connectRequested,
-                     [&](const QString &c, const QByteArray &p, int g) {
+    QObject::connect(&dialog, &LoginDialog::loginRequested,
+                     [&](const QString &c, const QByteArray &p) {
         coach = c;
         md5 = p;
-        gameId = g;
     });
-    dialog.spectate();
+    dialog.loginForTest();
 
     QCOMPARE(coach, QStringLiteral("coachY"));
     QCOMPARE(md5, fumbbl::PasswordChallenge::encodePassword(QStringLiteral("newPw")));
     QVERIFY2(md5 != staleMd5, "typed password must override the stale keychain MD5");
-    QCOMPARE(gameId, 555555);
 }
+
+// Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the
+// user's own coach lives there): snapshots it on construction, lets the
+// test replace it, and restores the original in the destructor — even
+// when a QVERIFY fails (the stack unwinds through the destructor).
+struct CredsFileGuard
+{
+    const QString path = CredentialStore::credentialsPath();
+    QByteArray backup;
+    bool existed = false;
+    CredsFileGuard()
+    {
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly)) {
+            backup = f.readAll();
+            existed = true;
+        }
+        QFile::remove(path);
+    }
+    void seed(const QByteArray &content)
+    {
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(content);
+    }
+    ~CredsFileGuard()
+    {
+        if (existed) {
+            QFile f(path);
+            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                f.write(backup);
+                f.close();
+            }
+            QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+        } else {
+            QFile::remove(path);
+        }
+    }
+};
 
 // Shared PC: Log out (File menu, Ctrl+K) is enabled exactly while a
 // session was requested, and triggering it ends the session — the action
-// goes back to disabled and the status bar says so. The next player's
-// dialog then opens empty (the remembered credential is dropped). This
-// test deliberately does NOT touch the real creds file (the user's own
-// coach lives there); the file handling is verified in the live check.
+// goes back to disabled, the status bar says so, and the remembered
+// credential file is dropped (the next player's login starts empty). In
+// production (gateLogin=true) the login gate re-opens next; this test
+// runs un-gated. The creds file is isolated by CredsFileGuard.
 void UiWiringTest::logoutEndsSessionForNextPlayer()
 {
     QSettings settings;
     settings.remove(QStringLiteral("mainwindow/panelLayout"));
+    CredsFileGuard guard;
+    guard.seed("coach=coachX\n");
+    QVERIFY(QFile::exists(guard.path));
 
     MainWindow w;
     w.show();
@@ -997,6 +997,9 @@ void UiWiringTest::logoutEndsSessionForNextPlayer()
     QVERIFY(!logout->isEnabled());
     QVERIFY2(labelContains(&w, QStringLiteral("Logged out")),
              "status bar does not report the logout");
+    // The remembered credential is gone: the next player's login dialog
+    // opens empty (the keychain entry survives, by design).
+    QVERIFY2(!QFile::exists(guard.path), "creds file must be removed on logout");
 }
 
 // =============================================================================

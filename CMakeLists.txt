@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.2.1
+    VERSION 0.2.2
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )
@@ -137,6 +137,8 @@ add_executable(fumbbl-qt
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.h
     src/ui/spectatedialog.cpp
+    src/ui/logindialog.h
+    src/ui/logindialog.cpp
     src/ui/fieldview.h
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
@@ -263,6 +265,7 @@ add_executable(hud_preview
     src/core/matchlist.cpp
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
+    src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
     src/ui/actionlog.cpp
@@ -301,6 +304,7 @@ add_executable(move_numbers_preview
     src/core/matchlist.cpp
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
+    src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
     src/ui/actionlog.cpp

@@ -4,6 +4,28 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.2 — 2026-11-06
+- **Login al client all'avvio**: dialog modale (Coach + Password +
+  "Remember me") sopra lo stadio — niente è cliccabile (nemmeno i menu)
+  finché il login non è verificato. Le credenziali sono verificate contro
+  il server FUMBBL al momento dell'accesso (join attempt: il server
+  controlla la password nel join — `FumbblRequestCheckAuthorization`):
+  ok → UI completa (si è già nello stadio della partita di verifica,
+  ultima guardata o prima live); rifiuto → errore del server nel dialog,
+  si riprova. "Remember me" (default on) → keychain `{coach, MD5}`.
+- **Campo password sempre a pallini**: echo mode Password in ogni
+  momento (anche durante la digitazione); con entry in keychain il campo
+  mostra 8 pallini (sentinel) — la prima pressione lo sostituisce; la
+  password digitata ha sempre la priorità sull'MD5 salvata (stale).
+- **Dialog "Spectate" senza credenziali**: solo lista partite + filtri +
+  Game ID + Spectate/doppio click — usa le credenziali del login del
+  client. Rimosso anche il bottone "Load matches" residuo.
+- **Logout (Ctrl+K) → login gate riaperto**: fine sessione + credenziale
+  ricordata rimossa dal file (l'entry keychain resta); l'utente inserisce
+  nuove credenziali oppure chiude il client dal button "Quit" del dialog.
+- **Chat log: word wrap** — i messaggi lunghi vanno a capo invece di
+  uscire dal pannello.
+
 ## 0.2.1 — 2026-11-06
 - **Log out (PC condiviso)**: `File ▸ Log out` (Ctrl+K) chiude la sessione
   del coach attivo e rimuove la credenziale ricordata: il dialog del

@@ -16,6 +16,7 @@
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
 #include "ui/chatwidget.h"
+#include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
 #include "ui/actionlog.h"
 #include "ui/fieldview.h"
@@ -44,6 +45,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
+#include <QWebSocketProtocol>
 #include <QToolBar>
 
 #include <iterator>
@@ -55,11 +57,12 @@ namespace {
 const QString kLayoutSettingsKey = QStringLiteral("mainwindow/panelLayout");
 } // namespace
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(QWidget *parent, bool gateLogin)
     : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("FUMBBL Reborn"));
     resize(1400, 860);
+    m_gateLogin = gateLogin;
 
     createActions();
     createToolbar();
@@ -77,6 +80,20 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Core (spectator) wiring --------------------------------------------
     m_model = new GameModel(this);
     m_session = new SpectatorSession(this);
+
+    // Login gate: the public match list picks the VERIFICATION game (the
+    // join attempt is where the server checks the password).
+    m_loginList = new MatchListClient(this);
+    connect(m_loginList, &MatchListClient::matchesReceived, this,
+            &MainWindow::onLoginMatchesReceived);
+    connect(m_loginList, &MatchListClient::fetchFailed, this,
+            [this](const QString &message) {
+                if (!m_authenticating || !m_loginDialog)
+                    return;
+                m_authenticating = false;
+                m_loginDialog->showServerMessage(
+                    tr("Could not reach the FUMBBL server: %1").arg(message.left(160)));
+            });
 
     // QElapsedTimer::elapsed() on a timer that was NEVER started returns a
     // huge NEGATIVE value in Qt 6 — the report-dedup window test (now -
@@ -1062,6 +1079,13 @@ void MainWindow::onTalk(const QJsonObject &payload)
 
 void MainWindow::onJoined(const QJsonObject &payload)
 {
+    // Login gate: a successful join IS the credential verification —
+    // the server checked the password to accept it. Close the dialog.
+    if (m_authenticating && m_loginDialog) {
+        m_authenticated = true;
+        m_authenticating = false;
+        m_loginDialog->acceptLogin();
+    }
     setSpectators(payload.value(QStringLiteral("spectators")).toInt());
     setConnectionStatus(tr("Spectating as %1")
                             .arg(payload.value(QStringLiteral("coach")).toString()),
@@ -1076,14 +1100,35 @@ void MainWindow::onSessionProgress(const QString &message)
 
 void MainWindow::onSessionFatal(const QString &message)
 {
+    // Login gate: the verification attempt died (e.g. the join watchdog
+    // gave up on a silent server) — report it in the dialog and keep it
+    // open for a retry.
+    if (m_authenticating && m_loginDialog) {
+        m_authenticating = false;
+        m_loginDialog->showServerMessage(message);
+        return;
+    }
     setConnectionStatus(message, false);
     appendProtocol(QStringLiteral("FATAL "), message);
 }
 
 void MainWindow::onWsClosed(int code, const QString &reason)
 {
+    // Login gate: the socket went away mid-verification with no status in
+    // flight — surface it in the dialog (a clean manual close after Log
+    // out is the silent case: nothing to report).
+    if (m_authenticating && m_loginDialog) {
+        m_authenticating = false;
+        m_loginDialog->showServerMessage(
+            tr("Connection closed (%1: %2)").arg(code).arg(reason));
+        return;
+    }
+    if (code == static_cast<int>(QWebSocketProtocol::CloseCodeNormal) && !m_authenticated
+        && m_activeCoach.isEmpty())
+        return; // manual close after logout: the banner already says so
     setConnectionStatus(tr("Connection closed (%1: %2)").arg(code).arg(reason), false);
-    appendProtocol(QStringLiteral("ws closed "), QStringLiteral("%1 %2").arg(code).arg(reason));
+    appendProtocol(QStringLiteral("ws closed "),
+                   QStringLiteral("%1 %2").arg(code).arg(reason));
 }
 
 // serverStatus from the server (e.g. a join rejected for the wrong
@@ -1093,6 +1138,15 @@ void MainWindow::onWsClosed(int code, const QString &reason)
 void MainWindow::onSessionStatus(const QString &status, const QString &message)
 {
     const bool isError = status.startsWith(QLatin1String("ERROR"), Qt::CaseInsensitive);
+    // Login gate: a rejection (e.g. ERROR_WRONG_PASSWORD) is the
+    // verification failing — show it in the dialog and stay open for a
+    // retry. There is NO auto-retry on a rejection (the server rate-limits
+    // repeated failures).
+    if (isError && m_authenticating && m_loginDialog) {
+        m_authenticating = false;
+        m_loginDialog->showServerMessage(tr("Server: %1 %2").arg(status, message));
+        return;
+    }
     if (isError)
         setConnectionStatus(tr("Server: %1 %2").arg(status, message), false);
     appendProtocol(QStringLiteral("status "), QStringLiteral("%1 %2").arg(status, message));
@@ -1105,14 +1159,23 @@ void MainWindow::onConnectRequested()
 
 void MainWindow::openSpectateDialog()
 {
+    // Login gate first: the spectate dialog is only reachable once the
+    // client login was verified by the server (the session then uses
+    // m_loginCoach/m_loginMd5 — no account fields in the spectate dialog).
+    if (m_gateLogin && !m_authenticated) {
+        startLogin();
+        if (!m_authenticated)
+            return;
+    }
     SpectateDialog dialog(this);
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this, &dialog](const QString &coach, const QByteArray &passwordMd5, int gameId)
+            [this, &dialog](int gameId)
             {
-                // This coach's session is starting: Log out becomes live.
-                setActiveCoach(coach);
+                // This match's session is starting: Log out becomes live
+                // (the active coach is the logged-in one).
+                setActiveCoach(m_loginCoach);
                 // Remember the match list's team logos NOW (the dialog is
                 // destroyed when exec() returns) — they are the fallback
                 // when the game state's logoUrl is null.
@@ -1124,9 +1187,70 @@ void MainWindow::openSpectateDialog()
                 // new session is being established.
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
-                m_session->connectAsSpectator(coach, passwordMd5, gameId);
+                m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
             });
     dialog.exec();
+}
+
+// -----------------------------------------------------------------------------
+// Client login gate
+// -----------------------------------------------------------------------------
+bool MainWindow::startLogin()
+{
+    if (m_loginDialog)
+        return m_authenticated; // a gate is already in flight
+    m_loginDialog = new LoginDialog(this);
+    m_loginDialog->setModal(true);
+    connect(m_loginDialog, &LoginDialog::loginRequested, this, &MainWindow::onLoginRequested);
+    // Quit button: close the client (at startup or after a Log out).
+    connect(m_loginDialog, &LoginDialog::quitRequested, qApp, &QApplication::quit);
+    m_loginDialog->exec();
+    const bool verified = m_authenticated;
+    delete m_loginDialog;
+    m_loginDialog = nullptr;
+    return verified;
+}
+
+void MainWindow::onLoginRequested(const QString &coach, const QByteArray &passwordMd5)
+{
+    m_authenticating = true;
+    m_loginCoach = coach;
+    m_loginMd5 = passwordMd5;
+    setConnectionStatus(tr("Verifying credentials…"), false);
+    // The JOIN ATTEMPT is the verification: the server checks the password
+    // there (FumbblRequestCheckAuthorization — before any game lookup) and
+    // answers serverJoin (ok) or a serverStatus rejection (wrong password).
+    // Game for the attempt: the last spectated one if it is still live,
+    // otherwise the first live match.
+    m_loginList->fetch();
+}
+
+void MainWindow::onLoginMatchesReceived(QVector<FFBLiveMatch> matches)
+{
+    if (!m_authenticating)
+        return;
+    const int lastGame = QSettings().value(QStringLiteral("connect/lastGameId")).toInt();
+    int gameId = 0;
+    for (const FFBLiveMatch &m : matches)
+        if (m.half > 0 && m.id == lastGame) {
+            gameId = lastGame;
+            break;
+        }
+    if (gameId == 0)
+        for (const FFBLiveMatch &m : matches)
+            if (m.half > 0) {
+                gameId = m.id;
+                break;
+            }
+    if (gameId == 0) {
+        m_authenticating = false;
+        if (m_loginDialog)
+            m_loginDialog->showServerMessage(
+                tr("There are no live matches to verify against right now — "
+                   "try again in a moment."));
+        return;
+    }
+    m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
 }
 
 void MainWindow::setActiveCoach(const QString &coach)
@@ -1144,9 +1268,16 @@ void MainWindow::onLogout()
 {
     m_session->disconnect(); // manual close: the watchdog and reconnect stay off
     setActiveCoach(QString());
+    m_authenticated = false;
     clearMatchUi();
     setConnectionStatus(tr("Logged out."), false);
+    // The remembered credential goes (the keychain entry survives: a
+    // returning coach retypes only the name).
     QFile::remove(CredentialStore::credentialsPath());
+    // Shared PC: the next player logs in from the same gate (the dialog
+    // also offers Quit).
+    if (m_gateLogin)
+        startLogin();
 }
 
 // Wipes all match state (model, field, rosters, logs, selection) — used

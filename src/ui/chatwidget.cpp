@@ -236,11 +236,14 @@ void ChatWidget::addMessage(const QString &sender, const QString &text,
     auto *label = new QLabel(m_stack);
     label->setTextFormat(Qt::RichText);
     label->setText(html);
+    // Long messages wrap (the old fixed-height single line clipped them);
+    // the row grows with the wrapped text.
+    label->setWordWrap(true);
     label->setStyleSheet(QStringLiteral("background: transparent; color: #222832;"));
     QFont f = label->font();
     f.setPointSizeF(10);
     label->setFont(f);
-    label->setFixedHeight(kRowH);
+    label->setMinimumHeight(kRowH);
     m_stackLayout->insertWidget(m_stackLayout->count() - 1, label);
 
     m_plain << QStringLiteral("%1: %2").arg(sender, text);
