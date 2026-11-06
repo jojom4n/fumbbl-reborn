@@ -11,10 +11,13 @@
 //   * Ping: clientPing every 2000 ms, FIRST PING IMMEDIATE on open
 //     (official client.ini: client.ping.interval=2000; the server's
 //     SessionTimeoutTask kills sessions silent for 10 s).
-//   * Join sequence: clientRequestVersion (once) -> clientJoin -> serverJoin.
-//     NEVER send clientReady (does not exist in the protocol).
-//   * Session token is one-time: the caller must inject a fresh one per
-//     connection (see SpectatorSession).
+//   * Login sequence (official coach+password flow): clientRequestVersion
+//     (once) -> clientPasswordChallenge {coach} -> server sends
+//     serverPasswordChallenge {challenge: hex} -> client computes
+//     R = HMAC-MD5(MD5(password), challenge) and sends clientJoin
+//     {coach, password: hex(R)} -> serverJoin. NEVER send clientReady
+//     (does not exist in the protocol). A re-opened socket re-runs the
+//     whole sequence (fresh challenge, fresh join) — nothing is replayed.
 //   * Reconnect: exponential backoff 3000 ms * 2^(n-1), capped at 2^5,
 //     unlimited attempts; a clean close (1000) does not reconnect.
 // =============================================================================
@@ -41,9 +44,16 @@ public:
 
     static QString defaultUrl(); // "ws://fumbbl.com:22223/command"
 
-    // Configure the join that fires automatically right after open.
-    void configureJoin(const QString &coach, const QString &sessionToken, int gameId,
+    // Configure the login that fires automatically right after open:
+    // clientRequestVersion -> clientPasswordChallenge -> (server challenge)
+    // -> clientJoin with the computed challenge response.
+    // pwdMd5: 16-byte binary MD5 of the clear-text password (the HMAC key;
+    // the plaintext is never held here).
+    void configureJoin(const QString &coach, const QByteArray &pwdMd5, int gameId,
                        bool spectator);
+    // Re-run the challenge on the CURRENT open socket (join retry): the
+    // server issues a fresh challenge and a new join follows.
+    void retryLogin();
     void connectTo();
     void disconnectFromServer();
     // Immediate, synchronous teardown (game switching): abort() the socket so
@@ -56,7 +66,6 @@ public:
 
     // Outgoing commands (LZString-compressed internally).
     void sendVersionRequest();
-    void sendJoin(); // uses the configured join
     void sendChat(const QString &message); // clientTalk
     void sendAction(const QString &action, const QStringList &params = {}); // clientAction
     void sendCloseSession();
@@ -71,14 +80,10 @@ signals:
     void sending(const QString &netCommandId, const QJsonObject &payload);
     void received(const QString &netCommandId, const QJsonObject &payload);
 
-    // A serverStatus arrived (e.g. ERROR_WRONG_PASSWORD when the join's
-    // one-time session token was rejected). The session layer turns this
-    // into a visible error + a retry with a fresh token.
+    // A serverStatus arrived (e.g. when the join's challenge response was
+    // rejected). The session layer turns this into a visible error + a
+    // retry with a fresh challenge.
     void statusReceived(const QString &status, const QString &message);
-    // The socket (re)opened but the previous join already consumed its
-    // one-time session token: the session layer must fetch a fresh token
-    // and re-join (FumbblWs deliberately does NOT re-send the stale join).
-    void reopenNeedsToken();
 
     // Routed server commands (subset relevant to a client; the rest only
     // surface via `received`).
@@ -104,25 +109,22 @@ private:
     void startPingTimer();
     void stopPingTimer();
     void sendPing();
-    void sendJoinInternal();
+    void sendLoginSequence();      // version request + password challenge
+    void sendPasswordChallenge();  // clientPasswordChallenge
+    void sendJoinWithResponse(const QString &response); // clientJoin
 
     QWebSocket *m_ws = nullptr;
     QTimer *m_pingTimer = nullptr;
     QTimer *m_reconnectTimer = nullptr;
 
-    // Configured join (mirrors FumbblWebSocket fields).
+    // Configured login (mirrors FumbblWebSocket fields).
     QString m_coach;
-    QString m_sessionToken;
+    QByteArray m_pwdMd5; // binary MD5 of the password (HMAC key)
     int m_gameId = 0;
     bool m_spectator = true;
-    // True once a join was sent. A later socket open is a RECONNECT:
-    // re-sending the stored join would replay a CONSUMED one-time session
-    // token (the server would reject it), so reopenNeedsToken() is emitted
-    // instead.
-    bool m_joinSent = false;
     // True once clientRequestVersion was sent on the CURRENT socket. The
-    // protocol requires it before every clientJoin; it must go out once per
-    // socket (reset in handleOpen).
+    // protocol requires it before the login exchange; it must go out once
+    // per socket (reset in handleOpen).
     bool m_versionSent = false;
     bool m_manualDisconnect = false;
     int m_reconnectAttempts = 0;

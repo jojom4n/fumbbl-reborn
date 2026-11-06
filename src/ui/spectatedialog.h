@@ -1,12 +1,12 @@
 // =============================================================================
 // SpectateDialog — File > Spectate Game… (spectator)
 //
-// Shows the live FUMBBL match list (GET /api/match/current, via OAuth) in a
+// Shows the live FUMBBL match list (GET /api/match/current, public) in a
 // filterable table (text over team/coach names, race, division) plus the
-// OAuth credentials (collapsible, remembered in the same JSON file the TS
-// client uses) and a manual game-id field. Selecting a row and clicking
-// "Spectate" (or double-clicking it) starts the spectator session for that
-// game.
+// FUMBBL account credentials (collapsible: coach + site password,
+// remembered in a 0600 line file) and a manual game-id field. Selecting a
+// row and clicking "Spectate" (or double-clicking it) starts the spectator
+// session for that game with the official coach+password login.
 // =============================================================================
 #pragma once
 
@@ -15,7 +15,6 @@
 #include <QDialog>
 #include <QPair>
 
-class FumbblAuth;
 class MatchListClient;
 class QCheckBox;
 class QLabel;
@@ -31,7 +30,9 @@ class SpectateDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit SpectateDialog(QWidget *parent = nullptr);
+    // autoLoadList: fetch the public match list on construction. Tests pass
+    // false to stay network-free.
+    explicit SpectateDialog(QWidget *parent = nullptr, bool autoLoadList = true);
 
     // Drive the dialog programmatically (tools/tests): select a row and
     // fire the same path a double-click / the "Spectate" button takes.
@@ -54,25 +55,23 @@ signals:
     // The match list table has been populated (diagnostic/tests).
     void listLoaded();
     // Same contract ConnectDialog used: emit right before accept().
-    void connectRequested(const QString &clientId, const QString &clientSecret,
-                          const QString &username, int gameId);
+    // password is the FUMBBL site password (clear text; MD5-hashed in the
+    // session layer, never stored).
+    void connectRequested(const QString &coach, const QString &password, int gameId);
 
 private slots:
     void onMatchesReceived(QVector<FFBLiveMatch> matches);
     void onFetchFailed(const QString &message);
-    void onAccessTokenReady(const QString &accessToken);
-    void onAuthFailed(const QString &step, const QString &error);
     void refreshList();
     void applyFilters();
 
 private:
     struct Credentials {
-        QString clientId;
-        QString clientSecret;
-        QString username;
+        QString coach;
+        QString password;
         bool valid() const
         {
-            return !clientId.isEmpty() && !clientSecret.isEmpty() && !username.isEmpty();
+            return !coach.isEmpty() && !password.isEmpty();
         }
     };
 
@@ -82,7 +81,6 @@ private:
     void rebuildFilterCombos();
     void spectateBtnState();    // enable/disable the Spectate button
 
-    FumbblAuth *m_auth = nullptr;
     MatchListClient *m_matchList = nullptr;
 
     QVector<FFBLiveMatch> m_matches;
@@ -99,9 +97,8 @@ private:
     // Credentials (collapsible)
     QPushButton *m_credToggle = nullptr;
     QGroupBox *m_credGroup = nullptr;
-    QLineEdit *m_clientId = nullptr;
-    QLineEdit *m_clientSecret = nullptr;
-    QLineEdit *m_username = nullptr;
+    QLineEdit *m_coach = nullptr;
+    QLineEdit *m_password = nullptr;
     QCheckBox *m_remember = nullptr;
     QPushButton *m_loadBtn = nullptr;
 

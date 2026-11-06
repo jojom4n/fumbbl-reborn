@@ -63,13 +63,14 @@ MatchListClient::MatchListClient(QObject *parent) : QObject(parent)
     connect(m_nam, &QNetworkAccessManager::finished, this, &MatchListClient::onReplyFinished);
 }
 
-void MatchListClient::fetch(const QString &accessToken)
+void MatchListClient::fetch()
 {
     if (m_reply)
         return;
 
-    QNetworkRequest req(QUrl(QStringLiteral("https://fumbbl.com") + QStringLiteral("/api/match/current")));
-    req.setRawHeader("Authorization", "Bearer " + accessToken.toUtf8());
+    // Public endpoint: no Authorization header (verified 06/nov: works
+    // anonymously; a bogus token actually breaks it).
+    QNetworkRequest req(QUrl(QStringLiteral("https://fumbbl.com/api/match/current")));
     req.setRawHeader("Accept", "application/json");
     m_reply = m_nam->get(req);
 }

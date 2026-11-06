@@ -33,7 +33,7 @@ set_tests_properties(gamemodel_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_
 add_executable(ui_wiring_test
     ui_wiring_test.cpp
     ${CMAKE_SOURCE_DIR}/src/core/lzstring.cpp
-    ${CMAKE_SOURCE_DIR}/src/core/fumbblauth.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/passwordchallenge.cpp
     ${CMAKE_SOURCE_DIR}/src/core/fumbblws.cpp
     ${CMAKE_SOURCE_DIR}/src/core/spectatorsession.cpp
     ${CMAKE_SOURCE_DIR}/src/core/gamemodel.cpp

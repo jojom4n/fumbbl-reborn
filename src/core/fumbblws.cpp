@@ -4,6 +4,7 @@
 #include "core/fumbblws.h"
 
 #include "core/lzstring.h"
+#include "core/passwordchallenge.h"
 
 #include <QDateTime>
 #include <QJsonDocument>
@@ -43,16 +44,13 @@ FumbblWs::FumbblWs(QObject *parent)
 
 FumbblWs::~FumbblWs() = default;
 
-void FumbblWs::configureJoin(const QString &coach, const QString &sessionToken, int gameId,
+void FumbblWs::configureJoin(const QString &coach, const QByteArray &pwdMd5, int gameId,
                              bool spectator)
 {
     m_coach = coach;
-    m_sessionToken = sessionToken;
+    m_pwdMd5 = pwdMd5;
     m_gameId = gameId;
     m_spectator = spectator;
-    // A freshly configured join arms the next socket open to actually join
-    // (clears the "already joined" state left by a previous game/reconnect).
-    m_joinSent = false;
 }
 
 void FumbblWs::connectTo()
@@ -107,10 +105,10 @@ void FumbblWs::handleOpen()
     startPingTimer();
     sendPing();
 
-    // Fresh socket: the version request (which must precede any join) has
-    // not been sent on it yet.
+    // Fresh socket: re-run the full login exchange (version request +
+    // password challenge; the join follows the server's challenge).
     m_versionSent = false;
-    sendJoinInternal();
+    sendLoginSequence();
 }
 
 void FumbblWs::handleClose()
@@ -164,49 +162,56 @@ void FumbblWs::sendVersionRequest()
     sendRaw(QJsonObject{{"netCommandId", QStringLiteral("clientRequestVersion")}});
 }
 
-void FumbblWs::sendJoin()
+void FumbblWs::sendLoginSequence()
 {
-    if (m_sessionToken.isEmpty() || m_gameId == 0) {
-        emit errorOccurred(QStringLiteral("cannot join: missing session token or game id"));
-        return;
-    }
-
-    // Mirrors fumbblWebSocket.ts sendJoin() field-for-field, including the
-    // empty gameName/teamName strings.
-    QJsonObject cmd;
-    cmd["netCommandId"] = QStringLiteral("clientJoin");
-    cmd["clientMode"] = m_spectator ? QStringLiteral("spectator") : QStringLiteral("player");
-    cmd["coach"] = m_coach;
-    cmd["password"] = m_sessionToken;
-    cmd["gameId"] = m_gameId;
-    cmd["gameName"] = QStringLiteral("");
-    cmd["teamId"] = QStringLiteral(""); // spectator mode
-    cmd["teamName"] = QStringLiteral("");
-    // CRITICAL: clientRequestVersion must precede clientJoin. It goes out
-    // once per socket (m_versionSent is reset in handleOpen), so a retry on
-    // the same socket re-sends only the join, a re-opened socket sends both.
+    if (m_pwdMd5.isEmpty() || m_gameId == 0)
+        return; // nothing configured yet
+    // clientRequestVersion must precede the login exchange. It goes out
+    // once per socket (m_versionSent is reset in handleOpen).
     if (!m_versionSent) {
         m_versionSent = true;
         sendVersionRequest();
     }
-    m_joinSent = true; // the token was just consumed by this join
+    sendPasswordChallenge();
+}
+
+void FumbblWs::sendPasswordChallenge()
+{
+    QJsonObject cmd;
+    cmd["netCommandId"] = QStringLiteral("clientPasswordChallenge");
+    cmd["coach"] = m_coach;
     sendRaw(cmd);
 }
 
-void FumbblWs::sendJoinInternal()
+void FumbblWs::retryLogin()
 {
-    if (m_sessionToken.isEmpty() || m_gameId == 0)
-        return; // nothing configured yet
+    if (!isOpen() || m_pwdMd5.isEmpty() || m_gameId == 0)
+        return;
+    // A fresh challenge -> a fresh computed join. Nothing is replayed.
+    sendPasswordChallenge();
+}
 
-    if (m_joinSent) {
-        // RECONNECT: the stored join already consumed its one-time session
-        // token. Re-sending it would be rejected by the server. Ask the
-        // session layer for a fresh token; it re-joins via sendJoin().
-        emit reopenNeedsToken();
+void FumbblWs::sendJoinWithResponse(const QString &response)
+{
+    if (response.isEmpty() || m_gameId == 0) {
+        emit errorOccurred(QStringLiteral("cannot join: missing challenge response or game id"));
         return;
     }
 
-    sendJoin();
+    // Mirrors fumbblWebSocket.ts sendJoin() field-for-field, including the
+    // empty gameName/teamName strings. The "password" field carries the
+    // hex challenge response (HMAC-MD5 of MD5(password), see
+    // PasswordChallenge — same as the official Java client).
+    QJsonObject cmd;
+    cmd["netCommandId"] = QStringLiteral("clientJoin");
+    cmd["clientMode"] = m_spectator ? QStringLiteral("spectator") : QStringLiteral("player");
+    cmd["coach"] = m_coach;
+    cmd["password"] = response;
+    cmd["gameId"] = m_gameId;
+    cmd["gameName"] = QStringLiteral("");
+    cmd["teamId"] = QStringLiteral(""); // spectator mode
+    cmd["teamName"] = QStringLiteral("");
+    sendRaw(cmd);
 }
 
 void FumbblWs::sendChat(const QString &message)
@@ -277,7 +282,17 @@ void FumbblWs::handleMessage(const QString &raw)
     // `received` (sketches, zap, local markers, ...).
     if (commandId == QLatin1String("serverVersion"))
         emit serverVersionReceived(msg);
-    else if (commandId == QLatin1String("serverUserSettings"))
+    else if (commandId == QLatin1String("serverPasswordChallenge")) {
+        // Answer the challenge and join: the "password" field of clientJoin
+        // carries hex(R), R = HMAC-MD5(MD5(password), challenge).
+        const QString challenge = msg.value("challenge").toString();
+        if (m_pwdMd5.isEmpty()) {
+            emit errorOccurred(QStringLiteral("password challenge received but no login "
+                                              "configured"));
+            return;
+        }
+        sendJoinWithResponse(fumbbl::PasswordChallenge::response(challenge, m_pwdMd5));
+    } else if (commandId == QLatin1String("serverUserSettings"))
         emit userSettingsReceived(msg);
     else if (commandId == QLatin1String("serverJoin"))
         emit joined(msg);

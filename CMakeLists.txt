@@ -86,8 +86,8 @@ add_executable(fumbbl-qt
     # Core (protocol layer)
     src/core/lzstring.h
     src/core/lzstring.cpp
-    src/core/fumbblauth.h
-    src/core/fumbblauth.cpp
+    src/core/passwordchallenge.h
+    src/core/passwordchallenge.cpp
     src/core/fumbblws.h
     src/core/fumbblws.cpp
     src/core/spectatorsession.h
@@ -175,7 +175,7 @@ install(FILES share/icon.png DESTINATION share/icons/hicolor/512x512/apps
 add_executable(spectator_smoke
     tools/spectator_smoke.cpp
     src/core/lzstring.cpp
-    src/core/fumbblauth.cpp
+    src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
     src/core/spectatorsession.cpp
 )
@@ -202,7 +202,7 @@ target_link_libraries(reports_render PRIVATE Qt6::Core Qt6::Gui)
 add_executable(reports_capturer
     tools/reports_capturer.cpp
     src/core/lzstring.cpp
-    src/core/fumbblauth.cpp
+    src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
     src/core/spectatorsession.cpp
 )
@@ -220,7 +220,7 @@ target_link_libraries(reports_capturer PRIVATE
 add_executable(hud_preview
     tools/hud_preview.cpp
     src/core/lzstring.cpp
-    src/core/fumbblauth.cpp
+    src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
     src/core/spectatorsession.cpp
     src/core/gamemodel.cpp
@@ -257,7 +257,7 @@ target_link_libraries(hud_preview PRIVATE
 add_executable(move_numbers_preview
     tools/move_numbers_preview.cpp
     src/core/lzstring.cpp
-    src/core/fumbblauth.cpp
+    src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
     src/core/spectatorsession.cpp
     src/core/gamemodel.cpp

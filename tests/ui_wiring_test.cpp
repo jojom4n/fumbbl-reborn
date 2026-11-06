@@ -778,7 +778,7 @@ void UiWiringTest::newGameStateReplacesOldMatch()
 // Selecting a row must clear the manual id so the clicked match wins.
 void UiWiringTest::manualGameIdDoesNotOverrideSelection()
 {
-    SpectateDialog dialog;
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
     dialog.show();
 
     // Simulate a stale manual id, as loadCredentials() would set from

@@ -11,6 +11,7 @@
 
 #include "core/assets.h"
 #include "core/fumbblws.h"
+#include "core/passwordchallenge.h"
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
@@ -95,8 +96,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_session, &SpectatorSession::fatal, this, &MainWindow::onSessionFatal);
     connect(m_session, &SpectatorSession::wsClosed, this, &MainWindow::onWsClosed);
     connect(m_session, &SpectatorSession::statusReceived, this, &MainWindow::onSessionStatus);
-    connect(m_session, &SpectatorSession::reopenScheduled, this,
-            [this]() { setConnectionStatus(tr("Connection restored — re-joining…"), false); });
+    // A socket drop schedules a reconnect; once it re-opens the login
+    // exchange (version + challenge + join) re-runs automatically.
+    connect(m_session->ws(), &FumbblWs::reconnectScheduled, this,
+            [this](int attempt) {
+                setConnectionStatus(tr("Connection lost — reconnecting (attempt %1)…")
+                                       .arg(attempt),
+                                    false);
+            });
     connect(m_session, &SpectatorSession::protocolSending, this,
             [this](const QString &id, const QJsonObject &)
             { this->appendProtocol(QStringLiteral(">> send "), id); });
@@ -1077,8 +1084,7 @@ void MainWindow::openSpectateDialog()
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this, &dialog](const QString &clientId, const QString &clientSecret,
-                            const QString &username, int gameId)
+            [this, &dialog](const QString &coach, const QString &password, int gameId)
             {
                 // Remember the match list's team logos NOW (the dialog is
                 // destroyed when exec() returns) — they are the fallback
@@ -1091,7 +1097,9 @@ void MainWindow::openSpectateDialog()
                 // new session is being established.
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
-                m_session->connectAsSpectator(clientId, clientSecret, username, gameId);
+                m_session->connectAsSpectator(coach,
+                                              fumbbl::PasswordChallenge::encodePassword(password),
+                                              gameId);
             });
     dialog.exec();
 }

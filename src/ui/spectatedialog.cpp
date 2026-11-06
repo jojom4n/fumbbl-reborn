@@ -3,8 +3,6 @@
 // =============================================================================
 #include "ui/spectatedialog.h"
 
-#include "core/fumbblauth.h"
-
 #include <algorithm>
 
 #include <QCheckBox>
@@ -28,27 +26,45 @@
 #include <QVBoxLayout>
 
 namespace {
-// Shared credentials file (also used by tools/spectator_smoke).
+// Shared credentials file (also used by tools/spectator_smoke /
+// tools/reports_capturer): plain lines
+//
+//     coach=...
+//     password=...
+//
+// kept 0600 (site password of the user's FUMBBL account).
 QString credentialsPath()
 {
-    return QDir::homePath()
-        + QStringLiteral("/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json");
+    return QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
 }
 
-QJsonObject loadCredentialsObject()
+// Returns {coach, password}; empty when the file is missing/incomplete.
+QPair<QString, QString> loadCredentialsPair()
 {
+    QString coach;
+    QString password;
     QFile f(credentialsPath());
     if (!f.open(QIODevice::ReadOnly))
         return {};
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    QJsonObject c = root.value(QStringLiteral("fumbbl_credentials")).toObject();
-    if (c.isEmpty())
-        c = root.value(QStringLiteral("credentials")).toObject();
-    return c;
+    const QList<QByteArray> lines = f.readAll().split('\n');
+    for (const QByteArray &raw : lines) {
+        const int eq = raw.indexOf('=');
+        if (eq <= 0)
+            continue;
+        const QString key = QString::fromUtf8(raw.left(eq)).trimmed();
+        const QString value = QString::fromUtf8(raw.mid(eq + 1)).trimmed();
+        if (key == QLatin1String("coach"))
+            coach = value;
+        else if (key == QLatin1String("password"))
+            password = value;
+    }
+    if (coach.isEmpty() || password.isEmpty())
+        return {};
+    return {coach, password};
 }
 } // namespace
 
-SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
+SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(parent)
 {
     setWindowTitle(tr("Spectate a FUMBBL match"));
     resize(860, 560);
@@ -95,37 +111,38 @@ SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
     // --- Credentials (collapsible) ------------------------------------------
     // A plain QGroupBox toggled by a checkable button (a checkable group box
     // only DISABLES its children on some styles, it does not collapse them).
-    m_credToggle = new QPushButton(tr("OAuth credentials  ▸"), this);
+    m_credToggle = new QPushButton(tr("FUMBBL account  ▸"), this);
     m_credToggle->setCheckable(true);
     m_credToggle->setFlat(true);
     m_credToggle->setStyleSheet(QStringLiteral("text-align: left; padding: 2px 4px;"));
-    m_credGroup = new QGroupBox(tr("OAuth credentials"), this);
-    m_clientId = new QLineEdit(m_credGroup);
-    m_clientSecret = new QLineEdit(m_credGroup);
-    m_clientSecret->setEchoMode(QLineEdit::Password);
-    m_username = new QLineEdit(m_credGroup);
+    m_credGroup = new QGroupBox(tr("FUMBBL account"), this);
+    m_coach = new QLineEdit(m_credGroup);
+    m_password = new QLineEdit(m_credGroup);
+    m_password->setEchoMode(QLineEdit::Password);
     m_remember = new QCheckBox(tr("Remember credentials"), m_credGroup);
     m_remember->setChecked(true);
     m_loadBtn = new QPushButton(tr("Load matches"), m_credGroup);
     auto *credForm = new QHBoxLayout(m_credGroup);
-    credForm->addWidget(new QLabel(tr("Client ID:")), 0);
-    credForm->addWidget(m_clientId, 1);
-    credForm->addWidget(new QLabel(tr("Secret:")), 0);
-    credForm->addWidget(m_clientSecret, 1);
-    credForm->addWidget(new QLabel(tr("Username:")), 0);
-    credForm->addWidget(m_username, 1);
+    credForm->addWidget(new QLabel(tr("Coach:")), 0);
+    credForm->addWidget(m_coach, 1);
+    credForm->addWidget(new QLabel(tr("Password:")), 0);
+    credForm->addWidget(m_password, 1);
     auto *credRow2 = new QHBoxLayout();
     credRow2->addWidget(m_remember);
     credRow2->addStretch(1);
     credRow2->addWidget(m_loadBtn);
+    auto *credWarning = new QLabel(
+        tr("Spectating uses the password of your FUMBBL account (the site's password)."),
+        m_credGroup);
+    credWarning->setStyleSheet(QStringLiteral("color: #9fb0c4; font-size: 11px;"));
     auto *credLayout = new QVBoxLayout(m_credGroup);
     credLayout->addLayout(credForm);
     credLayout->addLayout(credRow2);
+    credLayout->addWidget(credWarning);
 
     connect(m_credToggle, &QPushButton::toggled, m_credGroup, &QWidget::setVisible);
     connect(m_credToggle, &QPushButton::toggled, this, [this](bool on) {
-        m_credToggle->setText(on ? tr("OAuth credentials  ▾")
-                                 : tr("OAuth credentials  ▸"));
+        m_credToggle->setText(on ? tr("FUMBBL account  ▾") : tr("FUMBBL account  ▸"));
     });
 
     // --- Manual game id + status + buttons ----------------------------------
@@ -164,10 +181,7 @@ SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
     connect(m_spectateBtn, &QPushButton::clicked, this, &SpectateDialog::spectate);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
-    m_auth = new FumbblAuth(this);
     m_matchList = new MatchListClient(this);
-    connect(m_auth, &FumbblAuth::accessTokenReady, this, &SpectateDialog::onAccessTokenReady);
-    connect(m_auth, &FumbblAuth::failed, this, &SpectateDialog::onAuthFailed);
     connect(m_matchList, &MatchListClient::matchesReceived,
             this, &SpectateDialog::onMatchesReceived);
     connect(m_matchList, &MatchListClient::fetchFailed, this, &SpectateDialog::onFetchFailed);
@@ -202,21 +216,22 @@ SpectateDialog::SpectateDialog(QWidget *parent) : QDialog(parent)
     m_credToggle->setChecked(!hasCreds);
     m_credGroup->setVisible(!hasCreds);
 
-    // Auto-load the list when valid credentials are present.
-    if (hasCreds)
+    // The match list is public: always auto-load (tests opt out).
+    if (autoLoadList)
         refreshList();
     else
-        m_status->setText(tr("No saved credentials — fill them in below (or use a manual Game ID)."));
+        m_status->setText(tr("Ready."));
+    if (!hasCreds)
+        m_status->setText(tr("No saved credentials — fill in your FUMBBL account below."));
     spectateBtnState();
 }
 
 void SpectateDialog::loadCredentials()
 {
-    const QJsonObject c = loadCredentialsObject();
-    if (!c.isEmpty()) {
-        m_clientId->setText(c.value(QStringLiteral("clientId")).toString());
-        m_clientSecret->setText(c.value(QStringLiteral("clientSecret")).toString());
-        m_username->setText(c.value(QStringLiteral("username")).toString());
+    const QPair<QString, QString> c = loadCredentialsPair();
+    if (!c.first.isEmpty()) {
+        m_coach->setText(c.first);
+        m_password->setText(c.second);
     }
     const int lastGame = QSettings().value(QStringLiteral("connect/lastGameId")).toInt();
     if (lastGame > 0)
@@ -225,48 +240,26 @@ void SpectateDialog::loadCredentials()
 
 void SpectateDialog::saveCredentials() const
 {
-    QJsonObject c;
-    c.insert(QStringLiteral("clientId"), m_clientId->text().trimmed());
-    c.insert(QStringLiteral("clientSecret"), m_clientSecret->text().trimmed());
-    c.insert(QStringLiteral("username"), m_username->text().trimmed());
-
-    QJsonObject root;
     QFile f(credentialsPath());
-    if (f.open(QIODevice::ReadOnly))
-        root = QJsonDocument::fromJson(f.readAll()).object();
-    root.insert(QStringLiteral("fumbbl_credentials"), c);
-
     QDir().mkpath(QFileInfo(f).absolutePath());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
+        f.write(("password=" + m_password->text().trimmed() + "\n").toUtf8());
+    }
+    // The file holds the site password: owner read/write only.
+    QFile::setPermissions(credentialsPath(), QFile::ReadOwner | QFile::WriteOwner);
 }
 
 SpectateDialog::Credentials SpectateDialog::currentCredentials() const
 {
-    return { m_clientId->text().trimmed(), m_clientSecret->text().trimmed(),
-             m_username->text().trimmed() };
+    return { m_coach->text().trimmed(), m_password->text().trimmed() };
 }
 
 void SpectateDialog::refreshList()
 {
-    const Credentials c = currentCredentials();
-    if (!c.valid()) {
-        m_status->setText(tr("Client ID, Client Secret and Username are all required."));
-        m_credToggle->setChecked(true);
-        return;
-    }
+    // Public endpoint: no credentials needed to list matches.
     m_status->setText(tr("Loading live matches…"));
-    m_auth->authenticate(c.clientId, c.clientSecret);
-}
-
-void SpectateDialog::onAccessTokenReady(const QString &accessToken)
-{
-    m_matchList->fetch(accessToken);
-}
-
-void SpectateDialog::onAuthFailed(const QString &step, const QString &error)
-{
-    m_status->setText(tr("OAuth failed (%1): %2").arg(step, error.left(200)));
+    m_matchList->fetch();
 }
 
 void SpectateDialog::onFetchFailed(const QString &message)
@@ -438,7 +431,7 @@ void SpectateDialog::spectate()
 {
     const Credentials c = currentCredentials();
     if (!c.valid()) {
-        m_status->setText(tr("Client ID, Client Secret and Username are all required."));
+        m_status->setText(tr("Coach and password (your FUMBBL account) are required."));
         m_credToggle->setChecked(true);
         return;
     }
@@ -453,6 +446,6 @@ void SpectateDialog::spectate()
         saveCredentials();
     QSettings().setValue(QStringLiteral("connect/lastGameId"), gameId);
 
-    emit connectRequested(c.clientId, c.clientSecret, c.username, gameId);
+    emit connectRequested(c.coach, c.password, gameId);
     accept();
 }

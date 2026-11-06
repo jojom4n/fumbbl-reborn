@@ -1,23 +1,28 @@
 // =============================================================================
 // SpectatorSession — connects to a FUMBBL match as spectator
 //
-// Orchestrates exactly the flow of the TS client (fumbblService.ts
-// connectAsSpectator):
+// Orchestrates the official coach+password login flow (same as the Java
+// client's LoginLogicModule without JNLP token):
 //
-//   1. OAuth2 client_credentials        -> access token
-//   2. POST /api/auth/getToken (fresh)  -> ONE-TIME session token
-//   3. FumbblWs.connect() -> on open: ping(2s, immediate) ->
-//      clientRequestVersion -> clientJoin(spectator) -> serverJoin ->
-//      serverGameState -> serverModelSync/serverGameTime/serverTalk...
+//   1. FumbblWs.connect() -> on open: ping(2s, immediate) ->
+//      clientRequestVersion -> clientPasswordChallenge {coach}
+//   2. server -> serverPasswordChallenge {challenge: hex}
+//   3. client -> clientJoin {coach, password: hex(R), gameId, spectator}
+//      where R = HMAC-MD5(MD5(password), challenge) (PasswordChallenge)
+//   4. server -> serverJoin -> serverGameState ->
+//      serverModelSync/serverGameTime/serverTalk...
+//
+// Reconnect and join retry re-run the challenge (fresh challenge, fresh
+// response) — nothing is ever replayed.
 // =============================================================================
 #pragma once
 
+#include <QByteArray>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
 
-class FumbblAuth;
 class FumbblWs;
 class QTimer;
 
@@ -30,8 +35,8 @@ public:
     ~SpectatorSession() override;
 
     // Starts the full flow (async; progress via the signals below).
-    void connectAsSpectator(const QString &clientId, const QString &clientSecret,
-                            const QString &username, int gameId);
+    // pwdMd5: 16-byte binary MD5 of the clear-text password.
+    void connectAsSpectator(const QString &coach, const QByteArray &pwdMd5, int gameId);
     void disconnect();
 
     FumbblWs *ws() const { return m_ws; }
@@ -48,13 +53,10 @@ signals:
     void serverVersionReceived(const QJsonObject &payload);
     // serverStatus re-export (visible errors, e.g. a rejected join).
     void statusReceived(const QString &status, const QString &message);
-    // The socket re-opened after a reconnect: a fresh one-time token is
-    // being fetched to re-join.
-    void reopenScheduled();
     void joined(const QJsonObject &payload);
     void gameStateReceived(const QJsonObject &game);
     void modelSyncReceived(const QJsonArray &changes, const QJsonArray &reports);
-    void gameTimeReceived(qint64 gameTimeMs, qint64 turnTimeMs);
+    void gameTimeReceived(qint64 gameTimeMs, qint64 turnMs);
     void talkReceived(const QJsonObject &payload);
     void pongReceived(qint64 timestamp);
     void protocolSending(const QString &netCommandId, const QJsonObject &payload);
@@ -62,27 +64,16 @@ signals:
     void wsClosed(int code, const QString &reason);
 
 private slots:
-    void onAccessToken(const QString &token);
-    void onSessionToken(const QString &token);
-    void onAuthFailed(const QString &step, const QString &error);
     void onJoinWatchdog();
-    void retryJoinWithFreshToken(const QString &reason);
+    void retryLogin(const QString &reason);
 
 private:
-    FumbblAuth *m_auth = nullptr;
     FumbblWs *m_ws = nullptr;
-    QString m_clientId;
-    QString m_clientSecret;
-    QString m_username;
     int m_gameId = 0;
     bool m_joined = false;
-    // Session token received while the previous socket was still closing;
-    // the join fires from the closed() handler.
-    QString m_pendingToken;
     // Join watchdog: if the server never confirms the join (serverJoin) or
-    // rejects it (serverStatus), retry with a FRESH one-time session token.
-    // The FUMBBL auth check (fumbbl.com/xml:auth) is async on the server and
-    // can fail/hang; a consumed token must never be replayed.
+    // rejects it (serverStatus), retry with a FRESH challenge. The FUMBBL
+    // auth check is async on the server and can fail/hang.
     QTimer *m_joinWatchdog = nullptr;
     int m_joinRetries = 0;
     static constexpr int kMaxJoinRetries = 3;

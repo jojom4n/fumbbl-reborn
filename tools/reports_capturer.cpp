@@ -6,7 +6,7 @@
 // the C++ parser was written against ffb-common field names that do not all
 // match what the server actually sends. This tool removes the guesswork: it
 // spectates a LIVE match as the client does (SpectatorSession:
-// OAuth2 -> one-time token -> LZString WS -> clientJoin) and dumps
+// coach+password challenge -> LZString WS -> clientJoin) and dumps
 //
 //   <out>/game_<id>_<ts>.jsonl        one raw report JSON per line
 //                                     (every object of serverModelSync
@@ -21,8 +21,8 @@
 //   ./reports_capturer --game <GAME_ID> [--duration <sec>] [--out <dir>]
 //                      [--credentials <path>]
 //
-// Credentials default to the same file the client uses:
-//   ~/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json
+// Credentials default to the same file the client uses (keep 0600):
+//   ~/.config/fumbbl-reborn/creds   (lines: coach=... / password=...)
 //
 // Exit code: 0 if joined + game state received, 1 otherwise.
 // =============================================================================
@@ -38,6 +38,7 @@
 #include <QJsonObject>
 #include <QTimer>
 
+#include "core/passwordchallenge.h"
 #include "core/spectatorsession.h"
 
 #include <cstdio>
@@ -74,8 +75,7 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
     app.setApplicationName("fumbbl-qt-reports-capturer");
 
-    QString credentialsPath = QDir::homePath() +
-        QStringLiteral("/.local/share/com.saruman.fumbbl-reborn/fumbbl-credentials.json");
+    QString credentialsPath = QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
     int gameId = 0;
     int durationSec = 300; // a full action needs ~1-2 min; default 5 min
     QString outDir = QDir::homePath() + QStringLiteral("/FUMBBL-live-captures");
@@ -98,24 +98,37 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    // --- Credentials (same file the client uses) ----------------------------
-    QFile credsFile(credentialsPath);
-    if (!credsFile.open(QIODevice::ReadOnly)) {
-        logLine(QStringLiteral("FATAL: cannot read credentials file %1").arg(credentialsPath));
+    // --- Credentials (same line file the client uses; password hashed
+    // in-process and never printed) -----------------------------------------
+    QString coach;
+    QString password;
+    {
+        QFile credsFile(credentialsPath);
+        if (!credsFile.open(QIODevice::ReadOnly)) {
+            logLine(QStringLiteral("FATAL: cannot read credentials file %1").arg(credentialsPath));
+            return 2;
+        }
+        const QList<QByteArray> lines = credsFile.readAll().split('\n');
+        for (const QByteArray &raw : lines) {
+            const int eq = raw.indexOf('=');
+            if (eq <= 0)
+                continue;
+            const QString key = QString::fromUtf8(raw.left(eq)).trimmed();
+            const QString value = QString::fromUtf8(raw.mid(eq + 1)).trimmed();
+            if (key == QLatin1String("coach"))
+                coach = value;
+            else if (key == QLatin1String("password"))
+                password = value;
+        }
+    }
+    if (coach.isEmpty() || password.isEmpty()) {
+        logLine(QStringLiteral("FATAL: credentials file must contain coach=/password="));
         return 2;
     }
-    const QJsonObject creds = QJsonDocument::fromJson(credsFile.readAll()).object();
-    QJsonObject c = creds.value("fumbbl_credentials").toObject();
-    if (c.isEmpty())
-        c = creds.value("credentials").toObject();
-    const QString clientId = c.value("clientId").toString();
-    const QString clientSecret = c.value("clientSecret").toString();
-    const QString username = c.value("username").toString();
-    if (clientId.isEmpty() || clientSecret.isEmpty() || username.isEmpty()) {
-        logLine(QStringLiteral(
-            "FATAL: credentials file must contain clientId/clientSecret/username"));
-        return 2;
-    }
+    const QByteArray pwdMd5 = fumbbl::PasswordChallenge::encodePassword(password);
+    logLine(QStringLiteral("Using credentials for coach '%1', game %2")
+                .arg(coach)
+                .arg(gameId));
 
     // --- Output files ---------------------------------------------------------
     QDir().mkpath(outDir);
@@ -201,7 +214,7 @@ int main(int argc, char *argv[])
 
     QElapsedTimer watch;
     watch.start();
-    session.connectAsSpectator(clientId, clientSecret, username, gameId);
+    session.connectAsSpectator(coach, pwdMd5, gameId);
 
     QTimer watchdog;
     QObject::connect(&watchdog, &QTimer::timeout, [&]() {

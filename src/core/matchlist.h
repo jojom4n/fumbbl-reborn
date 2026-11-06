@@ -60,8 +60,9 @@ class MatchListClient : public QObject
 public:
     explicit MatchListClient(QObject *parent = nullptr);
 
-    // Fetch https://fumbbl.com/api/match/current with an OAuth access token.
-    void fetch(const QString &accessToken);
+    // Fetch https://fumbbl.com/api/match/current (public endpoint, no
+    // authentication).
+    void fetch();
 
     bool isBusy() const { return m_reply != nullptr; }
 
