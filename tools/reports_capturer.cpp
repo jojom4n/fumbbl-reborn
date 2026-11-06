@@ -38,6 +38,7 @@
 #include <QJsonObject>
 #include <QTimer>
 
+#include "core/credentialstore.h"
 #include "core/passwordchallenge.h"
 #include "core/spectatorsession.h"
 
@@ -121,11 +122,11 @@ int main(int argc, char *argv[])
                 password = value;
         }
     }
-    if (coach.isEmpty() || password.isEmpty()) {
-        logLine(QStringLiteral("FATAL: credentials file must contain coach=/password="));
+    if (coach.isEmpty()) {
+        logLine(QStringLiteral("FATAL: credentials file must contain coach= (and either "
+                                "password= or an OS keychain entry)"));
         return 2;
     }
-    const QByteArray pwdMd5 = fumbbl::PasswordChallenge::encodePassword(password);
     logLine(QStringLiteral("Using credentials for coach '%1', game %2")
                 .arg(coach)
                 .arg(gameId));
@@ -212,10 +213,9 @@ int main(int argc, char *argv[])
                          changesFile.flush();
                      });
 
+    // Password in the file? use it. Otherwise the file is coach-only (the
+    // app migrated it): the MD5 comes from the OS keychain (async).
     QElapsedTimer watch;
-    watch.start();
-    session.connectAsSpectator(coach, pwdMd5, gameId);
-
     QTimer watchdog;
     QObject::connect(&watchdog, &QTimer::timeout, [&]() {
         session.disconnect();
@@ -239,7 +239,39 @@ int main(int argc, char *argv[])
         app.exit(ok ? 0 : 1);
     });
     watchdog.setSingleShot(true);
-    watchdog.start(durationSec * 1000);
+
+    auto startSession = [&](const QByteArray &pwdMd5) {
+        watch.start();
+        session.connectAsSpectator(coach, pwdMd5, gameId);
+        watchdog.start(durationSec * 1000);
+    };
+
+    const QByteArray fileMd5 = password.isEmpty()
+                                   ? QByteArray()
+                                   : fumbbl::PasswordChallenge::encodePassword(password);
+    if (!fileMd5.isEmpty()) {
+        startSession(fileMd5);
+    } else if (CredentialStore::hasBackend()) {
+        logLine(QStringLiteral("No password in the file — looking up the OS keychain …"));
+        CredentialStore store;
+        // Auto-connection queues to the main thread (the store calls back
+        // from a worker thread).
+        QObject::connect(&store, &CredentialStore::getFinished,
+                         [&](const QString &, const QByteArray &md5, bool ok) {
+                             if (ok && !md5.isEmpty()) {
+                                 startSession(md5);
+                                 return;
+                             }
+                             logLine(QStringLiteral("FATAL: no password in the file and no "
+                                                    "keychain entry (store ok=%1)")
+                                       .arg(ok));
+                             app.exit(2);
+                         });
+        store.get(coach);
+    } else {
+        logLine(QStringLiteral("FATAL: no password in the file and no keychain backend"));
+        return 2;
+    }
 
     return app.exec();
 }

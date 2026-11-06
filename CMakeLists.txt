@@ -22,7 +22,38 @@ endif()
 # so both the app and the tests land in predictable locations.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets DBus)
+
+# -----------------------------------------------------------------------------
+# OS credential store (F2-A): Windows uses the native Credential Manager
+# (advapi32); Linux uses Secret Service (libsecret) — GNOME Keyring, or
+# KWallet via the org.kde.secretservicecompat layer. Without libsecret the
+# app still builds and falls back to the 0600 line file (coach remembered,
+# password per session).
+# -----------------------------------------------------------------------------
+if(NOT WIN32)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        # >= 0.3: the rewritten API this code uses (sync *_sync functions,
+        # SecretSchema with the fixed attribute array). Older 0.2 releases
+        # have a different API -> treated as "no backend", file fallback.
+        pkg_check_modules(FUMBBL_CRED QUIET "libsecret-1>=0.3")
+    endif()
+endif()
+
+function(fumbbl_add_credential_store target)
+    # CMAKE_SOURCE_DIR (NOT CURRENT_): the tests subdirectory calls this too.
+    target_sources(${target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/credentialstore.h
+        ${CMAKE_SOURCE_DIR}/src/core/credentialstore.cpp)
+    if(WIN32)
+        target_link_libraries(${target} PRIVATE advapi32)
+    elseif(FUMBBL_CRED_FOUND)
+        target_compile_definitions(${target} PRIVATE FUMBBL_HAS_SECRET=1)
+        target_include_directories(${target} PRIVATE ${FUMBBL_CRED_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE ${FUMBBL_CRED_LIBRARIES} Qt6::DBus)
+    endif()
+endfunction()
 
 # -----------------------------------------------------------------------------
 # Application
@@ -143,6 +174,7 @@ target_link_libraries(fumbbl-qt PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+fumbbl_add_credential_store(fumbbl-qt)
 
 # Release bundle: the executable finds the Qt libraries next to it
 # (tools/make_bundle.sh installs into the bundle folder). Windows resolves
@@ -185,6 +217,7 @@ target_link_libraries(spectator_smoke PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+fumbbl_add_credential_store(spectator_smoke)
 
 # Renders a captured .jsonl (reports_capturer output) through the REAL
 # parser + model: a quick way to verify reportparser field alignment.
@@ -212,6 +245,7 @@ target_link_libraries(reports_capturer PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+fumbbl_add_credential_store(reports_capturer)
 
 # Offscreen HUD verification: drives a real MainWindow offscreen (live game
 # fixture + synthetic reports/changes) and saves PNG crops — window, field,
@@ -249,6 +283,7 @@ target_link_libraries(hud_preview PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+fumbbl_add_credential_store(hud_preview)
 
 # Offscreen verification of the move-trail rendering (between-cells step
 # numbers, block marks, go-for-it red trail, log line wrapping): a full
@@ -286,6 +321,7 @@ target_link_libraries(move_numbers_preview PRIVATE
     Qt6::Network
     Qt6::WebSockets
 )
+fumbbl_add_credential_store(move_numbers_preview)
 
 # Offscreen FieldView renderer: feeds a raw serverGameState fixture into a
 # bare FieldView and saves a PNG (quick check of field/stadium/dugout look).
