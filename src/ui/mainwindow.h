@@ -122,6 +122,11 @@ public:
     // The spectator session (for tooling/tests).
     SpectatorSession *session() const { return m_session; }
 
+    // Set the active coach (empty = none) and the Log out action's enabled
+    // state. Production: the connect flow sets it, Log out clears it.
+    // Public so the shared-PC contract can be exercised by tests.
+    void setActiveCoach(const QString &coach);
+
 private:
     void createActions();
     void createMenus();
@@ -177,6 +182,9 @@ private:
     // the game state's logoUrl once per match.
     void loadTeamLogos();
     void onLogoReplyFinished(QNetworkReply *reply);
+    // File > Log out (shared PC): end the session and clear this coach's
+    // remembered credential so the next player starts from an empty dialog.
+    void onLogout();
 
 
     bool m_layoutApplied = false; // default/saved geometry applied once
@@ -193,6 +201,9 @@ private:
     QString m_fallbackAwayLogo;
     QPixmap m_homeLogoPm;
     QPixmap m_awayLogoPm;
+    // The coach the session was requested for (empty = no active session).
+    // Drives the Log out action's enabled state; cleared by Log out only.
+    QString m_activeCoach;
 
     // Widgets
     QWidget *m_stage = nullptr; // central container: field + overlay panels

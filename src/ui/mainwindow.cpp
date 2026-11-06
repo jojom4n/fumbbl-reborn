@@ -10,6 +10,7 @@
 #include "ui/mainwindow.h"
 
 #include "core/assets.h"
+#include "core/credentialstore.h"
 #include "core/fumbblws.h"
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
@@ -29,6 +30,7 @@
 #include <QCloseEvent>
 #include <QCryptographicHash>
 #include <QEvent>
+#include <QFile>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -148,9 +150,16 @@ void MainWindow::createActions()
     m_connectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+J")));
     m_connectAction->setStatusTip(tr("Watch a live FUMBBL match as spectator"));
 
-    m_disconnectAction = new QAction(tr("&Disconnect"), this);
+    // Shared PC: end THIS coach's session — the disconnect plus the
+    // remembered credential are both gone, so the next player's dialog
+    // opens empty. The keychain entry survives (returning coach retypes
+    // only the name, never the password).
+    m_disconnectAction = new QAction(tr("Log &out"), this);
     m_disconnectAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
+    m_disconnectAction->setStatusTip(
+        tr("End the session and forget the coach for the next player"));
     m_disconnectAction->setEnabled(false);
+    connect(m_disconnectAction, &QAction::triggered, this, &MainWindow::onLogout);
 
     m_quitAction = new QAction(tr("&Quit"), this);
     m_quitAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Q")));
@@ -346,11 +355,20 @@ void MainWindow::applyDefaultLayout()
                 g.setHeight(FloatingPanel::kMinHeight);
         }
         it.value()->setGeometry(g);
-        it.value()->show();
-        it.value()->raise();
+        // Player Info is hover-driven: a saved/last "visible" state is the
+        // residue of the last hover, not a user choice — never start it up.
+        if (it.key() == QLatin1String("player_info")) {
+            it.value()->hide();
+        } else {
+            it.value()->show();
+            it.value()->raise();
+        }
     }
-    for (auto it = m_panelViewActions.cbegin(); it != m_panelViewActions.cend(); ++it)
-        it.value()->setChecked(true);
+    for (auto it = m_panelViewActions.cbegin(); it != m_panelViewActions.cend(); ++it) {
+        it.value()->blockSignals(true);
+        it.value()->setChecked(it.key() != QLatin1String("player_info"));
+        it.value()->blockSignals(false);
+    }
     m_layoutApplied = true;
 }
 
@@ -373,7 +391,14 @@ void MainWindow::applySavedLayout(const QByteArray &state)
         if (p.contains(QStringLiteral("y"))) g.moveTop(p.value(QStringLiteral("y")).toInt());
         if (p.contains(QStringLiteral("w"))) g.setWidth(p.value(QStringLiteral("w")).toInt());
         if (p.contains(QStringLiteral("h"))) g.setHeight(p.value(QStringLiteral("h")).toInt());
-        const bool vis = p.contains(QStringLiteral("v")) ? p.value(QStringLiteral("v")).toBool() : true;
+        // Player Info is hover-driven: never restore it visible (see
+        // applyDefaultLayout) — its saved v:true is the last hover's
+        // residue, not a choice.
+        bool vis;
+        if (it.key() == QLatin1String("player_info"))
+            vis = false;
+        else
+            vis = p.contains(QStringLiteral("v")) ? p.value(QStringLiteral("v")).toBool() : true;
         it.value()->setGeometry(g);
         it.value()->setVisible(vis);
         // Sync the View-menu action from the SAVED value, not from
@@ -1061,9 +1086,10 @@ void MainWindow::onWsClosed(int code, const QString &reason)
     appendProtocol(QStringLiteral("ws closed "), QStringLiteral("%1 %2").arg(code).arg(reason));
 }
 
-// serverStatus from the server (e.g. ERROR_WRONG_PASSWORD when a join's
-// one-time token was rejected). The session layer retries automatically;
-// the banner shows the real server error instead of dead silence.
+// serverStatus from the server (e.g. a join rejected for the wrong
+// password): shown as-is in the banner. There is NO auto-retry on a
+// rejection (the server rate-limits repeated failures) — the user fixes
+// the credential and reconnects.
 void MainWindow::onSessionStatus(const QString &status, const QString &message)
 {
     const bool isError = status.startsWith(QLatin1String("ERROR"), Qt::CaseInsensitive);
@@ -1085,6 +1111,8 @@ void MainWindow::openSpectateDialog()
     connect(&dialog, &SpectateDialog::connectRequested, this,
             [this, &dialog](const QString &coach, const QByteArray &passwordMd5, int gameId)
             {
+                // This coach's session is starting: Log out becomes live.
+                setActiveCoach(coach);
                 // Remember the match list's team logos NOW (the dialog is
                 // destroyed when exec() returns) — they are the fallback
                 // when the game state's logoUrl is null.
@@ -1099,6 +1127,26 @@ void MainWindow::openSpectateDialog()
                 m_session->connectAsSpectator(coach, passwordMd5, gameId);
             });
     dialog.exec();
+}
+
+void MainWindow::setActiveCoach(const QString &coach)
+{
+    m_activeCoach = coach;
+    m_disconnectAction->setEnabled(!coach.isEmpty());
+}
+
+// File > Log out (shared PC): end this coach's session and drop the
+// remembered credential, so the NEXT player's dialog opens empty. The
+// keychain entry survives: a returning coach retypes only the name (the
+// MD5 comes back from the store); nobody retypes a password they already
+// remembered.
+void MainWindow::onLogout()
+{
+    m_session->disconnect(); // manual close: the watchdog and reconnect stay off
+    setActiveCoach(QString());
+    clearMatchUi();
+    setConnectionStatus(tr("Logged out."), false);
+    QFile::remove(CredentialStore::credentialsPath());
 }
 
 // Wipes all match state (model, field, rosters, logs, selection) — used

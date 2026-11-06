@@ -37,6 +37,12 @@ public:
     // running) — the *Finished signals report that (ok == false).
     static bool hasBackend();
 
+    // The 0600 line file the migration / no-backend path shares
+    // (`~/.config/fumbbl-reborn/creds`, one `coach=<name>` line).
+    // Single source of truth for the path: SpectateDialog, MainWindow
+    // (Log out) and the live tools all resolve it here.
+    static QString credentialsPath();
+
     // passwordMd5: 16 binary bytes (MD5 of the clear-text password).
     void get(const QString &coach);
     void set(const QString &coach, const QByteArray &passwordMd5);

@@ -30,23 +30,19 @@
 
 namespace {
 // Shared credentials file (also used by tools/spectator_smoke /
-// tools/reports_capturer): plain lines
+// tools/reports_capturer; path resolved by CredentialStore::credentialsPath):
+// plain lines
 //
 //     coach=...
 //     password=...
 //
 // kept 0600 (site password of the user's FUMBBL account).
-QString credentialsPath()
-{
-    return QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
-}
-
 // Returns {coach, password}; empty when the file is missing/incomplete.
 QPair<QString, QString> loadCredentialsPair()
 {
     QString coach;
     QString password;
-    QFile f(credentialsPath());
+    QFile f(CredentialStore::credentialsPath());
     if (!f.open(QIODevice::ReadOnly))
         return {};
     const QList<QByteArray> lines = f.readAll().split('\n');
@@ -196,6 +192,21 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
 
     loadCredentials();
 
+    // Shared PC: the user switches to a different coach. The password
+    // text and the stored MD5 belonged to the PREVIOUS coach — drop both,
+    // then look the new one up in the keychain (a remembered coach's MD5
+    // arrives via onStoreGetFinished, no retyping).
+    connect(m_coach, &QLineEdit::editingFinished, this, [this]() {
+        const QString coach = m_coach->text().trimmed();
+        if (coach != m_lastCoach) {
+            m_lastCoach = coach;
+            m_password->clear();
+            m_storedMd5.clear();
+        }
+        startKeychainLookup();
+        spectateBtnState();
+    });
+
     connect(m_manualGameId, QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int v) {
                 // Entering a manual id makes it the active pick: clear any
@@ -245,6 +256,9 @@ void SpectateDialog::loadCredentials()
         m_coach->setText(c.first);
         m_password->setText(c.second);
     }
+    // Baseline for "the user switched coach" (see the editingFinished
+    // hook in the constructor).
+    m_lastCoach = m_coach->text().trimmed();
     const int lastGame = QSettings().value(QStringLiteral("connect/lastGameId")).toInt();
     if (lastGame > 0)
         m_manualGameId->setValue(lastGame);
@@ -252,14 +266,15 @@ void SpectateDialog::loadCredentials()
 
 void SpectateDialog::saveCredentials() const
 {
-    QFile f(credentialsPath());
+    const QString path = CredentialStore::credentialsPath();
+    QFile f(path);
     QDir().mkpath(QFileInfo(f).absolutePath());
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
         f.write(("password=" + m_password->text().trimmed() + "\n").toUtf8());
     }
     // The file holds the site password: owner read/write only.
-    QFile::setPermissions(credentialsPath(), QFile::ReadOwner | QFile::WriteOwner);
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
 }
 
 
@@ -315,11 +330,11 @@ void SpectateDialog::onStoreSetFinished(const QString &coach, bool ok, const QSt
 
 void SpectateDialog::stripPasswordFromFile() const
 {
-    QFile f(credentialsPath());
+    QFile f(CredentialStore::credentialsPath());
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
     f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
-    QFile::setPermissions(credentialsPath(), QFile::ReadOwner | QFile::WriteOwner);
+    QFile::setPermissions(f.fileName(), QFile::ReadOwner | QFile::WriteOwner);
 }
 
 void SpectateDialog::onFetchFailed(const QString &message)
@@ -520,9 +535,12 @@ void SpectateDialog::spectate()
         return;
     }
 
-    QByteArray pwdMd5 = m_storedMd5;
-    if (!password.isEmpty() && pwdMd5.isEmpty())
-        pwdMd5 = fumbbl::PasswordChallenge::encodePassword(password);
+    // A typed password ALWAYS wins over the stored MD5: the stored entry
+    // can be stale (switched coach on a shared PC, changed site password).
+    // With an empty field, the stored entry is the only material.
+    const QByteArray pwdMd5 =
+        !password.isEmpty() ? fumbbl::PasswordChallenge::encodePassword(password)
+                            : m_storedMd5;
 
     if (m_remember->isChecked()) {
         if (CredentialStore::hasBackend()) {

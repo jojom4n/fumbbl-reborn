@@ -4,6 +4,21 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.1 — 2026-11-06
+- **Log out (PC condiviso)**: `File ▸ Log out` (Ctrl+K) chiude la sessione
+  del coach attivo e rimuove la credenziale ricordata: il dialog del
+  giocatore successivo si apre vuoto. L'entry nel keychain resta: un coach
+  che torna ripassa solo il nome, mai la password.
+- **Cambio coach nel dialog**: editando il campo coach, password digitata e
+  MD5 salvata del coach precedente vengono scartate e il nuovo coach è
+  risolto dal keychain (se già ricordato, niente re-digitazione).
+- **Password digitata ha priorità**: se c'è una password nel campo, il
+  login usa il suo MD5 anche se nel keychain c'è un MD5 stantio (coach
+  cambiato, password di sito cambiata).
+- **Player Info non appare all'avvio**: il pannello è guidato solo dall'
+  hover sul campo — lo stato "visibile" salvato era il residuo dell'ultimo
+  hover, non una scelta. Posizione/dimensioni salvate restano.
+
 ## 0.2.0 — 2026-11-06
 - **Login ufficiale FFB (coach + password)**: sostituisce l'OAuth2 a token
   REST. Il client ora fa lo stesso handshake del client Java ufficiale:

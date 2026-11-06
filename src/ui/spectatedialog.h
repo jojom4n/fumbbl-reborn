@@ -88,6 +88,9 @@ private:
     // MD5 from the keychain (empty = nothing stored yet): lets the user
     // spectate without re-typing the password.
     QByteArray m_storedMd5;
+    // The coach field's last value: a change means the user switched
+    // account on a shared PC (previous password/MD5 are dropped).
+    QString m_lastCoach;
 
     QVector<FFBLiveMatch> m_matches;
 

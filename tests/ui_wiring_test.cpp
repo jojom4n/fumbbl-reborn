@@ -23,7 +23,9 @@
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QEvent> // QEnterEvent / QLeaveEvent
+#include <QAction>
 #include <QCheckBox>
+#include <QKeySequence>
 #include <QScrollBar>
 #include <QScrollArea>
 #include <QLabel>
@@ -103,6 +105,8 @@ private slots:
     void manualGameIdDoesNotOverrideSelection();
     void spectateEmitsTypedPasswordAsMd5();
     void spectateUsesKeychainMd5WithoutRetyping();
+    void spectateTypedPasswordWinsOverStaleKeychainMd5();
+    void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
     void blockReportsShowDiceAndNames();
@@ -531,11 +535,12 @@ void UiWiringTest::panelLayoutPersistAndReset()
     MainWindow w;
     w.show();
 
-    // The rosters are gone — use the player info panel (it still
-    // participates in the layout system until hover drives it).
-    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
-    QVERIFY(info);
-    FloatingPanel *panel = panelFor(&w, info);
+    // The rosters are gone; the player info panel is hover-driven (never
+    // visible at startup) — use the protocol panel for the geometry
+    // assertions.
+    QPlainTextEdit *protocol = w.findChild<QPlainTextEdit *>(QStringLiteral("protocol"));
+    QVERIFY(protocol);
+    FloatingPanel *panel = panelFor(&w, protocol);
     QVERIFY(panel);
 
     // The default layout lands on the first stage resize.
@@ -544,9 +549,11 @@ void UiWiringTest::panelLayoutPersistAndReset()
     QVERIFY(defaultGeom.width() >= FloatingPanel::kMinWidth);
     QVERIFY(defaultGeom.height() >= FloatingPanel::kMinHeight);
 
-    // The user moves + resizes the panel...
+    // The user moves + resizes the panel... (LEFT: the protocol panel sits
+    // near the right edge — a rightward move would exceed the stage and
+    // clampPanelsToStage would clamp the width.)
     QRect custom = defaultGeom;
-    custom.moveLeft(defaultGeom.x() + 120);
+    custom.moveLeft(defaultGeom.x() - 120);
     custom.setWidth(defaultGeom.width() + 90);
     panel->setGeometry(custom);
     QCOMPARE(panel->geometry(), custom);
@@ -592,17 +599,30 @@ void UiWiringTest::savedLayoutRestoredOnFirstShow()
                       QJsonDocument(root).toJson(QJsonDocument::Compact));
 
     MainWindow w; // ctor shows maximized; the saved layout lands on first sizing
-    // Rosters gone — assert on the player_info seed.
+
+    // The protocol seed (v:true) is restored geometry AND visibility.
+    QPlainTextEdit *protocol = w.findChild<QPlainTextEdit *>(QStringLiteral("protocol"));
+    QVERIFY(protocol);
+    FloatingPanel *panel = panelFor(&w, protocol);
+    QVERIFY(panel);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 3000);
+    QCOMPARE(panel->x(), 700);
+    QCOMPARE(panel->y(), 40);
+    QCOMPARE(panel->width(), 200);
+    QCOMPARE(panel->height(), 200);
+
+    // Player Info is hover-driven: its SAVED v:true must NOT be restored
+    // (the visible state is the residue of the last hover) — but its
+    // geometry IS restored, so the next hover lands where the user left it.
     PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
     QVERIFY(info);
-    FloatingPanel *panel = panelFor(&w, info);
-    QVERIFY(panel);
-
-    QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 3000);
-    QCOMPARE(panel->x(), 40);
-    QCOMPARE(panel->y(), 350);
-    QCOMPARE(panel->width(), 380);
-    QCOMPARE(panel->height(), 220);
+    FloatingPanel *infoPanel = panelFor(&w, info);
+    QVERIFY(infoPanel);
+    QTRY_VERIFY_WITH_TIMEOUT(!infoPanel->isVisible(), 3000);
+    QCOMPARE(infoPanel->x(), 40);
+    QCOMPARE(infoPanel->y(), 350);
+    QCOMPARE(infoPanel->width(), 380);
+    QCOMPARE(infoPanel->height(), 220);
 }
 
 void UiWiringTest::matchListParsing()
@@ -897,6 +917,86 @@ void UiWiringTest::spectateUsesKeychainMd5WithoutRetyping()
     QCOMPARE(coach, QStringLiteral("coachX"));
     QCOMPARE(md5, storedMd5); // used as-is, not re-hashed
     QCOMPARE(gameId, 444444);
+}
+
+// Shared PC: a user retypes a password while a STALE stored MD5 (a
+// different coach's, or a pre-change one) still sits in the dialog — the
+// typed password must win, or the login would silently use the wrong key.
+void UiWiringTest::spectateTypedPasswordWinsOverStaleKeychainMd5()
+{
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachY"), QStringLiteral("newPw"),
+                                 /*remember=*/false);
+    const QByteArray staleMd5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    dialog.setStoredMd5ForTest(staleMd5);
+
+    FFBLiveMatch m;
+    m.id = 555555;
+    m.half = 1;
+    m.turn = 5;
+    m.division = QStringLiteral("League");
+    m.scheduler = QStringLiteral("Blackbox");
+    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
+                          QStringLiteral("Orcs"), QString(), 0};
+    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
+                          QStringLiteral("Gnomes"), QString(), 0};
+    QVector<FFBLiveMatch> matches;
+    matches.push_back(m);
+    dialog.loadMatchesForTest(matches);
+    QVERIFY2(dialog.selectGame(555555), "could not select the match row");
+
+    QString coach;
+    QByteArray md5;
+    int gameId = -1;
+    QObject::connect(&dialog, &SpectateDialog::connectRequested,
+                     [&](const QString &c, const QByteArray &p, int g) {
+        coach = c;
+        md5 = p;
+        gameId = g;
+    });
+    dialog.spectate();
+
+    QCOMPARE(coach, QStringLiteral("coachY"));
+    QCOMPARE(md5, fumbbl::PasswordChallenge::encodePassword(QStringLiteral("newPw")));
+    QVERIFY2(md5 != staleMd5, "typed password must override the stale keychain MD5");
+    QCOMPARE(gameId, 555555);
+}
+
+// Shared PC: Log out (File menu, Ctrl+K) is enabled exactly while a
+// session was requested, and triggering it ends the session — the action
+// goes back to disabled and the status bar says so. The next player's
+// dialog then opens empty (the remembered credential is dropped). This
+// test deliberately does NOT touch the real creds file (the user's own
+// coach lives there); the file handling is verified in the live check.
+void UiWiringTest::logoutEndsSessionForNextPlayer()
+{
+    QSettings settings;
+    settings.remove(QStringLiteral("mainwindow/panelLayout"));
+
+    MainWindow w;
+    w.show();
+
+    // Locate the Log out action by its shortcut (translation-proof).
+    QAction *logout = nullptr;
+    for (QAction *a : w.findChildren<QAction *>())
+        if (a->shortcut() == QKeySequence(QStringLiteral("Ctrl+K")))
+            logout = a;
+    QVERIFY2(logout, "no Ctrl+K action in the menus (Log out missing?)");
+
+    // No session yet: disabled.
+    QVERIFY(!logout->isEnabled());
+
+    // A session was requested for this coach: enabled.
+    w.setActiveCoach(QStringLiteral("coachX"));
+    QVERIFY(logout->isEnabled());
+
+    // The user triggers it (the exact production path): the session ends
+    // and the coach is forgotten for the next player.
+    logout->trigger();
+    QVERIFY(!logout->isEnabled());
+    QVERIFY2(labelContains(&w, QStringLiteral("Logged out")),
+             "status bar does not report the logout");
 }
 
 // =============================================================================

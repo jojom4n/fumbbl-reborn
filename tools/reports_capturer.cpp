@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
     app.setApplicationName("fumbbl-qt-reports-capturer");
 
-    QString credentialsPath = QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
+    QString credentialsPath = CredentialStore::credentialsPath();
     int gameId = 0;
     int durationSec = 300; // a full action needs ~1-2 min; default 5 min
     QString outDir = QDir::homePath() + QStringLiteral("/FUMBBL-live-captures");

@@ -22,8 +22,10 @@
 
 #include <QDBusInterface>
 #include <QDBusReply>
+#include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <QThreadPool>
 
 #include <atomic>
@@ -64,6 +66,11 @@ bool CredentialStore::hasBackend()
 #else
     return false;
 #endif
+}
+
+QString CredentialStore::credentialsPath()
+{
+    return QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
 }
 
 void CredentialStore::get(const QString &coach)

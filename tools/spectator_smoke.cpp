@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     QCoreApplication app(argc, argv);
     app.setApplicationName("fumbbl-qt-spectator-smoke");
 
-    QString credentialsPath = QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
+    QString credentialsPath = CredentialStore::credentialsPath();
     int gameId = 0;
     int durationSec = 15;
     QString dumpPath; // optional: write the raw serverGameState here
