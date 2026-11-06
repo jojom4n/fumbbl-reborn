@@ -11,7 +11,6 @@
 
 #include "core/assets.h"
 #include "core/fumbblws.h"
-#include "core/passwordchallenge.h"
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
@@ -1084,7 +1083,7 @@ void MainWindow::openSpectateDialog()
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this, &dialog](const QString &coach, const QString &password, int gameId)
+            [this, &dialog](const QString &coach, const QByteArray &passwordMd5, int gameId)
             {
                 // Remember the match list's team logos NOW (the dialog is
                 // destroyed when exec() returns) — they are the fallback
@@ -1097,9 +1096,7 @@ void MainWindow::openSpectateDialog()
                 // new session is being established.
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
-                m_session->connectAsSpectator(coach,
-                                              fumbbl::PasswordChallenge::encodePassword(password),
-                                              gameId);
+                m_session->connectAsSpectator(coach, passwordMd5, gameId);
             });
     dialog.exec();
 }

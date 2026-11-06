@@ -12,9 +12,11 @@
 
 #include "core/matchlist.h"
 
+#include <QByteArray>
 #include <QDialog>
 #include <QPair>
 
+class CredentialStore;
 class MatchListClient;
 class QCheckBox;
 class QLabel;
@@ -50,38 +52,42 @@ public:
     // the manual game-id field.
     void loadMatchesForTest(const QVector<FFBLiveMatch> &matches);
     QSpinBox *manualGameIdForTest() const { return m_manualGameId; }
+    // Fill the credential fields directly (tests stay keychain- and
+    // file-free: pass remember=false so no store/file write happens).
+    void setCredentialsForTest(const QString &coach, const QString &password,
+                               bool remember);
+    // Pretend the keychain lookup already returned this MD5 (no store call).
+    void setStoredMd5ForTest(const QByteArray &md5);
 
 signals:
     // The match list table has been populated (diagnostic/tests).
     void listLoaded();
     // Same contract ConnectDialog used: emit right before accept().
-    // password is the FUMBBL site password (clear text; MD5-hashed in the
-    // session layer, never stored).
-    void connectRequested(const QString &coach, const QString &password, int gameId);
+    // passwordMd5: 16 binary bytes (MD5 of the site password — the value
+    // the challenge login needs; the plaintext is never emitted).
+    void connectRequested(const QString &coach, const QByteArray &passwordMd5, int gameId);
 
 private slots:
     void onMatchesReceived(QVector<FFBLiveMatch> matches);
     void onFetchFailed(const QString &message);
     void refreshList();
     void applyFilters();
+    void onStoreGetFinished(const QString &coach, const QByteArray &passwordMd5, bool ok);
+    void onStoreSetFinished(const QString &coach, bool ok, const QString &error);
 
 private:
-    struct Credentials {
-        QString coach;
-        QString password;
-        bool valid() const
-        {
-            return !coach.isEmpty() && !password.isEmpty();
-        }
-    };
-
     void loadCredentials();
-    void saveCredentials() const;
-    Credentials currentCredentials() const;
+    void saveCredentials() const;   // fallback: no OS keychain (file keeps all)
+    void stripPasswordFromFile() const; // keychain owns the password: coach only
+    void startKeychainLookup();
     void rebuildFilterCombos();
     void spectateBtnState();    // enable/disable the Spectate button
 
     MatchListClient *m_matchList = nullptr;
+    CredentialStore *m_store = nullptr;
+    // MD5 from the keychain (empty = nothing stored yet): lets the user
+    // spectate without re-typing the password.
+    QByteArray m_storedMd5;
 
     QVector<FFBLiveMatch> m_matches;
 
