@@ -28,6 +28,19 @@ add_test(NAME gamemodel_test COMMAND $<TARGET_FILE:gamemodel_test>)
 set_tests_properties(gamemodel_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
 
 # -----------------------------------------------------------------------------
+# passwordchallenge_test — login challenge/response vectors (Java ground
+# truth, hardcoded — see the test header)
+# -----------------------------------------------------------------------------
+add_executable(passwordchallenge_test
+    passwordchallenge_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/passwordchallenge.cpp
+)
+target_include_directories(passwordchallenge_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(passwordchallenge_test PRIVATE Qt6::Test Qt6::Core)
+add_test(NAME passwordchallenge_test COMMAND $<TARGET_FILE:passwordchallenge_test>)
+set_tests_properties(passwordchallenge_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
+
+# -----------------------------------------------------------------------------
 # ui_wiring_test — core -> UI wiring (offscreen)
 # -----------------------------------------------------------------------------
 add_executable(ui_wiring_test
@@ -57,6 +70,7 @@ target_compile_definitions(ui_wiring_test PRIVATE
 target_link_libraries(ui_wiring_test PRIVATE
     Qt6::Test Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets
 )
+fumbbl_add_credential_store(ui_wiring_test)
 # lightxml streams one tag per event as the test runs: if the process dies
 # mid-suite (the windows test exe is a GUI-subsystem app and loses all
 # console output), the file still shows exactly which function it was in.

@@ -39,6 +39,7 @@
 #include "core/assets.h"
 #include "core/gamemodel.h"
 #include "core/matchlist.h"
+#include "core/passwordchallenge.h"
 #include "core/reportparser.h"
 #include "ui/actionlog.h"
 #include "ui/chatwidget.h"
@@ -100,6 +101,8 @@ private slots:
     void diceLogShowsPlayerName();
     void newGameStateReplacesOldMatch();
     void manualGameIdDoesNotOverrideSelection();
+    void spectateEmitsTypedPasswordAsMd5();
+    void spectateUsesKeychainMd5WithoutRetyping();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
     void blockReportsShowDiceAndNames();
@@ -808,6 +811,92 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
     // The stale manual id must be cleared and the selected match must win.
     QCOMPARE(dialog.manualGameIdForTest()->value(), 0);
     QCOMPARE(dialog.selectedGameId(), 222222);
+}
+
+// Contract of the coach+password login: the dialog emits the MD5 of the
+// typed password (16 binary bytes — the HMAC key the challenge login
+// needs), NEVER the plaintext. remember=false keeps the test store- and
+// file-free.
+void UiWiringTest::spectateEmitsTypedPasswordAsMd5()
+{
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
+                                 /*remember=*/false);
+
+    FFBLiveMatch m;
+    m.id = 333333;
+    m.half = 1;
+    m.turn = 5;
+    m.division = QStringLiteral("League");
+    m.scheduler = QStringLiteral("Blackbox");
+    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
+                          QStringLiteral("Orcs"), QString(), 0};
+    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
+                          QStringLiteral("Gnomes"), QString(), 0};
+    QVector<FFBLiveMatch> matches;
+    matches.push_back(m);
+    dialog.loadMatchesForTest(matches);
+    QVERIFY2(dialog.selectGame(333333), "could not select the match row");
+
+    QString coach;
+    QByteArray md5;
+    int gameId = -1;
+    QObject::connect(&dialog, &SpectateDialog::connectRequested,
+                     [&](const QString &c, const QByteArray &p, int g) {
+        coach = c;
+        md5 = p;
+        gameId = g;
+    });
+    dialog.spectate();
+
+    QCOMPARE(coach, QStringLiteral("coachX"));
+    QCOMPARE(md5, fumbbl::PasswordChallenge::encodePassword(QStringLiteral("pwY")));
+    QCOMPARE(md5.size(), 16);
+    QCOMPARE(gameId, 333333);
+    QCOMPARE(dialog.result(), int(QDialog::Accepted));
+}
+
+// The keychain path: when a stored MD5 exists the user does NOT retype the
+// password — the stored MD5 is used as-is (not re-hashed) for the login.
+void UiWiringTest::spectateUsesKeychainMd5WithoutRetyping()
+{
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    dialog.show();
+    // Coach remembered, password field EMPTY, keychain MD5 present.
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QString(), /*remember=*/false);
+    const QByteArray storedMd5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    dialog.setStoredMd5ForTest(storedMd5);
+
+    FFBLiveMatch m;
+    m.id = 444444;
+    m.half = 1;
+    m.turn = 5;
+    m.division = QStringLiteral("League");
+    m.scheduler = QStringLiteral("Blackbox");
+    m.home = FFBMatchTeam{QStringLiteral("Home"), QStringLiteral("cA"),
+                          QStringLiteral("Orcs"), QString(), 0};
+    m.away = FFBMatchTeam{QStringLiteral("Away"), QStringLiteral("cB"),
+                          QStringLiteral("Gnomes"), QString(), 0};
+    QVector<FFBLiveMatch> matches;
+    matches.push_back(m);
+    dialog.loadMatchesForTest(matches);
+    QVERIFY2(dialog.selectGame(444444), "could not select the match row");
+
+    QString coach;
+    QByteArray md5;
+    int gameId = -1;
+    QObject::connect(&dialog, &SpectateDialog::connectRequested,
+                     [&](const QString &c, const QByteArray &p, int g) {
+        coach = c;
+        md5 = p;
+        gameId = g;
+    });
+    dialog.spectate();
+
+    QCOMPARE(coach, QStringLiteral("coachX"));
+    QCOMPARE(md5, storedMd5); // used as-is, not re-hashed
+    QCOMPARE(gameId, 444444);
 }
 
 // =============================================================================
