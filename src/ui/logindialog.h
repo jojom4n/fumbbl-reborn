@@ -11,7 +11,9 @@
 //     for the keychain entry; the first keystroke replaces it).
 //   * "Remember me" (default on): on verified login the {coach, MD5}
 //     goes to the OS keychain (never plaintext); without a keychain the
-//     0600 line file keeps coach+password, as before.
+//     0600 line file keeps {coach, MD5} — the MD5 is the protocol's
+//     credential (the join sends HMAC-MD5(MD5(password), challenge)), so
+//     the clear text is never written anywhere.
 //   * A typed password always wins over a stored MD5 (stale entry:
 //     switched coach on a shared PC, changed site password).
 //
@@ -90,10 +92,11 @@ private:
     void login();
     void stripPasswordFromFile() const;
     // The 0600 credentials file (the keychain's fallback / safety net):
-    // "coach=…" line always, "password=…" only when a password is given
-    // (an empty password = strip). Static: the path comes from
+    // "coach=…" line always, "password_md5=<hex>" only when a credential
+    // is given (empty = strip). The MD5 is the protocol's credential —
+    // never the clear text. Static: the path comes from
     // CredentialStore::credentialsPath().
-    static void persistFile(const QString &coach, const QString &password);
+    static void persistFile(const QString &coach, const QByteArray &passwordMd5);
 
     QLineEdit *m_coach = nullptr;
     QLineEdit *m_password = nullptr;

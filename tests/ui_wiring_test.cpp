@@ -1080,12 +1080,16 @@ void UiWiringTest::rejectionCloseFollowedByRetryKeepsWarning()
 
 // A successful login only ENABLES the interface: the gate's join is a
 // credential check, not a spectate request — the client must not sit on
-// the (random) live match the join landed on.
+// the (random) live match the join landed on. The server sends the game
+// state in the SAME burst as serverJoin (already queued when the join is
+// handled), so the wipe must run on the next event-loop pass.
 void UiWiringTest::loginVerificationDoesNotSpectateMatch()
 {
     SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
     MainWindow w(nullptr, /*gateLogin=*/true);
     w.show();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(field);
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pw"),
@@ -1097,6 +1101,16 @@ void UiWiringTest::loginVerificationDoesNotSpectateMatch()
     w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
     QVERIFY(w.isAuthenticated());
     QCOMPARE(dialog.result(), int(QDialog::Accepted));
+
+    // The verification match's state arrives queued behind the join —
+    // it lands after onJoined and renders the match (the race):
+    w.onGameState(fixtureGame());
+    QCOMPARE(field->playerCount(), 22);
+
+    // Next event-loop pass: the deferred wipe runs and the client is
+    // idle, not on the match.
+    QCoreApplication::processEvents();
+    QCOMPARE(field->playerCount(), 0);
     QVERIFY2(w.connectionStatusForTest().startsWith(QStringLiteral("Logged in as")),
              qPrintable(w.connectionStatusForTest()));
 }
@@ -1116,6 +1130,7 @@ void UiWiringTest::loginTeardownCloseIsSilent()
     w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
     w.markAttemptSocketStartedForTest();
     w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    QCoreApplication::processEvents(); // the deferred login wipe
     const QString afterLogin = w.connectionStatusForTest();
 
     // The verification socket closes (SpectatorSession::disconnect):

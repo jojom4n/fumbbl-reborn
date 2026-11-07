@@ -1097,15 +1097,21 @@ void MainWindow::onJoined(const QJsonObject &payload)
         // The login join was a VERIFICATION, not a spectate request: a
         // successful login only ENABLES the interface — it must not sit
         // on the (random) match the join landed on. End the verification
-        // session (the close is a silent teardown) and wipe the match
-        // state it brought; the user chooses a match from
-        // "Spectate Game…".
+        // session now (its close is a silent teardown; manual closes
+        // never auto-reconnect).
         m_loginTeardown = true;
         m_session->disconnect();
-        clearMatchUi();
-        setConnectionStatus(tr("Logged in as %1 — choose a match (Spectate Game…).")
-                                .arg(coach),
-                            true);
+        // The server sends the game state (gameState/modelSync) in the
+        // SAME burst as serverJoin — those frames are already queued and
+        // land AFTER this handler, re-rendering the match. Wipe the match
+        // state on the next event-loop pass, after the queued frames
+        // (the socket is closing: nothing newer can follow).
+        QTimer::singleShot(0, this, [this, coach]() {
+            clearMatchUi();
+            setConnectionStatus(tr("Logged in as %1 — choose a match (Spectate Game…).")
+                                    .arg(coach),
+                                true);
+        });
         return;
     }
     setSpectators(payload.value(QStringLiteral("spectators")).toInt());

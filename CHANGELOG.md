@@ -4,6 +4,23 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.7 — 2026-11-07
+- **Credenziali in file: mai più plaintext**. Il file 0600
+  (~/.config/fumbbl-reborn/creds) ora memorizza `password_md5=<hex>` —
+  l'MD5 della password, che è proprio la credenziale del protocollo
+  (il join invia HMAC-MD5(MD5(password), challenge); il client non ha
+  mai più bisogno del testo chiaro). Stesso valore che già va nel
+  keychain; nessun'altra libreria, nessun formato inventato. Al
+  riavvio il dialog precompila coach + sentinel (pallini) e usa l'MD5;
+  digitando una nuova password si sovrascrive.
+- **Login: il match della burst di join non resta più visualizzato**.
+  Il server invia gameState/modelSync nella stessa raffica del
+  serverJoin: quei frame erano già in coda quando il login veniva
+  chiuso, e ri-renderizzavano la partita DOPO la pulizia. La wipe dello
+  stato partita ora corre al giro successivo di event loop (dopo i
+  frame in coda; il socket intanto è in chiusura e non arrivano più
+  stati).
+
 ## 0.2.6 — 2026-11-07
 - **Remember me: la password non si perde più se il keychain non c'è**:
   il file 0600 veniva "stripato" (password rimossa) SUBITO al login,
