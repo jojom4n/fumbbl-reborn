@@ -22,7 +22,12 @@ endif()
 # so both the app and the tests land in predictable locations.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets)
+# DBus is a Unix-only Qt module (Qt for Windows does not ship it): required
+# on non-Windows for the credential store's header includes.
+if(NOT WIN32)
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+endif()
 
 # -----------------------------------------------------------------------------
 # OS credential store (F2-A): Windows uses the native Credential Manager

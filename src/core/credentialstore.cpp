@@ -20,8 +20,12 @@
 
 #include "core/credentialstore.h"
 
+// QDBus is a Unix-only Qt module (Qt for Windows does not ship it): the
+// includes AND every use are Linux-only.
+#if defined(Q_OS_LINUX)
 #include <QDBusInterface>
 #include <QDBusReply>
+#endif
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>

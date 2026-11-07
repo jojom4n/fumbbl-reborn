@@ -17,6 +17,10 @@ record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
   Client-initiated closes (logout, login teardown) no longer emit
   "WebSocket closed: 1000" which clobbered the "Logged in as …"
   status.
+- **Windows build fixed in CI**: Qt for Windows does not ship the DBus
+  module — `find_package(Qt6 ... DBus)` was REQUIRED and broke the CI
+  configure; DBus is now a non-Windows-only dependency and the QDBus
+  includes in the credential store are Linux-only.
 
 ## 0.2.8 — 2026-11-07
 - **Login: the verification match no longer touches the UI at all**
