@@ -116,6 +116,11 @@ public:
     void beginLoginAttemptForTest(const QString &coach, const QByteArray &passwordMd5,
                                   LoginDialog *dialog);
     void markAttemptSocketStartedForTest();
+    // TEMPORARY (throwaway live harness): the FULL production login
+    // attempt (real match-list fetch, real game selection, real session
+    // join) with an explicit dialog so the gate branch is active.
+    void startLoginAttemptForLiveTest(const QString &coach, const QByteArray &passwordMd5,
+                                      LoginDialog *dialog);
     // The connection status line exactly as the user reads it.
     QString connectionStatusForTest() const;
 

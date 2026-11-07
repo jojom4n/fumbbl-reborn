@@ -15,11 +15,11 @@ SpectatorSession::SpectatorSession(QObject *parent)
     m_ws = new FumbblWs(this);
 
     connect(m_ws, &FumbblWs::opened, this, [this]() {
-        emit progress(QStringLiteral("WebSocket open (ws://fumbbl.com:22223/command)"));
+        progressIfLive(QStringLiteral("WebSocket open (ws://fumbbl.com:22223/command)"));
     });
     connect(m_ws, &FumbblWs::statusReceived, this, [this](const QString &status, const QString &message) {
         emit statusReceived(status, message);
-        emit progress(QStringLiteral("serverStatus: %1 %2").arg(status, message));
+        progressIfLive(QStringLiteral("serverStatus: %1 %2").arg(status, message));
         // A serverStatus while not joined = the join was REJECTED by the
         // server ("Wrong Password", "Unknown Coach", "Unknown Game Id", ...
         // see ServerStatus.java in ffb-common). The login plan (04/nov)
@@ -54,54 +54,54 @@ SpectatorSession::SpectatorSession(QObject *parent)
             { if (id == QLatin1String("clientJoin") && !m_joined) m_joinWatchdog->start(kJoinWatchdogMs); });
     connect(m_ws, &FumbblWs::serverVersionReceived, this,
             [this](const QJsonObject &p) {
-                emit progress(QStringLiteral("serverVersion: %1")
-                                  .arg(p.value("serverVersion").toString()));
+                progressIfLive(QStringLiteral("serverVersion: %1")
+                                 .arg(p.value("serverVersion").toString()));
                 emit serverVersionReceived(p);
             });
     connect(m_ws, &FumbblWs::joined, this, [this](const QJsonObject &p) {
         m_joined = true;
         m_joinRetries = 0;
         m_joinWatchdog->stop();
-        emit progress(QStringLiteral("serverJoin: coach=%1 mode=%2 game=%3")
-                          .arg(p.value("coach").toString())
-                          .arg(p.value("clientMode").toString())
-                          .arg(p.value("gameId").toVariant().toString()));
+        progressIfLive(QStringLiteral("serverJoin: coach=%1 mode=%2 game=%3")
+                           .arg(p.value("coach").toString())
+                           .arg(p.value("clientMode").toString())
+                           .arg(p.value("gameId").toVariant().toString()));
         emit joined(p);
     });
     connect(m_ws, &FumbblWs::gameStateReceived, this, [this](const QJsonObject &game) {
         const QJsonObject home = game.value("teamHome").toObject();
         const QJsonObject away = game.value("teamAway").toObject();
-        emit progress(QStringLiteral(
-                          "serverGameState: %1 (%2) vs %3 (%4), half=%5, playing=%6")
-                          .arg(home.value("teamName").toString())
-                          .arg(home.value("race").toString())
-                          .arg(away.value("teamName").toString())
-                          .arg(away.value("race").toString())
-                          .arg(game.value("half").toVariant().toString())
-                          .arg(game.value("homePlaying").toVariant().toString()));
+        progressIfLive(QStringLiteral(
+                           "serverGameState: %1 (%2) vs %3 (%4), half=%5, playing=%6")
+                           .arg(home.value("teamName").toString())
+                           .arg(home.value("race").toString())
+                           .arg(away.value("teamName").toString())
+                           .arg(away.value("race").toString())
+                           .arg(game.value("half").toVariant().toString())
+                           .arg(game.value("homePlaying").toVariant().toString()));
         emit gameStateReceived(game);
     });
     connect(m_ws, &FumbblWs::modelSyncReceived, this, [this](const QJsonArray &changes,
                                                              const QJsonArray &reports) {
         if (changes.size() + reports.size() > 0)
-            emit progress(QStringLiteral("serverModelSync: %1 changes, %2 reports")
-                              .arg(changes.size()).arg(reports.size()));
+            progressIfLive(QStringLiteral("serverModelSync: %1 changes, %2 reports")
+                               .arg(changes.size()).arg(reports.size()));
         emit modelSyncReceived(changes, reports);
     });
     connect(m_ws, &FumbblWs::gameTimeReceived, this, [this](qint64 gameMs, qint64 turnMs) {
         // turnTime is ELAPSED ms (0..30000); UI shows 30 - elapsed.
         const int remaining = qMax(0, 30 - static_cast<int>(turnMs / 1000));
-        emit progress(QStringLiteral("serverGameTime: game=%1ms turn elapsed=%2ms (remaining "
-                                     "%3s)")
-                          .arg(gameMs)
-                          .arg(turnMs)
-                          .arg(remaining));
+        progressIfLive(QStringLiteral("serverGameTime: game=%1ms turn elapsed=%2ms (remaining "
+                                      "%3s)")
+                           .arg(gameMs)
+                           .arg(turnMs)
+                           .arg(remaining));
         emit gameTimeReceived(gameMs, turnMs);
     });
     connect(m_ws, &FumbblWs::talkReceived, this, [this](const QJsonObject &p) {
-        emit progress(QStringLiteral("serverTalk [%1]: %2")
-                          .arg(p.value("player").toString())
-                          .arg(p.value("message").toString()));
+        progressIfLive(QStringLiteral("serverTalk [%1]: %2")
+                           .arg(p.value("player").toString())
+                           .arg(p.value("message").toString()));
         emit talkReceived(p);
     });
     connect(m_ws, &FumbblWs::pongReceived, this, [this](qint64 ts) {
@@ -114,7 +114,10 @@ SpectatorSession::SpectatorSession(QObject *parent)
         emit protocolReceived(id, p);
     });
     connect(m_ws, &FumbblWs::closed, this, [this](int code, const QString &reason) {
-        emit progress(QStringLiteral("WebSocket closed: %1 %2").arg(code).arg(reason));
+        // Client-initiated close (logout / login teardown): the UI already
+        // set its own status — "WebSocket closed: 1000" would clobber it.
+        if (!m_clientClosed)
+            emit progress(QStringLiteral("WebSocket closed: %1 %2").arg(code).arg(reason));
         emit wsClosed(code, reason);
     });
     connect(m_ws, &FumbblWs::reconnectScheduled, this, [this](int attempt) {
@@ -126,11 +129,19 @@ SpectatorSession::SpectatorSession(QObject *parent)
 
 SpectatorSession::~SpectatorSession() = default;
 
+void SpectatorSession::progressIfLive(const QString &message)
+{
+    if (m_clientClosed)
+        return; // session ended on our side: don't narrate into the UI
+    emit progress(message);
+}
+
 void SpectatorSession::connectAsSpectator(const QString &coach, const QByteArray &pwdMd5,
                                           int gameId)
 {
     m_gameId = gameId;
     m_joined = false;
+    m_clientClosed = false;
     m_joinRetries = 0;
     m_joinWatchdog->stop();
 
@@ -152,6 +163,7 @@ void SpectatorSession::connectAsSpectator(const QString &coach, const QByteArray
 
 void SpectatorSession::disconnect()
 {
+    m_clientClosed = true;
     m_ws->disconnectFromServer();
 }
 

@@ -4,6 +4,20 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.9 — 2026-11-07
+- **Login: la burst "tardiva" del match di verifica non lascia più
+  una partita congelata sul campo** (regressione 0.2.8, riprodotta
+  dal vivo con le credenziali reali). Il server continua a
+  consegnare i frame del match di verifica (game state, model sync)
+  MENTRE il socket è in ClosingState — anche DOPO la wipe post-login —
+  e la wipe alzava già la soppressione: il match si renderizzava e
+  restava lì, congelato. Ora la soppressione resta accesa finché il
+  socket di verifica è REALMENTE chiuso (close 1000), con una wipe
+  finale al close; la selezione di una partita vera (Spectate Game)
+  alza la soppressione come rete di sicurezza. Il close
+  client-iniziato (logout, teardown login) non emette più
+  "WebSocket closed: 1000" che calpestava lo status "Logged in as …".
+
 ## 0.2.8 — 2026-11-07
 - **Login: il match di verifica non tocca più MAI l'UI** (fix
   strutturale, non di timing). Il protocollo FUMBBL verifica la

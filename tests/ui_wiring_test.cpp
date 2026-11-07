@@ -1160,12 +1160,24 @@ void UiWiringTest::loginVerificationDoesNotSpectateMatch()
     w.onGameState(fixtureGame());
     QCOMPARE(field->playerCount(), 0); // still suppressed until the wipe
 
-    // Next event-loop pass: the deferred wipe runs, suppression lifts,
-    // the client is idle — not on the match.
+    // Next event-loop pass: the deferred wipe runs. Suppression is still
+    // ON — the socket is in ClosingState and the real server keeps
+    // delivering late bursts even after our close.
     QCoreApplication::processEvents();
     QCOMPARE(field->playerCount(), 0);
     QVERIFY2(w.connectionStatusForTest().startsWith(QStringLiteral("Logged in as")),
              qPrintable(w.connectionStatusForTest()));
+
+    // A LATE burst (delivered while the socket is closing) must not
+    // re-render the match either — 0.2.8 regression: it left a frozen
+    // verification game on the field after login.
+    w.onGameState(fixtureGame());
+    QCOMPARE(field->playerCount(), 0);
+
+    // The verification socket is really closed: teardown wipes once more
+    // and lifts the suppression.
+    w.onWsClosed(1000, QString());
+    QCOMPARE(field->playerCount(), 0);
 
     // And a REAL match (picked from Spectate Game) renders normally:
     w.onGameState(fixtureGame());

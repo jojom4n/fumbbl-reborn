@@ -1109,14 +1109,16 @@ void MainWindow::onJoined(const QJsonObject &payload)
         // never auto-reconnect).
         m_loginTeardown = true;
         m_session->disconnect();
-        // The server sends the game state (gameState/modelSync) in the
-        // SAME burst as serverJoin — those frames are already queued and
-        // land AFTER this handler, re-rendering the match. Wipe the match
-        // state on the next event-loop pass, after the queued frames
-        // (the socket is closing: nothing newer can follow).
+        // The server streams the verification game's state (gameState/
+        // modelSync/talk) in bursts AFTER serverJoin — the first burst
+        // arrives already queued, and further bursts arrive while the
+        // socket is in ClosingState (Qt still delivers them). Wipe the
+        // match state on the next event-loop pass, and keep the
+        // suppression ON until the socket is REALLY closed (onWsClosed):
+        // lifting it here let a late burst re-render the match, leaving
+        // a frozen game on the field after login (0.2.8).
         QTimer::singleShot(0, this, [this, coach]() {
             clearMatchUi();
-            m_loginSuppressMatchUi = false; // real matches may reach the UI now
             setConnectionStatus(tr("Logged in as %1 — choose a match (Spectate Game…).")
                                     .arg(coach),
                                 true);
@@ -1153,9 +1155,15 @@ void MainWindow::onSessionFatal(const QString &message)
 void MainWindow::onWsClosed(int code, const QString &reason)
 {
     // The verified-login teardown (onJoined closed the verification
-    // session on purpose): a silent 1000, not a failure.
+    // session on purpose): a silent 1000, not a failure. This is the
+    // point where the verification socket is REALLY closed — any late
+    // burst (gameState/modelSync/talk delivered while ClosingState) has
+    // already been dropped by the match-data guards. Final wipe, then
+    // lift the suppression: real matches may reach the UI from now on.
     if (m_loginTeardown) {
         m_loginTeardown = false;
+        clearMatchUi();
+        m_loginSuppressMatchUi = false;
         return;
     }
     // Login gate: the socket went away mid-verification with no status in
@@ -1236,7 +1244,10 @@ void MainWindow::openSpectateDialog()
                 m_fallbackAwayLogo = logos.second;
                 // Starting (or SWITCHING) a match: clear the previous state
                 // first, so the UI doesn't stay on the old match while the
-                // new session is being established.
+                // new session is being established. Also lift any login
+                // suppression that survived (the verification close is
+                // what normally clears it — this is the safety net).
+                m_loginSuppressMatchUi = false;
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
                 m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
@@ -1327,6 +1338,14 @@ void MainWindow::beginLoginAttemptForTest(const QString &coach, const QByteArray
 void MainWindow::markAttemptSocketStartedForTest()
 {
     m_attemptSocketStarted = true;
+}
+
+void MainWindow::startLoginAttemptForLiveTest(const QString &coach, const QByteArray &passwordMd5,
+                                              LoginDialog *dialog)
+{
+    // TEMPORARY (throwaway live harness): production path + gate dialog.
+    m_loginDialog = dialog;
+    onLoginRequested(coach, passwordMd5);
 }
 
 void MainWindow::setActiveCoach(const QString &coach)

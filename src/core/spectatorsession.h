@@ -68,9 +68,21 @@ private slots:
     void retryLogin(const QString &reason);
 
 private:
+    // Protocol narration for the status label, suppressed once WE
+    // initiated the close (logout / login teardown): the UI already set
+    // its own status and a late frame ("serverGameState …") must not
+    // clobber it. The protocol LOG is unaffected (separate signals).
+    void progressIfLive(const QString &message);
+
+private:
     FumbblWs *m_ws = nullptr;
     int m_gameId = 0;
     bool m_joined = false;
+    // True once WE initiated the close (logout / login-verification
+    // teardown): the resulting "WebSocket closed" progress must not
+    // clobber the status the UI already set ("Logged out", "Logged in
+    // as …"). A SERVER-initiated close still reports as before.
+    bool m_clientClosed = false;
     // Join watchdog: if the server never confirms the join (serverJoin) or
     // rejects it (serverStatus), retry with a FRESH challenge. The FUMBBL
     // auth check is async on the server and can fail/hang.
