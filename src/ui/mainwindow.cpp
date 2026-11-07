@@ -523,6 +523,11 @@ void MainWindow::setSpectators(int count)
     m_spectatorsLabel->setText(tr("Spectators: %1").arg(count));
 }
 
+QString MainWindow::connectionStatusForTest() const
+{
+    return m_statusLabel->text();
+}
+
 void MainWindow::setConnectionStatus(const QString &status, bool connected)
 {
     m_statusLabel->setText(status);
@@ -1086,8 +1091,22 @@ void MainWindow::onJoined(const QJsonObject &payload)
         m_authenticating = false;
         // Log out goes live for the verified coach: the gate flow never
         // passes through the Spectate dialog's connect hook.
-        setActiveCoach(payload.value(QStringLiteral("coach")).toString());
+        const QString coach = payload.value(QStringLiteral("coach")).toString();
+        setActiveCoach(coach);
         m_loginDialog->acceptLogin();
+        // The login join was a VERIFICATION, not a spectate request: a
+        // successful login only ENABLES the interface — it must not sit
+        // on the (random) match the join landed on. End the verification
+        // session (the close is a silent teardown) and wipe the match
+        // state it brought; the user chooses a match from
+        // "Spectate Game…".
+        m_loginTeardown = true;
+        m_session->disconnect();
+        clearMatchUi();
+        setConnectionStatus(tr("Logged in as %1 — choose a match (Spectate Game…).")
+                                .arg(coach),
+                            true);
+        return;
     }
     setSpectators(payload.value(QStringLiteral("spectators")).toInt());
     setConnectionStatus(tr("Spectating as %1")
@@ -1117,6 +1136,12 @@ void MainWindow::onSessionFatal(const QString &message)
 
 void MainWindow::onWsClosed(int code, const QString &reason)
 {
+    // The verified-login teardown (onJoined closed the verification
+    // session on purpose): a silent 1000, not a failure.
+    if (m_loginTeardown) {
+        m_loginTeardown = false;
+        return;
+    }
     // Login gate: the socket went away mid-verification with no status in
     // flight — surface it in the dialog (a clean manual close after Log
     // out is the silent case: nothing to report).

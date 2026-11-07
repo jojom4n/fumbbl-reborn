@@ -116,6 +116,8 @@ public:
     void beginLoginAttemptForTest(const QString &coach, const QByteArray &passwordMd5,
                                   LoginDialog *dialog);
     void markAttemptSocketStartedForTest();
+    // The connection status line exactly as the user reads it.
+    QString connectionStatusForTest() const;
 
     // Controller entry points for incoming match data. In production these are
     // driven by the SpectatorSession signals; they are public so the core->UI
@@ -247,6 +249,11 @@ private:
     // the previous session's close after a Log out) and must not cancel
     // this verification.
     bool m_attemptSocketStarted = false;
+    // The verified-login teardown: after the gate's join confirmed the
+    // credentials, the verification session is closed on purpose (a
+    // successful login enables the UI, it does NOT spectate the random
+    // match the join landed on). Its close (1000) is silent.
+    bool m_loginTeardown = false;
     QString m_loginCoach;
     QByteArray m_loginMd5;
     LoginDialog *m_loginDialog = nullptr;

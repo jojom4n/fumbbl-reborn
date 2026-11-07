@@ -114,6 +114,8 @@ private slots:
     void staleSocketCloseDoesNotStrandLoginRetry();
     void attemptSocketCloseStillCancelsVerification();
     void rejectionCloseFollowedByRetryKeepsWarning();
+    void loginVerificationDoesNotSpectateMatch();
+    void loginTeardownCloseIsSilent();
     void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
@@ -1074,6 +1076,53 @@ void UiWiringTest::rejectionCloseFollowedByRetryKeepsWarning()
     w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
     QVERIFY2(w.isAuthenticated(), "the verified retry must authenticate the client");
     QCOMPARE(dialog.result(), int(QDialog::Accepted));
+}
+
+// A successful login only ENABLES the interface: the gate's join is a
+// credential check, not a spectate request — the client must not sit on
+// the (random) live match the join landed on.
+void UiWiringTest::loginVerificationDoesNotSpectateMatch()
+{
+    SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
+    MainWindow w(nullptr, /*gateLogin=*/true);
+    w.show();
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pw"),
+                                 /*remember=*/false);
+    const QByteArray md5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+    w.markAttemptSocketStartedForTest();
+
+    w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    QVERIFY(w.isAuthenticated());
+    QCOMPARE(dialog.result(), int(QDialog::Accepted));
+    QVERIFY2(w.connectionStatusForTest().startsWith(QStringLiteral("Logged in as")),
+             qPrintable(w.connectionStatusForTest()));
+}
+
+// The teardown of the verification session (the close right after a
+// verified login) is a silent 1000 — not a failure the user has to read.
+void UiWiringTest::loginTeardownCloseIsSilent()
+{
+    SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
+    MainWindow w(nullptr, /*gateLogin=*/true);
+    w.show();
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pw"),
+                                 /*remember=*/false);
+    const QByteArray md5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+    w.markAttemptSocketStartedForTest();
+    w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    const QString afterLogin = w.connectionStatusForTest();
+
+    // The verification socket closes (SpectatorSession::disconnect):
+    w.onWsClosed(1000, QString());
+    QCOMPARE(w.connectionStatusForTest(), afterLogin);
+    QVERIFY2(!w.connectionStatusForTest().contains(QStringLiteral("Connection closed")),
+             qPrintable(w.connectionStatusForTest()));
 }
 
 // Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the

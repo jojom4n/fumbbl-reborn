@@ -4,6 +4,24 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.6 — 2026-11-07
+- **Remember me: la password non si perde più se il keychain non c'è**:
+  il file 0600 veniva "stripato" (password rimossa) SUBITO al login,
+  prima ancora che la scrittura keychain (asincrona) venisse confermata
+  — e lo store vive nel dialog che muore subito dopo l'accept(). Senza
+  Secret Service sul bus (es. Niri senza Kwallet avviato) la password
+  finiva NESSUNAParte: campo vuoto al riavvio. Ora: la password digitata
+  resta nel file 0600 come safety net fino alla conferma dello store
+  (strip su conferma o al prossimo avvio quando il lookup trova l'entry);
+  senza keychain il file resta il fallback stabile.
+- **Login non apre più un match a caso**: il join di verifica atterrava
+  su una partita live (l'ultima spettata, altrimenti la prima) e il
+  client restava fermo A SPETTARLA. Il login abilita solo
+  l'interfaccia: a verifica fatta la sessione di verifica viene chiusa
+  (teardown silenzioso, close 1000 senza messaggio), lo stato della
+  partita viene azzerato e lo status mostra "Logged in as … — choose a
+  match". La partita si sceglie da Spectate Game.
+
 ## 0.2.5 — 2026-11-07
 - **Login subito dopo una password sbagliata**: il server chiude la
   connessione (1000) nella stessa raffica dello status di rifiuto; quel

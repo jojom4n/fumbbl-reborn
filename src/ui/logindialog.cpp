@@ -288,32 +288,46 @@ void LoginDialog::acceptLogin()
                                        ? m_storedMd5
                                        : fumbbl::PasswordChallenge::encodePassword(
                                              m_password->text().trimmed());
-            if (md5 != m_storedMd5)
+            if (md5 != m_storedMd5) {
                 m_store->set(coach, md5); // remember / update in the keychain
-            m_storedMd5 = md5;
-            stripPasswordFromFile();
-        } else {
-            QFile f(CredentialStore::credentialsPath());
-            QDir().mkpath(QFileInfo(f).absolutePath());
-            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                f.write(("coach=" + coach + "\n").toUtf8());
-                f.write(("password=" + m_password->text().trimmed() + "\n").toUtf8());
+                // SAFETY NET: the typed password ALSO goes to the 0600
+                // file — and stays there until the store CONFIRMS the
+                // write. The store is a child of this dialog, which dies
+                // right after accept(), so a failed write (e.g. no Secret
+                // Service on the bus) would otherwise leave the password
+                // in NEITHER place (the file was stripped and the keychain
+                // never got it). Strips happen on confirmation
+                // (onStoreSetFinished) or at the next startup when the
+                // lookup finds the entry (onStoreGetFinished).
+                persistFile(coach, m_password->text().trimmed());
             }
-            // The file holds the site password: owner read/write only.
-            QFile::setPermissions(f.fileName(), QFile::ReadOwner | QFile::WriteOwner);
+            m_storedMd5 = md5;
+            // md5 unchanged (the stored sentinel untouched): the keychain
+            // already owns the entry; nothing to persist here.
+        } else {
+            persistFile(coach, m_password->text().trimmed());
         }
     }
     QSettings().setValue(QStringLiteral("connect/lastCoach"), coach);
     accept();
 }
 
-void LoginDialog::stripPasswordFromFile() const
+void LoginDialog::persistFile(const QString &coach, const QString &password)
 {
     QFile f(CredentialStore::credentialsPath());
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return;
-    f.write(("coach=" + m_coach->text().trimmed() + "\n").toUtf8());
+    QDir().mkpath(QFileInfo(f).absolutePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(("coach=" + coach + "\n").toUtf8());
+        if (!password.isEmpty())
+            f.write(("password=" + password + "\n").toUtf8());
+    }
+    // The file holds the site password: owner read/write only.
     QFile::setPermissions(f.fileName(), QFile::ReadOwner | QFile::WriteOwner);
+}
+
+void LoginDialog::stripPasswordFromFile() const
+{
+    persistFile(m_coach->text().trimmed(), QString());
 }
 
 // -----------------------------------------------------------------------------

@@ -89,6 +89,11 @@ private:
     void loginBtnState();
     void login();
     void stripPasswordFromFile() const;
+    // The 0600 credentials file (the keychain's fallback / safety net):
+    // "coach=…" line always, "password=…" only when a password is given
+    // (an empty password = strip). Static: the path comes from
+    // CredentialStore::credentialsPath().
+    static void persistFile(const QString &coach, const QString &password);
 
     QLineEdit *m_coach = nullptr;
     QLineEdit *m_password = nullptr;
