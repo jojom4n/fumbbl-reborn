@@ -25,6 +25,7 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QStandardPaths>
 #include <QThreadPool>
 
@@ -80,11 +81,18 @@ void CredentialStore::get(const QString &coach)
         return;
     }
     QThreadPool::globalInstance()->start([this, coach]() {
+        // The store is a child of its dialog: the user can close it (X /
+        // logout) while the backend call is still in flight (a keychain
+        // D-Bus round trip). Never deliver into a destroyed receiver.
+        QPointer<CredentialStore> guard(this);
         QByteArray md5;
         QString error;
         const bool ok = backendGet(coach, md5, error);
-        QMetaObject::invokeMethod(this, [this, coach, md5, ok]() {
-            emit getFinished(coach, md5, ok);
+        if (!guard)
+            return; // store gone: drop the result
+        QMetaObject::invokeMethod(guard, [guard, coach, md5, ok]() {
+            if (guard)
+                emit guard->getFinished(coach, md5, ok);
         }, Qt::QueuedConnection);
     });
 }
@@ -96,10 +104,16 @@ void CredentialStore::set(const QString &coach, const QByteArray &passwordMd5)
         return;
     }
     QThreadPool::globalInstance()->start([this, coach, passwordMd5]() {
+        // See get(): the store may be destroyed (dialog closed) while the
+        // backend call is in flight.
+        QPointer<CredentialStore> guard(this);
         QString error;
         const bool ok = backendSet(coach, passwordMd5, error);
-        QMetaObject::invokeMethod(this, [this, coach, ok, error]() {
-            emit setFinished(coach, ok, error);
+        if (!guard)
+            return;
+        QMetaObject::invokeMethod(guard, [guard, coach, ok, error]() {
+            if (guard)
+                emit guard->setFinished(coach, ok, error);
         }, Qt::QueuedConnection);
     });
 }
@@ -111,10 +125,15 @@ void CredentialStore::clear(const QString &coach)
         return;
     }
     QThreadPool::globalInstance()->start([this, coach]() {
+        // See get(): the store may be destroyed while the call is in flight.
+        QPointer<CredentialStore> guard(this);
         QString error;
         const bool ok = backendClear(coach, error);
-        QMetaObject::invokeMethod(this, [this, coach, ok]() {
-            emit clearFinished(coach, ok);
+        if (!guard)
+            return;
+        QMetaObject::invokeMethod(guard, [guard, coach, ok]() {
+            if (guard)
+                emit guard->clearFinished(coach, ok);
         }, Qt::QueuedConnection);
     });
 }

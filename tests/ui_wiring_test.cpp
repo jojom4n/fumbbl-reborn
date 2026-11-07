@@ -26,6 +26,7 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QKeySequence>
+#include <QLineEdit>
 #include <QScrollBar>
 #include <QScrollArea>
 #include <QLabel>
@@ -108,6 +109,8 @@ private slots:
     void loginEmitsTypedPasswordAsMd5();
     void loginUsesKeychainMd5WithoutRetyping();
     void loginTypedPasswordWinsOverStaleKeychainMd5();
+    void loginButtonEnablesWhileTyping();
+    void loginGateCloseQuitsClient();
     void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
@@ -918,6 +921,42 @@ void UiWiringTest::loginTypedPasswordWinsOverStaleKeychainMd5()
     QCOMPARE(coach, QStringLiteral("coachY"));
     QCOMPARE(md5, fumbbl::PasswordChallenge::encodePassword(QStringLiteral("newPw")));
     QVERIFY2(md5 != staleMd5, "typed password must override the stale keychain MD5");
+}
+
+// The Login button's enabled state must track the fields WHILE the user
+// types. Regression: it was only re-evaluated on the coach field's
+// focus-out, so a fully typed form stayed grey and the user could never
+// click Login.
+void UiWiringTest::loginButtonEnablesWhileTyping()
+{
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    QVERIFY(!dialog.loginButtonEnabledForTest());
+    dialog.coachFieldForTest()->setText(QStringLiteral("coachX"));
+    QVERIFY(!dialog.loginButtonEnabledForTest()); // password still empty
+    dialog.passwordFieldForTest()->setText(QStringLiteral("pwY"));
+    QVERIFY2(dialog.loginButtonEnabledForTest(),
+             "a fully typed form must enable the Login button");
+    // And it must track clearing too (half-filled form disables it).
+    dialog.coachFieldForTest()->clear();
+    QVERIFY(!dialog.loginButtonEnabledForTest());
+}
+
+// The gate cannot be bypassed: pressing the dialog's close button (X /
+// Esc — both go through reject()) must request a client quit, the same
+// contract as the Quit button — not hand the user the un-gated client.
+void UiWiringTest::loginGateCloseQuitsClient()
+{
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    QSignalSpy quitSpy(&dialog, &LoginDialog::quitRequested);
+    dialog.reject(); // the window X / Esc path
+    QCOMPARE(quitSpy.count(), 1);
+    QCOMPARE(dialog.result(), int(QDialog::Rejected));
+    // A verified login closes the other way (accept — what acceptLogin()
+    // ends with) and must NOT request a quit.
+    dialog.accept();
+    QCOMPARE(quitSpy.count(), 1);
 }
 
 // Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the

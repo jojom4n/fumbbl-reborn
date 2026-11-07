@@ -4,6 +4,21 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.3 — 2026-11-07
+- **Bottone Login attivo mentre si digita**: lo stato enable/disable
+  seguiva solo la perdita di focus del campo coach — col modulo
+  compilato il bottone restava grigio e non cliccabile. Ora si
+  ricalcola a ogni modifica di entrambi i campi.
+- **La X del dialog di login chiude il client**: prima chiudeva solo il
+  dialog e lasciava l'utente nell'UI completa senza login. Chiudere il
+  gate (X / Esc) è ora la stessa decisione del bottone "Quit" — il
+  client si chiude, l'UI non viene mai consegnata senza autenticazione.
+- **Niente crash all'uscita col keychain in volo**: se il client
+  chiudeva mentre la lookup/scrittura keychain era ancora in corso
+  (round trip D-Bus lento), il thread di lavoro consegnava il risultato
+  a un oggetto già distrutto (segfault). I worker ora verificano che il
+  store esista prima di consegnare; il risultato in eccesso si scarta.
+
 ## 0.2.2 — 2026-11-06
 - **Login al client all'avvio**: dialog modale (Coach + Password +
   "Remember me") sopra lo stadio — niente è cliccabile (nemmeno i menu)

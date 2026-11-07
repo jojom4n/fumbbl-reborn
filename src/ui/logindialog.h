@@ -19,6 +19,10 @@
 // and STAYS OPEN while MainWindow verifies the credentials with the
 // server (a join attempt — the password is checked there). Success:
 // acceptLogin(); failure: showServerMessage() and the user retries.
+//
+// The gate CANNOT be bypassed: closing the dialog (window X / Esc —
+// both go through reject()) emits quitRequested() exactly like the Quit
+// button — the client quits, the UI is never handed over un-gated.
 // =============================================================================
 #pragma once
 
@@ -57,6 +61,16 @@ public:
     // True while the field still holds the untouched sentinel (the user
     // did not type a replacement).
     bool storedPasswordUntouched() const;
+    // The live-typing contract: the Login button's enabled state must
+    // track the fields as the user types (not only on focus-out).
+    QLineEdit *coachFieldForTest() { return m_coach; }
+    QLineEdit *passwordFieldForTest() { return m_password; }
+    bool loginButtonEnabledForTest() const;
+    // Window X / Esc: the gate cannot be dismissed without a decision —
+    // closing it is the same as the Quit button (quitRequested), never a
+    // silent hand-over of the un-gated client. (QDialog::reject is public,
+    // so the override stays public — tests drive the exact X path.)
+    void reject() override;
 
 signals:
     // Emitted on Login click. passwordMd5 is the MD5 of the typed

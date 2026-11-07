@@ -106,6 +106,11 @@ LoginDialog::LoginDialog(QWidget *parent, bool autoLoadKeychain) : QDialog(paren
 
     connect(m_loginBtn, &QPushButton::clicked, this, &LoginDialog::login);
     connect(quitBtn, &QPushButton::clicked, this, &LoginDialog::quitRequested);
+    // The button's enabled state must track the fields WHILE the user
+    // types: it was only re-evaluated on the coach field's focus-out, so
+    // a fully typed form could stay grey and unreachable.
+    connect(m_coach, &QLineEdit::textChanged, this, &LoginDialog::loginBtnState);
+    connect(m_password, &QLineEdit::textChanged, this, &LoginDialog::loginBtnState);
 
     m_store = new CredentialStore(this);
     connect(m_store, &CredentialStore::getFinished, this, &LoginDialog::onStoreGetFinished);
@@ -136,6 +141,20 @@ LoginDialog::LoginDialog(QWidget *parent, bool autoLoadKeychain) : QDialog(paren
     else
         m_status->setText(tr("Enter your FUMBBL account to continue."));
     loginBtnState();
+}
+
+void LoginDialog::reject()
+{
+    // Window X / Esc: the gate cannot be bypassed — closing the dialog is
+    // the same decision as the Quit button (MainWindow routes
+    // quitRequested to qApp->quit).
+    emit quitRequested();
+    QDialog::reject();
+}
+
+bool LoginDialog::loginButtonEnabledForTest() const
+{
+    return m_loginBtn->isEnabled();
 }
 
 void LoginDialog::loadCredentials()
