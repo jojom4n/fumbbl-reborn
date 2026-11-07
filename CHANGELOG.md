@@ -1,194 +1,200 @@
 # Changelog — fumbbl-qt
 
-Format: una voce per versione, data, punti principali. La versione di
-riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
-(unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
+Format: one entry per version, date, key points. The version of
+record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
+(single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
 ## 0.2.9 — 2026-11-07
-- **Login: la burst "tardiva" del match di verifica non lascia più
-  una partita congelata sul campo** (regressione 0.2.8, riprodotta
-  dal vivo con le credenziali reali). Il server continua a
-  consegnare i frame del match di verifica (game state, model sync)
-  MENTRE il socket è in ClosingState — anche DOPO la wipe post-login —
-  e la wipe alzava già la soppressione: il match si renderizzava e
-  restava lì, congelato. Ora la soppressione resta accesa finché il
-  socket di verifica è REALMENTE chiuso (close 1000), con una wipe
-  finale al close; la selezione di una partita vera (Spectate Game)
-  alza la soppressione come rete di sicurezza. Il close
-  client-iniziato (logout, teardown login) non emette più
-  "WebSocket closed: 1000" che calpestava lo status "Logged in as …".
+- **Login: the late burst of the verification match no longer leaves a
+  frozen match on the field** (0.2.8 regression, reproduced live with
+  real credentials). The server keeps delivering the verification
+  match's frames (game state, model sync) WHILE the socket is in
+  ClosingState — even AFTER the post-login wipe — and the wipe had
+  already lifted the suppression: the match rendered and stayed there,
+  frozen. The suppression now stays on until the verification socket
+  is REALLY closed (close 1000), with a final wipe at close; picking a
+  real match (Spectate Game) lifts the suppression as a safety net.
+  Client-initiated closes (logout, login teardown) no longer emit
+  "WebSocket closed: 1000" which clobbered the "Logged in as …"
+  status.
 
 ## 0.2.8 — 2026-11-07
-- **Login: il match di verifica non tocca più MAI l'UI** (fix
-  strutturale, non di timing). Il protocollo FUMBBL verifica la
-  password SOLO come parte del join di un game (verificato nel
-  sorgente ffb-server: `FumbblRequestCheckAuthorization` approva il
-  join — il client diventa per forza spettatore di quella partita e il
-  server inizia subito a streamingarne lo stato). Ora, dalla partenza
-  del join di verifica fino alla wipe post-login, TUTTI i dati di
-  quella partita (game state, model sync, orologio, chat) sono
-  soppressi nel controller: il campo resta sullo stadio vuoto durante
-  e dopo il login, finché l'utente non sceglie una partita da
-  Spectate Game. I rami di fallimento (rejection/close/fatal)
-  alzano la soppressione.
+- **Login: the verification match no longer touches the UI at all**
+  (structural fix, not a timing one). The FUMBBL protocol verifies the
+  password ONLY as part of joining a game (verified in ffb-server
+  source: `FumbblRequestCheckAuthorization` approves the join — the
+  client inevitably becomes a spectator of that match and the server
+  immediately starts streaming its state). Now, from the start of the
+  verification join until the post-login wipe, ALL of that match's data
+  (game state, model sync, clock, chat) is suppressed in the
+  controller: the field stays on the empty stadium during and after
+  login until the user picks a match from Spectate Game. The failure
+  branches (rejection/close/fatal) lift the suppression.
 
 ## 0.2.7 — 2026-11-07
-- **Credenziali in file: mai più plaintext**. Il file 0600
-  (~/.config/fumbbl-reborn/creds) ora memorizza `password_md5=<hex>` —
-  l'MD5 della password, che è proprio la credenziale del protocollo
-  (il join invia HMAC-MD5(MD5(password), challenge); il client non ha
-  mai più bisogno del testo chiaro). Stesso valore che già va nel
-  keychain; nessun'altra libreria, nessun formato inventato. Al
-  riavvio il dialog precompila coach + sentinel (pallini) e usa l'MD5;
-  digitando una nuova password si sovrascrive.
-- **Login: il match della burst di join non resta più visualizzato**.
-  Il server invia gameState/modelSync nella stessa raffica del
-  serverJoin: quei frame erano già in coda quando il login veniva
-  chiuso, e ri-renderizzavano la partita DOPO la pulizia. La wipe dello
-  stato partita ora corre al giro successivo di event loop (dopo i
-  frame in coda; il socket intanto è in chiusura e non arrivano più
-  stati).
+- **Credentials file: never plaintext again.** The 0600 file
+  (~/.config/fumbbl-reborn/creds) now stores `password_md5=<hex>` —
+  the MD5 of the password, which IS the protocol credential (the join
+  sends HMAC-MD5(MD5(password), challenge); the client no longer ever
+  needs the clear text). The same value that already goes into the
+  keychain; no extra library, no invented format. On restart the
+  dialog prefills coach + sentinel (bullets) and uses the MD5; typing
+  a new password overwrites it.
+- **Login: the join burst's match is no longer left on screen.** The
+  server sends gameState/modelSync in the same burst as serverJoin:
+  those frames were already queued when the login was closed and
+  re-rendered the match AFTER the cleanup. The match-state wipe now
+  runs on the next event-loop pass (after the queued frames; the
+  socket is meanwhile closing so no more states arrive).
 
 ## 0.2.6 — 2026-11-07
-- **Remember me: la password non si perde più se il keychain non c'è**:
-  il file 0600 veniva "stripato" (password rimossa) SUBITO al login,
-  prima ancora che la scrittura keychain (asincrona) venisse confermata
-  — e lo store vive nel dialog che muore subito dopo l'accept(). Senza
-  Secret Service sul bus (es. Niri senza Kwallet avviato) la password
-  finiva NESSUNAParte: campo vuoto al riavvio. Ora: la password digitata
-  resta nel file 0600 come safety net fino alla conferma dello store
-  (strip su conferma o al prossimo avvio quando il lookup trova l'entry);
-  senza keychain il file resta il fallback stabile.
-- **Login non apre più un match a caso**: il join di verifica atterrava
-  su una partita live (l'ultima spettata, altrimenti la prima) e il
-  client restava fermo A SPETTARLA. Il login abilita solo
-  l'interfaccia: a verifica fatta la sessione di verifica viene chiusa
-  (teardown silenzioso, close 1000 senza messaggio), lo stato della
-  partita viene azzerato e lo status mostra "Logged in as … — choose a
-  match". La partita si sceglie da Spectate Game.
+- **Remember me: the password is no longer lost when there is no
+  keychain**: the 0600 file was "stripped" (password removed)
+  IMMEDIATELY at login, before the async keychain write was even
+  confirmed — and the store lives in the dialog that dies right after
+  accept(). Without Secret Service on the bus (e.g. Niri without
+  Kwallet running) the password ended up NOWHERE: empty field on
+  restart. Now: the typed password stays in the 0600 file as a safety
+  net until the store confirms (strip on confirmation or on next
+  startup when the lookup finds the entry); without a keychain the
+  file stays the stable fallback.
+- **Login no longer opens a random match**: the verification join
+  landed on a live match (the last spectated one, else the first) and
+  the client just STAYED ON IT. Login only enables the interface: once
+  verified, the verification session is closed (silent teardown, close
+  1000 with no message), the match state is reset and the status shows
+  "Logged in as … — choose a match". The match is picked from Spectate
+  Game.
 
 ## 0.2.5 — 2026-11-07
-- **Login subito dopo una password sbagliata**: il server chiude la
-  connessione (1000) nella stessa raffica dello status di rifiuto; quel
-  close arrivava nel gate come fallimento della verifica in corso:
-  dialog aperto con "Connection closed (1000: )" e login non completato,
-  anche se la sessione era già live. Ora: il rifiuto viene segnalato
-  PRIMA che il socket del tentativo venga abbattuto (il close di
-  teardown arriva dopo che lo stato è già consumato, e resta silenzioso),
-  e il gate ignora comunque i close che appartengono a un tentativo
-  precedente (es. il close del logout in volo al retry).
-- **Logout attivo già dal primo login**: il coach attivo era impostato
-  solo quando si sceglieva una partita dal dialog Spectate; col gate di
-  login restava vuoto (e Logout in grigio) fino ad allora. Il coach
-  confermato dal server al login lo abilita subito.
+- **Login right after a wrong password**: the server closes the
+  connection (1000) in the same burst as the rejection status; that
+  close arrived in the gate as a failure of the in-flight
+  verification: dialog open with "Connection closed (1000: )" and the
+  login not completed, even though the session was already live. Now:
+  the rejection is reported BEFORE the attempt's socket is torn down
+  (the teardown close arrives after the state is already consumed, and
+  stays silent), and the gate ignores closes that belong to a
+  PREVIOUS attempt anyway (e.g. the logout close in flight at retry
+  time).
+- **Logout live from the first login**: the active coach was set only
+  when picking a match from the Spectate dialog; with the login gate it
+  stayed empty (and Logout greyed) until then. The server-confirmed
+  coach at login enables it immediately.
 
 ## 0.2.4 — 2026-11-07
-- **La X del dialog di login chiude davvero il client**: nel 0.2.3 il
-  quit emesso dal gate andava perso — il gate gira PRIMA del main event
-  loop (l'`exec()` del dialog) e l'`app.exec()` che partiva dopo non
-  ricordava il quit: il dialog si chiudeva ma il client continuava a
-  funzionare. Ora `main.cpp` esce quando il gate si chiude senza login
-  (X / Esc / Quit).
+- **The X of the login dialog really closes the client**: in 0.2.3 the
+  quit emitted by the gate was lost — the gate runs BEFORE the main
+  event loop (the dialog's `exec()`) and the `app.exec()` that started
+  afterwards did not remember the quit: the dialog closed but the
+  client kept running. Now `main.cpp` exits when the gate closes
+  without a login (X / Esc / Quit).
 
 ## 0.2.3 — 2026-11-07
-- **Bottone Login attivo mentre si digita**: lo stato enable/disable
-  seguiva solo la perdita di focus del campo coach — col modulo
-  compilato il bottone restava grigio e non cliccabile. Ora si
-  ricalcola a ogni modifica di entrambi i campi.
-- **La X del dialog di login chiude il client**: prima chiudeva solo il
-  dialog e lasciava l'utente nell'UI completa senza login. Chiudere il
-  gate (X / Esc) è ora la stessa decisione del bottone "Quit" — il
-  client si chiude, l'UI non viene mai consegnata senza autenticazione.
-- **Niente crash all'uscita col keychain in volo**: se il client
-  chiudeva mentre la lookup/scrittura keychain era ancora in corso
-  (round trip D-Bus lento), il thread di lavoro consegnava il risultato
-  a un oggetto già distrutto (segfault). I worker ora verificano che il
-  store esista prima di consegnare; il risultato in eccesso si scarta.
+- **Login button live while typing**: the enabled/disabled state
+  followed only the coach field losing focus — with the dialog
+  prefilled the button stayed grey and unclickable. It is now
+  recomputed on every edit of either field.
+- **The X of the login dialog closes the client**: before it only
+  closed the dialog and left the user in the full UI without login.
+  Closing the gate (X / Esc) is now the same decision as the "Quit"
+  button — the client closes, the UI is never delivered
+  unauthenticated.
+- **No crash on exit with an in-flight keychain**: if the client
+  closed while a keychain lookup/write was still in progress (slow
+  D-Bus round trip), the worker thread delivered its result to an
+  already-destroyed object (segfault). Workers now check the store
+  still exists before delivering; excess results are dropped.
 
 ## 0.2.2 — 2026-11-06
-- **Login al client all'avvio**: dialog modale (Coach + Password +
-  "Remember me") sopra lo stadio — niente è cliccabile (nemmeno i menu)
-  finché il login non è verificato. Le credenziali sono verificate contro
-  il server FUMBBL al momento dell'accesso (join attempt: il server
-  controlla la password nel join — `FumbblRequestCheckAuthorization`):
-  ok → UI completa (si è già nello stadio della partita di verifica,
-  ultima guardata o prima live); rifiuto → errore del server nel dialog,
-  si riprova. "Remember me" (default on) → keychain `{coach, MD5}`.
-- **Campo password sempre a pallini**: echo mode Password in ogni
-  momento (anche durante la digitazione); con entry in keychain il campo
-  mostra 8 pallini (sentinel) — la prima pressione lo sostituisce; la
-  password digitata ha sempre la priorità sull'MD5 salvata (stale).
-- **Dialog "Spectate" senza credenziali**: solo lista partite + filtri +
-  Game ID + Spectate/doppio click — usa le credenziali del login del
-  client. Rimosso anche il bottone "Load matches" residuo.
-- **Logout (Ctrl+K) → login gate riaperto**: fine sessione + credenziale
-  ricordata rimossa dal file (l'entry keychain resta); l'utente inserisce
-  nuove credenziali oppure chiude il client dal button "Quit" del dialog.
-- **Chat log: word wrap** — i messaggi lunghi vanno a capo invece di
-  uscire dal pannello.
+- **Client login at startup**: modal dialog (Coach + Password +
+  "Remember me") over the stadium — nothing is clickable (not even the
+  menus) until the login is verified. The credentials are verified
+  against the FUMBBL server at login time (join attempt: the server
+  checks the password in the join —
+  `FumbblRequestCheckAuthorization`): ok → full UI (you are already in
+  the verification match's stadium, the last watched one or the first
+  live); rejected → server error in the dialog, retry. "Remember me"
+  (default on) → keychain `{coach, MD5}`.
+- **Password field always bullets**: echo mode Password at all times
+  (including while typing); with a keychain entry the field shows 8
+  bullets (sentinel) — the first keypress replaces them; a typed
+  password always wins over the stored (stale) MD5.
+- **"Spectate" dialog without credentials**: only match list + filters
+  + Game ID + Spectate/double click — it uses the client login's
+  credentials. The leftover "Load matches" button is removed too.
+- **Logout (Ctrl+K) → login gate reopened**: session ended + remembered
+  credential removed from the file (the keychain entry stays); the user
+  enters new credentials or closes the client from the dialog's "Quit"
+  button.
+- **Chat log: word wrap** — long messages wrap instead of running out
+  of the panel.
 
 ## 0.2.1 — 2026-11-06
-- **Log out (PC condiviso)**: `File ▸ Log out` (Ctrl+K) chiude la sessione
-  del coach attivo e rimuove la credenziale ricordata: il dialog del
-  giocatore successivo si apre vuoto. L'entry nel keychain resta: un coach
-  che torna ripassa solo il nome, mai la password.
-- **Cambio coach nel dialog**: editando il campo coach, password digitata e
-  MD5 salvata del coach precedente vengono scartate e il nuovo coach è
-  risolto dal keychain (se già ricordato, niente re-digitazione).
-- **Password digitata ha priorità**: se c'è una password nel campo, il
-  login usa il suo MD5 anche se nel keychain c'è un MD5 stantio (coach
-  cambiato, password di sito cambiata).
-- **Player Info non appare all'avvio**: il pannello è guidato solo dall'
-  hover sul campo — lo stato "visibile" salvato era il residuo dell'ultimo
-  hover, non una scelta. Posizione/dimensioni salvate restano.
+- **Log out (shared PC)**: `File ▸ Log out` (Ctrl+K) ends the active
+  coach's session and removes the remembered credential: the next
+  player's dialog opens empty. The keychain entry stays: a returning
+  coach re-types only the name, never the password.
+- **Coach switch in the dialog**: editing the coach field discards the
+  typed password and the previous coach's stored MD5, and the new
+  coach is resolved from the keychain (if already remembered, no
+  re-typing).
+- **Typed password wins**: if there is a password in the field, the
+  login uses its MD5 even when the keychain holds a stale one (coach
+  changed, site password changed).
+- **Player Info does not appear at startup**: the panel is hover-only
+  on the field — the saved "visible" state was a leftover of the last
+  hover, not a choice. Saved position/size remain.
 
 ## 0.2.0 — 2026-11-06
-- **Login ufficiale FFB (coach + password)**: sostituisce l'OAuth2 a token
-  REST. Il client ora fa lo stesso handshake del client Java ufficiale:
-  `clientRequestVersion` → `clientPasswordChallenge` → risposta
-  challenge/response (HMAC-MD5 di `MD5(password)`) → `clientJoin`, tutto sul
-  WebSocket. Niente Client ID/Secret, niente token REST per l'auth.
-  Flusso verificato live contro fumbbl.com.
-- **Keychain di sistema per le credenziali** ("Remember credentials",
-  default on): il keychain (Windows Credential Manager, macOS Keychain,
-  Linux Secret Service) memorizza `{coach, MD5(password)}` — mai il
-  plaintext. Senza keychain disponibile: fallback a file locale `0600`
-  (coach + password), come prima.
-- **Dialog "Spectate Game…" riscritto**: campi Coach/Password (al posto di
-  Client ID/Secret/Username), warning sul keychain, pre-compilazione dalle
-  credenziali salvate; se il keychain ha l'MD5 la password non va più
-  riscritta.
-- **Nessun auto-retry su login rifiutato**: un `serverStatus` di rifiuto
-  (es. "Wrong Password") è un errore visibile e fermo — il server limita i
-  fallimenti ripetuti. Il retry automatico (con challenge fresca) resta
-  solo per il timeout silenzioso senza risposta.
-- Test: `passwordchallenge_test` con vettori ground truth generati dalla
-  classe Java ufficiale; contratti di auth del dialog in `ui_wiring_test`.
+- **Official FFB login (coach + password)**: replaces the REST-token
+  OAuth2. The client now performs the same handshake as the official
+  Java client: `clientRequestVersion` → `clientPasswordChallenge` →
+  challenge/response (HMAC-MD5 of `MD5(password)`) → `clientJoin`, all
+  over the WebSocket. No Client ID/Secret, no REST token for auth.
+  Flow verified live against fumbbl.com.
+- **System keychain for credentials** ("Remember credentials", default
+  on): the keychain (Windows Credential Manager, macOS Keychain, Linux
+  Secret Service) stores `{coach, MD5(password)}` — never the plain
+  text. Without an available keychain: fallback to a local `0600`
+  file (coach + password), as before.
+- **"Spectate Game…" dialog rewritten**: Coach/Password fields
+  (instead of Client ID/Secret/Username), keychain warning, pre-fill
+  from saved credentials; if the keychain has the MD5 the password no
+  longer needs re-typing.
+- **No auto-retry on rejected login**: a rejection `serverStatus`
+  (e.g. "Wrong Password") is a visible, stopping error — the server
+  rate limits repeated failures. Auto-retry (with a fresh challenge)
+  remains only for the silent timeout with no response.
+- Tests: `passwordchallenge_test` with ground-truth vectors generated
+  from the official Java class; the dialog's auth contracts in
+  `ui_wiring_test`.
 
 ## 0.1.1 — 2026-11-03
-- **Release distribuibili** (GitHub Releases, tag `v*`): binario
-  `FUMBBL-Reborn`, bundle Linux self-contained (tar.gz + AppImage) e zip
-  Windows, con Qt e plugin inclusi (`qt.conf` pinna il layout flat; plugin
-  tls incluso per l'HTTPS verso fumbbl.com). CI: Qt 6.8.3 precompilato
-  via `jurplel/install-qt-action` (niente build da sorgente) + AppImage
-  con `linuxdeploy` (v. `.github/workflows/release.yml`).
-- **Icona dell'app**: casco verde/oro generato con Qwen-Image
-  (`share/icon.png` per AppImage/bundle, `share/icon.ico` incorporato
-  nell'exe Windows).
-- Versioning reale del client (sostituisce la gestione a "round"): versione
-  unica in CMake, mai hardcodata nel codice.
-- Cleanup completo del codice: commenti tecnici e brevi (nessun riferimento
-  a round/turn di sviluppo), rimozione di API morte (es.
-  `GameModel::findPlayerByNumber`, `FieldView::setTurn`, i setter dei nomi
-  team non usati, `HeaderView::fixedHeight`).
-- Il chat del client ora trasmette via WebSocket quando la sessione è
+- **Distributable releases** (GitHub Releases, tag `v*`): the
+  `FUMBBL-Reborn` binary, a self-contained Linux bundle (tar.gz +
+  AppImage) and a Windows zip, with Qt and plugins included
+  (`qt.conf` pins the flat layout; the tls plugin is included for
+  HTTPS to fumbbl.com). CI: prebuilt Qt 6.8.3 via
+  `jurplel/install-qt-action` (no source builds) + AppImage with
+  `linuxdeploy` (see `.github/workflows/release.yml`).
+- **App icon**: green/gold helmet generated with Qwen-Image
+  (`share/icon.png` for AppImage/bundle, `share/icon.ico` embedded in
+  the Windows exe).
+- Real client versioning (replaces the "round" bookkeeping): single
+  version in CMake, never hardcoded in code.
+- Full code cleanup: short technical comments (no references to
+  development rounds), removal of dead APIs (e.g.
+  `GameModel::findPlayerByNumber`, `FieldView::setTurn`, the unused
+  team-name setters, `HeaderView::fixedHeight`).
+- The client chat now transmits over the WebSocket when the session is
   joined (`FumbblWs::sendChat`).
-- Ridipinta la strip dei box una sola volta (nessuna pittura ridondante
-  nella passata zoomata).
-- Renamed tool di verifica: `round13_preview` → `hud_preview`,
-  `round14_preview` → `move_numbers_preview` (nomi funzionali).
-- Rimossa la duplicazione del blocco `DICE_RCC` in CMake.
+- The box strip is repainted once (no redundant painting in the zoomed
+  pass).
+- Verification tools renamed: `round13_preview` → `hud_preview`,
+  `round14_preview` → `move_numbers_preview` (functional names).
+- Removed the duplicated `DICE_RCC` block in CMake.
 
 ## 0.1.0 — 2026-11-02
-- Prima versione tracciata del client spettatore nativo Qt6
-  (stadio, campo, dadi, action log, chat, dugout, pioggia).
+- First tracked version of the native Qt6 spectator client
+  (stadium, field, dice, action log, chat, dugout, rain).
