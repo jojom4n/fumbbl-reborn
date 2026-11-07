@@ -254,6 +254,13 @@ private:
     // successful login enables the UI, it does NOT spectate the random
     // match the join landed on). Its close (1000) is silent.
     bool m_loginTeardown = false;
+    // While a LOGIN VERIFICATION join is in flight (from the join start
+    // until the post-verification wipe): the server streams the
+    // verification game's state as soon as the session opens — that
+    // match must NEVER reach the UI (no field, no rosters, no chat).
+    // A successful login only enables the interface; the user chooses
+    // a match from Spectate Game.
+    bool m_loginSuppressMatchUi = false;
     QString m_loginCoach;
     QByteArray m_loginMd5;
     LoginDialog *m_loginDialog = nullptr;

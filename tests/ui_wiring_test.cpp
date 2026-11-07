@@ -843,6 +843,46 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
     QCOMPARE(dialog.selectedGameId(), 222222);
 }
 
+// Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the
+// user's own coach lives there): snapshots it on construction, lets the
+// test replace it, and restores the original in the destructor — even
+// when a QVERIFY fails (the stack unwinds through the destructor).
+struct CredsFileGuard
+{
+    const QString path = CredentialStore::credentialsPath();
+    QByteArray backup;
+    bool existed = false;
+    CredsFileGuard()
+    {
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly)) {
+            backup = f.readAll();
+            existed = true;
+        }
+        QFile::remove(path);
+    }
+    void seed(const QByteArray &content)
+    {
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(content);
+    }
+    ~CredsFileGuard()
+    {
+        if (existed) {
+            QFile f(path);
+            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                f.write(backup);
+                f.close();
+            }
+            QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+        } else {
+            QFile::remove(path);
+        }
+    }
+};
+
 // Contract of the client login: the dialog emits the MD5 of the typed
 // password (16 binary bytes — the HMAC key the challenge login needs),
 // NEVER the plaintext. remember=false keeps the test store- and
@@ -850,6 +890,7 @@ void UiWiringTest::manualGameIdDoesNotOverrideSelection()
 // server) — the contract under test is what gets emitted.
 void UiWiringTest::loginEmitsTypedPasswordAsMd5()
 {
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
@@ -876,6 +917,7 @@ void UiWiringTest::loginEmitsTypedPasswordAsMd5()
 // as-is (not re-hashed) for the login.
 void UiWiringTest::loginUsesKeychainMd5WithoutRetyping()
 {
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     // Coach remembered, password field EMPTY, keychain MD5 present.
@@ -904,6 +946,7 @@ void UiWiringTest::loginUsesKeychainMd5WithoutRetyping()
 // typed password must win, or the login would silently use the wrong key.
 void UiWiringTest::loginTypedPasswordWinsOverStaleKeychainMd5()
 {
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachY"), QStringLiteral("newPw"),
@@ -934,6 +977,7 @@ void UiWiringTest::loginTypedPasswordWinsOverStaleKeychainMd5()
 // click Login.
 void UiWiringTest::loginButtonEnablesWhileTyping()
 {
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     QVERIFY(!dialog.loginButtonEnabledForTest());
@@ -952,6 +996,7 @@ void UiWiringTest::loginButtonEnablesWhileTyping()
 // contract as the Quit button — not hand the user the un-gated client.
 void UiWiringTest::loginGateCloseQuitsClient()
 {
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     QSignalSpy quitSpy(&dialog, &LoginDialog::quitRequested);
@@ -996,6 +1041,7 @@ void UiWiringTest::staleSocketCloseDoesNotStrandLoginRetry()
     SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
     MainWindow w(nullptr, /*gateLogin=*/true);
     w.show();
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
@@ -1027,6 +1073,7 @@ void UiWiringTest::attemptSocketCloseStillCancelsVerification()
 {
     MainWindow w(nullptr, /*gateLogin=*/true);
     w.show();
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
@@ -1052,6 +1099,7 @@ void UiWiringTest::rejectionCloseFollowedByRetryKeepsWarning()
     SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
     MainWindow w(nullptr, /*gateLogin=*/true);
     w.show();
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("wrongPw"),
@@ -1079,10 +1127,10 @@ void UiWiringTest::rejectionCloseFollowedByRetryKeepsWarning()
 }
 
 // A successful login only ENABLES the interface: the gate's join is a
-// credential check, not a spectate request — the client must not sit on
-// the (random) live match the join landed on. The server sends the game
-// state in the SAME burst as serverJoin (already queued when the join is
-// handled), so the wipe must run on the next event-loop pass.
+// credential check, not a spectate request. The server streams the
+// verification game's state the moment the session opens (and in the
+// SAME burst as serverJoin) — none of it may reach the UI, before OR
+// after the join.
 void UiWiringTest::loginVerificationDoesNotSpectateMatch()
 {
     SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
@@ -1090,6 +1138,7 @@ void UiWiringTest::loginVerificationDoesNotSpectateMatch()
     w.show();
     FieldView *field = w.findChild<FieldView *>();
     QVERIFY(field);
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pw"),
@@ -1098,21 +1147,29 @@ void UiWiringTest::loginVerificationDoesNotSpectateMatch()
     w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
     w.markAttemptSocketStartedForTest();
 
+    // The verification game streams BEFORE the join is confirmed:
+    w.onGameState(fixtureGame());
+    QCOMPARE(field->playerCount(), 0); // nothing reached the UI
+
     w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
     QVERIFY(w.isAuthenticated());
     QCOMPARE(dialog.result(), int(QDialog::Accepted));
+    QCOMPARE(field->playerCount(), 0);
 
-    // The verification match's state arrives queued behind the join —
-    // it lands after onJoined and renders the match (the race):
+    // …and the queued burst frames behind serverJoin land after it:
     w.onGameState(fixtureGame());
-    QCOMPARE(field->playerCount(), 22);
+    QCOMPARE(field->playerCount(), 0); // still suppressed until the wipe
 
-    // Next event-loop pass: the deferred wipe runs and the client is
-    // idle, not on the match.
+    // Next event-loop pass: the deferred wipe runs, suppression lifts,
+    // the client is idle — not on the match.
     QCoreApplication::processEvents();
     QCOMPARE(field->playerCount(), 0);
     QVERIFY2(w.connectionStatusForTest().startsWith(QStringLiteral("Logged in as")),
              qPrintable(w.connectionStatusForTest()));
+
+    // And a REAL match (picked from Spectate Game) renders normally:
+    w.onGameState(fixtureGame());
+    QCOMPARE(field->playerCount(), 22);
 }
 
 // The teardown of the verification session (the close right after a
@@ -1122,6 +1179,7 @@ void UiWiringTest::loginTeardownCloseIsSilent()
     SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
     MainWindow w(nullptr, /*gateLogin=*/true);
     w.show();
+    CredsFileGuard credsGuard; // isolate the REAL creds file
     LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
     dialog.show();
     dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pw"),
@@ -1140,45 +1198,7 @@ void UiWiringTest::loginTeardownCloseIsSilent()
              qPrintable(w.connectionStatusForTest()));
 }
 
-// Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the
-// user's own coach lives there): snapshots it on construction, lets the
-// test replace it, and restores the original in the destructor — even
-// when a QVERIFY fails (the stack unwinds through the destructor).
-struct CredsFileGuard
-{
-    const QString path = CredentialStore::credentialsPath();
-    QByteArray backup;
-    bool existed = false;
-    CredsFileGuard()
-    {
-        QFile f(path);
-        if (f.open(QIODevice::ReadOnly)) {
-            backup = f.readAll();
-            existed = true;
-        }
-        QFile::remove(path);
-    }
-    void seed(const QByteArray &content)
-    {
-        QDir().mkpath(QFileInfo(path).absolutePath());
-        QFile f(path);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            f.write(content);
-    }
-    ~CredsFileGuard()
-    {
-        if (existed) {
-            QFile f(path);
-            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                f.write(backup);
-                f.close();
-            }
-            QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
-        } else {
-            QFile::remove(path);
-        }
-    }
-};
+
 
 // Shared PC: Log out (File menu, Ctrl+K) is enabled exactly while a
 // session was requested, and triggering it ends the session — the action

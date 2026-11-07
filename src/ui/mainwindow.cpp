@@ -580,6 +580,8 @@ void MainWindow::appendProtocol(const QString &direction, const QString &text)
 // -----------------------------------------------------------------------------
 void MainWindow::onGameState(const QJsonObject &game)
 {
+    if (m_loginSuppressMatchUi)
+        return; // verification join: its game state never reaches the UI
     if (m_model->initialize(game))
         setConnectionStatus(tr("Game state received"), true);
 }
@@ -766,6 +768,8 @@ static QString reportFingerprint(const QJsonObject &report)
 
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
 {
+    if (m_loginSuppressMatchUi)
+        return; // verification join: its model sync never reaches the UI
     if (changes.isEmpty() && reports.isEmpty())
         return;
     if (!changes.isEmpty())
@@ -1066,6 +1070,8 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
 
 void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
 {
+    if (m_loginSuppressMatchUi)
+        return; // verification join: its clock never reaches the UI
     // serverGameTime.turnTime = ELAPSED ms of the turn. The Mockup F header
     // counts UP (FUMBBL semantics) — no decreasing progress bar.
     m_headerView->setTurnElapsedSeconds(static_cast<int>(turnTimeMs / 1000));
@@ -1073,6 +1079,8 @@ void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
 
 void MainWindow::onTalk(const QJsonObject &payload)
 {
+    if (m_loginSuppressMatchUi)
+        return; // verification join: its chat never reaches the UI
     const QString coach = payload.value(QStringLiteral("coach")).toString();
     const QString mode = payload.value(QStringLiteral("talkMode")).toString();
     QString sender = coach.isEmpty() ? QStringLiteral("?") : coach;
@@ -1108,6 +1116,7 @@ void MainWindow::onJoined(const QJsonObject &payload)
         // (the socket is closing: nothing newer can follow).
         QTimer::singleShot(0, this, [this, coach]() {
             clearMatchUi();
+            m_loginSuppressMatchUi = false; // real matches may reach the UI now
             setConnectionStatus(tr("Logged in as %1 — choose a match (Spectate Game…).")
                                     .arg(coach),
                                 true);
@@ -1133,6 +1142,7 @@ void MainWindow::onSessionFatal(const QString &message)
     // open for a retry.
     if (m_authenticating && m_loginDialog) {
         m_authenticating = false;
+        m_loginSuppressMatchUi = false;
         m_loginDialog->showServerMessage(message);
         return;
     }
@@ -1159,6 +1169,7 @@ void MainWindow::onWsClosed(int code, const QString &reason)
         if (!m_attemptSocketStarted)
             return;
         m_authenticating = false;
+        m_loginSuppressMatchUi = false;
         m_loginDialog->showServerMessage(
             tr("Connection closed (%1: %2)").arg(code).arg(reason));
         return;
@@ -1184,6 +1195,7 @@ void MainWindow::onSessionStatus(const QString &status, const QString &message)
     // repeated failures).
     if (isError && m_authenticating && m_loginDialog) {
         m_authenticating = false;
+        m_loginSuppressMatchUi = false;
         m_loginDialog->showServerMessage(tr("Server: %1 %2").arg(status, message));
         return;
     }
@@ -1294,6 +1306,10 @@ void MainWindow::onLoginMatchesReceived(QVector<FFBLiveMatch> matches)
         return;
     }
     m_attemptSocketStarted = true; // from here a close is THIS attempt's
+    // From here until the post-verification wipe, the verification game's
+    // data must not reach the UI (the server starts streaming it as soon
+    // as the session opens — see the guards in the match-data handlers).
+    m_loginSuppressMatchUi = true;
     m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
 }
 
@@ -1304,6 +1320,7 @@ void MainWindow::beginLoginAttemptForTest(const QString &coach, const QByteArray
     m_loginCoach = coach;
     m_loginMd5 = passwordMd5;
     m_authenticating = true;
+    m_loginSuppressMatchUi = true; // a verification join is in flight
     m_attemptSocketStarted = false;
 }
 

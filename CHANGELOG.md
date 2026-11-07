@@ -4,6 +4,20 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.8 — 2026-11-07
+- **Login: il match di verifica non tocca più MAI l'UI** (fix
+  strutturale, non di timing). Il protocollo FUMBBL verifica la
+  password SOLO come parte del join di un game (verificato nel
+  sorgente ffb-server: `FumbblRequestCheckAuthorization` approva il
+  join — il client diventa per forza spettatore di quella partita e il
+  server inizia subito a streamingarne lo stato). Ora, dalla partenza
+  del join di verifica fino alla wipe post-login, TUTTI i dati di
+  quella partita (game state, model sync, orologio, chat) sono
+  soppressi nel controller: il campo resta sullo stadio vuoto durante
+  e dopo il login, finché l'utente non sceglie una partita da
+  Spectate Game. I rami di fallimento (rejection/close/fatal)
+  alzano la soppressione.
+
 ## 0.2.7 — 2026-11-07
 - **Credenziali in file: mai più plaintext**. Il file 0600
   (~/.config/fumbbl-reborn/creds) ora memorizza `password_md5=<hex>` —
