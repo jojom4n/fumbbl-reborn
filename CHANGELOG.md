@@ -4,6 +4,21 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.5 — 2026-11-07
+- **Login subito dopo una password sbagliata**: il server chiude la
+  connessione (1000) nella stessa raffica dello status di rifiuto; quel
+  close arrivava nel gate come fallimento della verifica in corso:
+  dialog aperto con "Connection closed (1000: )" e login non completato,
+  anche se la sessione era già live. Ora: il rifiuto viene segnalato
+  PRIMA che il socket del tentativo venga abbattuto (il close di
+  teardown arriva dopo che lo stato è già consumato, e resta silenzioso),
+  e il gate ignora comunque i close che appartengono a un tentativo
+  precedente (es. il close del logout in volo al retry).
+- **Logout attivo già dal primo login**: il coach attivo era impostato
+  solo quando si sceglieva una partita dal dialog Spectate; col gate di
+  login restava vuoto (e Logout in grigio) fino ad allora. Il coach
+  confermato dal server al login lo abilita subito.
+
 ## 0.2.4 — 2026-11-07
 - **La X del dialog di login chiude davvero il client**: nel 0.2.3 il
   quit emesso dal gate andava perso — il gate gira PRIMA del main event

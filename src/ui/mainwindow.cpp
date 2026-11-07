@@ -1084,6 +1084,9 @@ void MainWindow::onJoined(const QJsonObject &payload)
     if (m_authenticating && m_loginDialog) {
         m_authenticated = true;
         m_authenticating = false;
+        // Log out goes live for the verified coach: the gate flow never
+        // passes through the Spectate dialog's connect hook.
+        setActiveCoach(payload.value(QStringLiteral("coach")).toString());
         m_loginDialog->acceptLogin();
     }
     setSpectators(payload.value(QStringLiteral("spectators")).toInt());
@@ -1118,6 +1121,12 @@ void MainWindow::onWsClosed(int code, const QString &reason)
     // flight — surface it in the dialog (a clean manual close after Log
     // out is the silent case: nothing to report).
     if (m_authenticating && m_loginDialog) {
+        // A close BEFORE this attempt's socket started belongs to a
+        // PREVIOUS attempt (the server's late 1000 for a rejected login —
+        // wrong password, then the right one — or the previous session's
+        // close after a Log out): it must not cancel this verification.
+        if (!m_attemptSocketStarted)
+            return;
         m_authenticating = false;
         m_loginDialog->showServerMessage(
             tr("Connection closed (%1: %2)").arg(code).arg(reason));
@@ -1214,6 +1223,9 @@ bool MainWindow::startLogin()
 void MainWindow::onLoginRequested(const QString &coach, const QByteArray &passwordMd5)
 {
     m_authenticating = true;
+    // The attempt's socket is not up yet (the match-list fetch is still in
+    // flight): a ws close in this window belongs to the PREVIOUS attempt.
+    m_attemptSocketStarted = false;
     m_loginCoach = coach;
     m_loginMd5 = passwordMd5;
     setConnectionStatus(tr("Verifying credentials…"), false);
@@ -1250,7 +1262,23 @@ void MainWindow::onLoginMatchesReceived(QVector<FFBLiveMatch> matches)
                    "try again in a moment."));
         return;
     }
+    m_attemptSocketStarted = true; // from here a close is THIS attempt's
     m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
+}
+
+void MainWindow::beginLoginAttemptForTest(const QString &coach, const QByteArray &passwordMd5,
+                                          LoginDialog *dialog)
+{
+    m_loginDialog = dialog;
+    m_loginCoach = coach;
+    m_loginMd5 = passwordMd5;
+    m_authenticating = true;
+    m_attemptSocketStarted = false;
+}
+
+void MainWindow::markAttemptSocketStartedForTest()
+{
+    m_attemptSocketStarted = true;
 }
 
 void MainWindow::setActiveCoach(const QString &coach)

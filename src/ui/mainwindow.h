@@ -109,6 +109,13 @@ public:
     // the game state's logoUrl is null. Public so tests can drive the same
     // path the Spectate dialog takes.
     void setFallbackTeamLogos(const QString &home, const QString &away);
+    // Test seams (no live network): put the gate in the "verification
+    // attempt in flight" state — the state half of onLoginRequested, whose
+    // match-list fetch the test skips; markAttemptSocketStartedForTest
+    // stands in for connectAsSpectator.
+    void beginLoginAttemptForTest(const QString &coach, const QByteArray &passwordMd5,
+                                  LoginDialog *dialog);
+    void markAttemptSocketStartedForTest();
 
     // Controller entry points for incoming match data. In production these are
     // driven by the SpectatorSession signals; they are public so the core->UI
@@ -121,6 +128,7 @@ public:
     void onJoined(const QJsonObject &payload);
     void onSessionProgress(const QString &message);
     void onSessionFatal(const QString &message);
+    void onWsClosed(int code, const QString &reason);
 
 signals:
     void chatMessageSent(const QString &message);
@@ -163,7 +171,6 @@ private:
     void onStageFirstSized();
     QRect defaultGeometryFor(const QString &name) const;
 
-    void onWsClosed(int code, const QString &reason);
     void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
     // Report dedup: the server re-sends reports (step retries / re-syncs)
@@ -234,6 +241,12 @@ private:
     bool m_gateLogin = false;
     bool m_authenticated = false;
     bool m_authenticating = false; // a login attempt is in flight
+    // True once the in-flight attempt's socket is up (set right before
+    // connectAsSpectator). A ws close arriving BEFORE that belongs to a
+    // PREVIOUS attempt (the server's late 1000 for a rejected login, or
+    // the previous session's close after a Log out) and must not cancel
+    // this verification.
+    bool m_attemptSocketStarted = false;
     QString m_loginCoach;
     QByteArray m_loginMd5;
     LoginDialog *m_loginDialog = nullptr;

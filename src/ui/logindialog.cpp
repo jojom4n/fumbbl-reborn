@@ -157,6 +157,11 @@ bool LoginDialog::loginButtonEnabledForTest() const
     return m_loginBtn->isEnabled();
 }
 
+QString LoginDialog::serverMessageForTest() const
+{
+    return m_status->text();
+}
+
 void LoginDialog::loadCredentials()
 {
     const QPair<QString, QString> c = loadCredentialsPair();

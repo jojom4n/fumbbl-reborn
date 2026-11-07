@@ -31,9 +31,18 @@ SpectatorSession::SpectatorSession(QObject *parent)
             m_joinWatchdog->stop();
             const QString why = message.isEmpty() ? status
                                                   : status + QStringLiteral(" — ") + message;
+            // Report the rejection FIRST: the fatal consumes the in-flight
+            // verification state (MainWindow shows the message and clears
+            // m_authenticating). Only then kill the socket: the server's
+            // close for this connection (a 1000, usually in the same burst
+            // as the status) is processed RE-ENTRANTLY by abort() — if the
+            // fatal had not consumed the state first, that close would be
+            // reported as "Connection closed" and cancel the verification
+            // the user is about to retry.
             emit fatal(QStringLiteral("The server rejected the join: %1. Check your FUMBBL "
                                       "credentials (Spectate Game… dialog) and try again.")
                            .arg(why));
+            m_ws->abortFromServer();
         }
     });
     // Watchdog: login sent but no serverJoin (the server-side FUMBBL auth
@@ -162,12 +171,16 @@ void SpectatorSession::retryLogin(const QString &reason)
     if (m_joined)
         return;
     if (m_joinRetries >= kMaxJoinRetries) {
+        // Report first, then kill the socket — see the rejection branch:
+        // abort() re-entrantly processes the pending close, which must
+        // land AFTER the fatal consumed the verification state.
         emit fatal(QStringLiteral("Cannot join game %1: the server did not confirm the join "
                                   "after %2 attempts (%3). Check your FUMBBL credentials and "
                                   "try again.")
                        .arg(m_gameId)
                        .arg(kMaxJoinRetries + 1)
                        .arg(reason));
+        m_ws->abortFromServer();
         return;
     }
     ++m_joinRetries;

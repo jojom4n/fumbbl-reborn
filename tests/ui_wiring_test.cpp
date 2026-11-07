@@ -111,6 +111,9 @@ private slots:
     void loginTypedPasswordWinsOverStaleKeychainMd5();
     void loginButtonEnablesWhileTyping();
     void loginGateCloseQuitsClient();
+    void staleSocketCloseDoesNotStrandLoginRetry();
+    void attemptSocketCloseStillCancelsVerification();
+    void rejectionCloseFollowedByRetryKeepsWarning();
     void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
@@ -957,6 +960,120 @@ void UiWiringTest::loginGateCloseQuitsClient()
     // ends with) and must NOT request a quit.
     dialog.accept();
     QCOMPARE(quitSpy.count(), 1);
+}
+
+// Saves a QSettings value and restores it on scope exit — even when a
+// QVERIFY fails (the stack unwinds through the destructor), like
+// CredsFileGuard does for the creds file.
+struct SettingGuard
+{
+    const QString key;
+    const QString saved;
+    explicit SettingGuard(const QString &k)
+        : key(k), saved(QSettings().value(k).toString())
+    {
+    }
+    ~SettingGuard()
+    {
+        QSettings s;
+        if (saved.isEmpty())
+            s.remove(key);
+        else
+            s.setValue(key, saved);
+    }
+};
+
+// User scenario: wrong password (rejected), then immediately the right
+// one. The server's 1000 close of the REJECTED attempt's connection can
+// land while the retry is still verifying (before its socket starts):
+// that stale close must not cancel the retry or strand the dialog — and
+// the verified join must close it. remember=false keeps the test
+// keychain- and file-free (acceptLogin would otherwise persist).
+void UiWiringTest::staleSocketCloseDoesNotStrandLoginRetry()
+{
+    SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
+    MainWindow w(nullptr, /*gateLogin=*/true);
+    w.show();
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
+                                 /*remember=*/false);
+    const QByteArray md5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+
+    // The previous (rejected) attempt's socket closes NOW, before this
+    // attempt's socket has started:
+    w.onWsClosed(1000, QString()); // CloseCodeNormal
+
+    // The server verifies the retry: the gate closes and the coach is
+    // live for Log out (the user's pair of complaints in one).
+    w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    QVERIFY2(w.isAuthenticated(), "the verified retry must authenticate the client");
+    QCOMPARE(dialog.result(), int(QDialog::Accepted));
+    QAction *logout = nullptr;
+    for (QAction *a : w.findChildren<QAction *>())
+        if (a->shortcut() == QKeySequence(QStringLiteral("Ctrl+K")))
+            logout = a;
+    QVERIFY2(logout, "no Ctrl+K action in the menus (Log out missing?)");
+    QVERIFY2(logout->isEnabled(), "Log out must be live right after the first login");
+}
+
+// The other side of the invariant: a close of the CURRENT attempt's
+// socket (after it started) is a real failure — the verification is
+// cancelled and a later join does NOT close the gate.
+void UiWiringTest::attemptSocketCloseStillCancelsVerification()
+{
+    MainWindow w(nullptr, /*gateLogin=*/true);
+    w.show();
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("pwY"),
+                                 /*remember=*/false);
+    const QByteArray md5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+    w.markAttemptSocketStartedForTest();
+
+    w.onWsClosed(1006, QStringLiteral("abnormal closure"));
+    w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    QCOMPARE(dialog.result(), int(QDialog::Rejected)); // still open
+    QVERIFY(!w.isAuthenticated());
+}
+
+// The ordering contract (the user's exact flow): the rejection is
+// REPORTED first (the dialog shows the server's warning), and only then
+// the rejected attempt's socket closes — the server sends the 1000 in
+// the same burst, and abort() delivers it re-entrantly. That close must
+// NOT overwrite the warning or cancel the state the retry needs; after
+// the retry, the verified join closes the gate.
+void UiWiringTest::rejectionCloseFollowedByRetryKeepsWarning()
+{
+    SettingGuard lastCoach(QStringLiteral("connect/lastCoach"));
+    MainWindow w(nullptr, /*gateLogin=*/true);
+    w.show();
+    LoginDialog dialog(nullptr, /*autoLoadKeychain=*/false);
+    dialog.show();
+    dialog.setCredentialsForTest(QStringLiteral("coachX"), QStringLiteral("wrongPw"),
+                                 /*remember=*/false);
+    const QByteArray md5 = QByteArray::fromHex("00112233445566778899aabbccddeeff");
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+    w.markAttemptSocketStartedForTest();
+
+    // 1) The server rejects: the dialog shows the warning.
+    w.onSessionFatal(QStringLiteral("The server rejected the join: Wrong Password"));
+    QVERIFY2(dialog.serverMessageForTest().contains(QStringLiteral("Wrong Password")),
+             "the dialog must show the server's rejection");
+    // 2) The rejected attempt's socket closes (re-entrantly): silent —
+    //    the warning stays, nothing is stranded.
+    w.onWsClosed(1000, QString());
+    QVERIFY2(!dialog.serverMessageForTest().contains(QStringLiteral("Connection closed")),
+             "the teardown close must not overwrite the rejection warning");
+    // 3) The user retries (the exact "subito dopo" step) and the server
+    //    verifies: the gate closes.
+    w.beginLoginAttemptForTest(QStringLiteral("coachX"), md5, &dialog);
+    w.markAttemptSocketStartedForTest();
+    w.onJoined(QJsonObject{{"coach", QStringLiteral("coachX")}, {"spectators", 3}});
+    QVERIFY2(w.isAuthenticated(), "the verified retry must authenticate the client");
+    QCOMPARE(dialog.result(), int(QDialog::Accepted));
 }
 
 // Isolates the REAL creds file (~/.config/fumbbl-reborn/creds — the

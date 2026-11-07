@@ -66,6 +66,8 @@ public:
     QLineEdit *coachFieldForTest() { return m_coach; }
     QLineEdit *passwordFieldForTest() { return m_password; }
     bool loginButtonEnabledForTest() const;
+    // The status line exactly as the user reads it.
+    QString serverMessageForTest() const;
     // Window X / Esc: the gate cannot be dismissed without a decision —
     // closing it is the same as the Quit button (quitRequested), never a
     // silent hand-over of the un-gated client. (QDialog::reject is public,
