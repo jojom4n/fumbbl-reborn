@@ -4,6 +4,14 @@ Format: una voce per versione, data, punti principali. La versione di
 riferimento è `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (unica sorgente di verità; `src/main.cpp` la legge via `FUMBBL_VERSION`).
 
+## 0.2.4 — 2026-11-07
+- **La X del dialog di login chiude davvero il client**: nel 0.2.3 il
+  quit emesso dal gate andava perso — il gate gira PRIMA del main event
+  loop (l'`exec()` del dialog) e l'`app.exec()` che partiva dopo non
+  ricordava il quit: il dialog si chiudeva ma il client continuava a
+  funzionare. Ora `main.cpp` esce quando il gate si chiude senza login
+  (X / Esc / Quit).
+
 ## 0.2.3 — 2026-11-07
 - **Bottone Login attivo mentre si digita**: lo stato enable/disable
   seguiva solo la perdita di focus del campo coach — col modulo

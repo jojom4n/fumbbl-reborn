@@ -117,9 +117,13 @@ int main(int argc, char *argv[])
     if (!toolMode) {
         // The login gate: modal over the stadium. It returns only when the
         // server verified the credentials (dialog accepted) or the user
-        // picked Quit (the app quits through the dialog's own wiring).
-        window.startLogin();
-        if (spectateNow && window.isAuthenticated())
+        // closed it (X / Esc / Quit). A closed gate ends the client: the
+        // app.quit() emitted from inside the gate's own (nested) event
+        // loop is NOT remembered by the main loop that starts afterwards,
+        // so the quit decision is acted on here.
+        if (!window.startLogin())
+            return 0;
+        if (spectateNow)
             window.openSpectateDialog();
     } else if (spectateNow) {
         QTimer::singleShot(800, &window, [&window]() { window.openSpectateDialog(); });
