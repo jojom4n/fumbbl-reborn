@@ -174,18 +174,17 @@ bool CredentialStore::backendGet(const QString &coach, QByteArray &passwordMd5, 
 {
     passwordMd5.clear();
     const QByteArray target = credTarget(coach);
-    DWORD count = 0;
-    // Plain pointer type (NOT the SDK's LPSTRUCT_CREDENTIALA): MinGW-w64's
-    // wincred.h does not define that alias.
+    // MinGW-w64's wincred.h has the LEGACY CredReadA signature (no count
+    // out-param — the modern SDK's 5-arg form does not compile there).
+    // One credential per target name.
     CREDENTIALA *creds = nullptr;
-    if (!CredReadA(target.constData(), CRED_TYPE_GENERIC, 0, &count, &creds) || count != 1) {
+    if (!CredReadA(target.constData(), CRED_TYPE_GENERIC, 0, &creds) || !creds) {
         if (GetLastError() == ERROR_NOT_FOUND)
             return true; // ok — simply no entry yet
         error = winErrorText(GetLastError());
-        LocalFree(creds);
         return false;
     }
-    const CREDENTIALA &c = creds[0];
+    const CREDENTIALA &c = *creds;
     QString payloadCoach;
     QByteArray md5;
     const bool ok = c.CredentialBlobSize > 0

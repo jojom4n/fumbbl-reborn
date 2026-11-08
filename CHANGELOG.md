@@ -19,11 +19,11 @@ record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
   status.
 - **Windows build fixed in CI**: Qt for Windows does not ship the DBus
   module (it was REQUIRED and broke the configure), and the
-  credential store used Windows-SDK-only names (`LPSTRUCT_CREDENTIALA`,
-  `CredFreeA`) and a malformed `const_cast` that MinGW rejects. DBus
-  is now a non-Windows-only dependency, the credential code uses
-  portable Win32 forms (`CREDENTIALA*`, `CredDeleteA`,
-  `reinterpret_cast`), verified against the CI MinGW log.
+  credential store used modern-SDK forms MinGW-w64's wincred.h does
+  not have: the 5-arg `CredReadA` (MinGW keeps the legacy 4-arg
+  signature without the count out-param), `LPSTRUCT_CREDENTIALA`,
+  `CredFreeA`, and a malformed `const_cast` on the blob. All replaced
+  with MinGW-compatible forms, verified against the CI MinGW log.
 
 ## 0.2.8 — 2026-11-07
 - **Login: the verification match no longer touches the UI at all**
