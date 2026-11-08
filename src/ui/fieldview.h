@@ -1,7 +1,8 @@
 // =============================================================================
 // FieldView — 26x15 field widget
 //
-// Coordinate convention (matches server FieldCoordinate.java and the TS app):
+// Coordinate convention (matches the server's FieldCoordinate.java in
+// ffb-common):
 //   X in [0, 25]  -> horizontal, X=0 is the home end zone (left side)
 //   Y in [0, 14]  -> vertical,   Y=0 is the top row
 //   Column 0 = home TD, column 25 = away TD, center line between 12 and 13.

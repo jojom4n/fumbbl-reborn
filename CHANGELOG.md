@@ -4,6 +4,14 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.2.11 — 2026-11-08
+- **Codebase hygiene**: every comment now cites only our own ground
+  truth (the ffb Java sources, the official Java client, live
+  captures). No external implementations are referenced anywhere in
+  the tracked sources, and one factual slip was corrected (the
+  LZString stream is byte-identical to the FFB Java server, not to a
+  "JS client"). No behavior change.
+
 ## 0.2.10 — 2026-11-08
 - **The go-for-it extra move is finally visible**: the red trail and
   the step numbers never appeared for a GFI after a plain move. Root

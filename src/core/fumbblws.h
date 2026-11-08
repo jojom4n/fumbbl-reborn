@@ -1,13 +1,13 @@
 // =============================================================================
 // FumbblWs — FUMBBL command WebSocket client
 //
-// Faithful port of src/services/fumbblWebSocket.ts. Protocol facts (verified
-// against the official ffbclient / ffb Java server — see memory-bank):
+// Protocol facts (verified against the official ffbclient / ffb Java
+// server and live captures):
 //
 //   * URL: ws://fumbbl.com:22223/command  (22224 = prod)
 //   * ALL frames are LZString-UTF16 compressed (compressToUTF16 out,
 //     decompressFromUTF16 in; if decompression yields empty, treat the
-//     payload as raw JSON — same fallback as the TS client).
+//     payload as raw JSON).
 //   * Ping: clientPing every 2000 ms, FIRST PING IMMEDIATE on open
 //     (official client.ini: client.ping.interval=2000; the server's
 //     SessionTimeoutTask kills sessions silent for 10 s).
@@ -117,7 +117,7 @@ private:
     QTimer *m_pingTimer = nullptr;
     QTimer *m_reconnectTimer = nullptr;
 
-    // Configured login (mirrors FumbblWebSocket fields).
+    // Configured login.
     QString m_coach;
     QByteArray m_pwdMd5; // binary MD5 of the password (HMAC key)
     int m_gameId = 0;

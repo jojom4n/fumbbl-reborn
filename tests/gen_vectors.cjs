@@ -1,8 +1,9 @@
 // =============================================================================
 // gen_vectors.js — generates reference LZString UTF16 test vectors.
 //
-// Uses the EXACT same lz-string library the TS client uses
-// (node_modules/lz-string) so the C++ port is verified byte-for-byte.
+// Uses the EXACT same lz-string library the protocol uses
+// (pieroxy/lz-string, node_modules/lz-string) so the C++ port is verified
+// byte-for-byte.
 //
 // Usage: node tests/gen_vectors.js   (from qt-client/, with node_modules
 //        resolvable — run from the repo root or set NODE_PATH)

@@ -16,7 +16,7 @@ add_test(NAME lzstring_test COMMAND $<TARGET_FILE:lzstring_test>)
 set_tests_properties(lzstring_test PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
 
 # -----------------------------------------------------------------------------
-# gamemodel_test — GameModel (port of the TS fumbblGameModel.ts)
+# gamemodel_test — GameModel (the FFB game state)
 # -----------------------------------------------------------------------------
 add_executable(gamemodel_test
     gamemodel_test.cpp

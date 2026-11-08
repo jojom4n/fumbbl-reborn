@@ -1,8 +1,8 @@
 // =============================================================================
 // GameModel — FUMBBL game state for the spectator
 //
-// C++ port of the TS client's fumbblGameModel.ts, which is itself copied from
-// the official ffbclient (model/Game.java + ModelChangeProcessor.java).
+// C++ implementation of the FFB game model, following the official ffb
+// sources (model/Game.java + ModelChangeProcessor.java in ffb-common)
 // Reference (authoritative):
 //   /home/saruman/Projects/ffb/ffb-common/src/main/java/com/fumbbl/ffb/
 //     - FieldCoordinate.java  (field + box coordinate constants)

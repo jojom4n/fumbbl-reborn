@@ -11,7 +11,8 @@
 //   dictionary (JS object/array)       -> QHash / QVector<std::optional<QString>>
 //
 // NOTE: JS `null` results are mapped to empty QString (the caller in the WS
-// layer falls back to treating the payload as raw JSON, exactly like ffbclient).
+// layer falls back to treating the payload as raw JSON, like the official
+// Java client).
 // =============================================================================
 #include "core/lzstring.h"
 

@@ -89,7 +89,7 @@ GameModel::GameModel(QObject *parent) : QObject(parent)
 }
 
 // -----------------------------------------------------------------------------
-// Initialization (port of fumbblGameModel.ts initialize())
+// Initialization and state wipe
 // -----------------------------------------------------------------------------
 void GameModel::clearState()
 {
@@ -283,7 +283,7 @@ bool GameModel::initialize(const QJsonObject &game)
     else if (game.value(QStringLiteral("turnMode")).isString())
         m_turnMode = game.value(QStringLiteral("turnMode")).toString();
 
-    // Turn number: home's turnNr if set, else away's (TS reference).
+    // Turn number: home's turnNr if set, else away's (live captures).
     const int turnNrHome = game.value(QStringLiteral("turnDataHome")).toObject().value(QStringLiteral("turnNr")).toInt(0);
     const int turnNrAway = game.value(QStringLiteral("turnDataAway")).toObject().value(QStringLiteral("turnNr")).toInt(0);
     m_turn = turnNrHome != 0 ? turnNrHome : (turnNrAway != 0 ? turnNrAway : 1);
@@ -444,7 +444,8 @@ void GameModel::applyFieldModel(const QJsonObject &fieldModel)
 }
 
 // -----------------------------------------------------------------------------
-// Model changes (port of fumbblGameModel.ts applyModelChanges())
+// Model changes (FFB model-change protocol — ground truth: ffb-common
+// ModelChangeProcessor.java)
 // -----------------------------------------------------------------------------
 void GameModel::applyModelChanges(const QJsonArray &changes)
 {
@@ -464,8 +465,8 @@ void GameModel::applyModelChanges(const QJsonArray &changes)
 
 void GameModel::handleModelChange(const QString &id, const QString &key, const QJsonValue &value)
 {
-    // ESSENTIAL handlers for a spectator (TS reference: fumbblGameModel.ts).
-    // Everything else is a no-op, exactly like the TS model.
+    // ESSENTIAL handlers for a spectator (ground truth: ffb-common
+    // ModelChangeProcessor.java). Everything else is a no-op.
     if (id == QLatin1String("fieldModelSetBallCoordinate")) {
         int x = -1, y = -1;
         if (readCoords(value, x, y)) {
@@ -759,7 +760,7 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     }
 
     if (id == QLatin1String("turnDataSetTurnNr")) {
-        // TS reference: only the "home" key updates the displayed turn.
+        // Only the "home" key updates the displayed turn (live captures).
         if (key == QLatin1String("home"))
             m_turn = readInt(value);
         // A new turn resets the per-turn marks (green checks, blitzer,
@@ -886,7 +887,8 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         return;
     }
 
-    // ~130 remaining modelChangeIds: no-op (TS reference).
+    // ~130 remaining modelChangeIds: no-op (live captures: none of them
+    // moves spectator-visible state).
 }
 
 void GameModel::setPlayerCoords(FFBPlayer *player, const QJsonValue &value)

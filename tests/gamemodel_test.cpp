@@ -229,7 +229,8 @@ void GameModelTest::modelChangesEssentials()
     changes.append(change(QStringLiteral("teamResultSetScore"), QStringLiteral("away"), QJsonValue(1)));
     changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
                           QJsonValue(QStringLiteral("18109691"))));
-    // Unknown modelChangeId: must be a silent no-op (TS reference behaviour)
+    // Unknown modelChangeId: must be a silent no-op (the server ignores
+    // unknown ids on the way in; we must too)
     changes.append(change(QStringLiteral("fieldModelAddPrayer"), QString(), QJsonValue(1)));
 
     model.applyModelChanges(changes);

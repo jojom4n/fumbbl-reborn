@@ -1,8 +1,7 @@
 // =============================================================================
 // ReportParser — FUMBBL server reports -> action log lines
 //
-// C++ port of the TS client's reportParser.ts, FIELD-BY-FIELD ALIGNED with
-// the authoritative ffb-common Java sources:
+// FIELD-BY-FIELD ALIGNED with the authoritative ffb-common Java sources:
 //   /home/saruman/Projects/ffb/ffb-common/src/main/java/com/fumbbl/ffb/
 //     - report/Report*.java (+ report/mixed, report/bb2025 variants)
 //     - json/IJsonOption.java   (the actual on-wire JSON key names)

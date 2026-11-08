@@ -31,7 +31,7 @@ FumbblWs::FumbblWs(QObject *parent)
     connect(m_ws, &QWebSocket::textMessageReceived, this, &FumbblWs::handleMessage);
     // CRITICAL: the FUMBBL server answers with *binary* frames (the official
     // Java client exchanges binary). Decode UTF-8 and route to the same
-    // handler, exactly like the TS client (ArrayBuffer branch).
+    // handler.
     connect(m_ws, &QWebSocket::binaryMessageReceived, this, [this](const QByteArray &bytes) {
         handleMessage(QString::fromUtf8(bytes));
     });
@@ -118,8 +118,8 @@ void FumbblWs::handleClose()
     const QString reason = m_ws->closeReason();
     emit closed(code, reason);
 
-    // Mirrors the TS client: reconnect unless the close was clean (1000) or
-    // we asked for it ourselves.
+    // Reconnect unless the close was clean (1000) or we asked for it
+    // ourselves.
     if (!m_manualDisconnect && code != static_cast<int>(QWebSocketProtocol::CloseCodeNormal))
         scheduleReconnect();
 }
@@ -198,8 +198,9 @@ void FumbblWs::sendJoinWithResponse(const QString &response)
         return;
     }
 
-    // Mirrors fumbblWebSocket.ts sendJoin() field-for-field, including the
-    // empty gameName/teamName strings. The "password" field carries the
+    // The clientJoin fields (ground truth: ffb-common
+    // ClientCommandJoin.java JSON options), including the empty
+    // gameName/teamName strings. The "password" field carries the
     // hex challenge response (HMAC-MD5 of MD5(password), see
     // PasswordChallenge — same as the official Java client).
     QJsonObject cmd;
@@ -253,13 +254,13 @@ void FumbblWs::sendRaw(const QJsonObject &message)
 // -----------------------------------------------------------------------------
 void FumbblWs::handleMessage(const QString &raw)
 {
-    if (raw.size() > 64 * 1024) { // TS: maxMessageSize
+    if (raw.size() > 64 * 1024) { // max message size guard
         emit errorOccurred(QStringLiteral("message too large"));
         return;
     }
 
     // CRITICAL: decompress; if the result is empty fall back to raw text
-    // (the TS client does exactly this).
+    // (protocol fact: frames may arrive uncompressed).
     QString text = fumbbl::lzstring::decompressFromUTF16(raw);
     if (text.isEmpty())
         text = raw;

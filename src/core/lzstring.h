@@ -3,9 +3,8 @@
 //
 // The FUMBBL WebSocket protocol compresses ALL messages with LZString
 // "UTF16" mode (15 bits/char, char + 32 offset, trailing space). This is a
-// faithful C++/Qt port of node_modules/lz-string/libs/lz-string.js
-// (v1.5.0) `_compress`/`_decompress`, so streams are byte-identical to the
-// official JS client (ffbclient) and the Java server.
+// faithful C++/Qt port of pieroxy/lz-string (v1.5.0) `_compress`/
+// `_decompress`, so streams are byte-identical to the FFB Java server's.
 // =============================================================================
 #pragma once
 
