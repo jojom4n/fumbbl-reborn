@@ -1034,6 +1034,7 @@ void FieldView::drawMoveTrail(QPainter &p)
             QPointF perp;       // unit vector ALONG the border, left of travel
             QPoint end;         // endpoint cell (may hold the resting token)
             bool isBlock = false; // block mark (no closing arrow beside it)
+            bool goForIt = false; // a GFI step: RED disc + white number
         };
         QVector<Num> nums;
         // The numbers come from the MODEL (segment.stepNumbers — continuous
@@ -1061,6 +1062,7 @@ void FieldView::drawMoveTrail(QPainter &p)
                 num.u = u;
                 num.perp = QPointF(u.y(), -u.x()); // left of the travel
                 num.end = seg.cells[i + 1];
+                num.goForIt = seg.goForIt;
                 nums.append(num);
             }
         }
@@ -1146,18 +1148,24 @@ void FieldView::drawMoveTrail(QPainter &p)
                             ? 1 : 0);
             // Badge radius 0.165 (the digit used to kiss the rim at r 0.13).
             const qreal br = minDim * 0.165;
+            const bool gfi = nums[k].goForIt;
             QFont nf = p.font();
             nf.setPointSizeF(qMax(4.0, minDim * (n > 9 ? 0.15 : 0.20)));
             nf.setBold(true);
             p.setFont(nf);
+            // A GFI step: RED disc + WHITE number (the trail's red) —
+            // unmistakable against the normal cream badges.
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(250, 250, 246, 240));
+            p.setBrush(gfi ? QColor(226, 44, 44, 245)
+                           : QColor(250, 250, 246, 240));
             p.drawEllipse(at, br, br);
-            p.setPen(QPen(QColor(46, 40, 34, 200), qMax(1.0, minDim * 0.02)));
+            p.setPen(QPen(gfi ? QColor(255, 255, 255, 215)
+                              : QColor(46, 40, 34, 200),
+                          qMax(1.0, minDim * 0.02)));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(at, br, br);
             const QRectF box(at.x() - br, at.y() - br, br * 2, br * 2);
-            p.setPen(QColor(20, 20, 24, 255));
+            p.setPen(gfi ? QColor(255, 255, 255, 255) : QColor(20, 20, 24, 255));
             p.drawText(box, Qt::AlignCenter, QString::number(n));
         }
     }

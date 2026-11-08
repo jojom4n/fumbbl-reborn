@@ -575,15 +575,26 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
                     if (m_movePending) {
                         // First step of a NEW move (a moving action was
                         // just set — or re-set: the server re-dispatches
-                        // the action after a block for the follow/GFI
-                        // move, StepEndBlocking): start a fresh route from
-                        // the old cell, continuing the numbering.
+                        // the action after a block for the follow move,
+                        // StepEndBlocking): start a fresh route from the
+                        // old cell, continuing the numbering.
                         newRoute(player);
                         m_movePending = false;
                         // A NEW action by the attacker also ends the block
                         // — the marker is not "left attached" to the token.
                         if (key == m_blockAttackerId && m_blockDieFace > 0)
                             clearBlockMarker();
+                    } else if (m_gfiPendingFor == key) {
+                        // The GO-FOR-IT extra move. GROUND TRUTH (ffb-common
+                        // ActingPlayer.setPlayerAction: same value returns
+                        // WITHOUT a sync): the server never re-emits
+                        // actingPlayerSetPlayerAction=move for it — the
+                        // action is already "move" — so m_movePending is
+                        // NOT set and the step would otherwise be appended
+                        // to the previous (white) route. A successful GFI
+                        // roll's next step is by definition the extra move:
+                        // a fresh RED route, continuing the numbering.
+                        newRoute(player);
                     } else {
                         const bool cont = !m_moveSegments.isEmpty()
                             && m_moveSegments.last().cells.last()

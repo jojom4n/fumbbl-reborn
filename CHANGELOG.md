@@ -4,6 +4,20 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.2.10 — 2026-11-08
+- **The go-for-it extra move is finally visible**: the red trail and
+  the step numbers never appeared for a GFI after a plain move. Root
+  cause (ground truth, ffb-common `ActingPlayer.setPlayerAction`): the
+  server returns WITHOUT emitting a model-sync when the action does
+  not change — and a GFI extra move re-activates the SAME "move"
+  action — so the client's `m_movePending` flag was never set and the
+  GFI steps were silently appended to the previous (white) route.
+  The model now opens a fresh route the moment the actor steps after
+  a successful GFI roll, and the GFI step badges are unmistakable:
+  red disc, white number (the trail keeps the same red). Regression
+  test with the exact wire flow (no action re-emit) plus a permanent
+  `gfi_noreemit.png` scene in `move_numbers_preview`.
+
 ## 0.2.9 — 2026-11-07
 - **Login: the late burst of the verification match no longer leaves a
   frozen match on the field** (0.2.8 regression, reproduced live with

@@ -8,6 +8,9 @@
 //   movenum_move1.png      a 1-SQUARE move: its "1" appears between the two
 //                          cells (before: nothing at all)
 //   movenum_blitz.png      a BLITZ (2 squares): numbers 1,2 between the cells
+//   gfi_noreemit.png       a PLAIN MOVE + GFI extra move on the real wire
+//                          flow (no action re-emit): the GFI steps open a
+//                          RED route, RED badges with WHITE numbers
 //
 // The numbers are derived from the move trace itself (path index + 1), so
 // they share the trail's lifecycle exactly.
@@ -403,6 +406,58 @@ int main(int argc, char *argv[])
         dumpTrace();
         cropCells(sx, sy - 1, sx + 2, sy + 1,
                  QStringLiteral("plainblock.png"));
+    }
+
+    // --- Sequence G2: GO FOR IT after a PLAIN MOVE — the reported bug -------
+    // The ACTUAL wire flow (GROUND TRUTH, ffb-common
+    // ActingPlayer.setPlayerAction: same value returns WITHOUT a sync): the
+    // server never re-emits actingPlayerSetPlayerAction=move for the GFI
+    // extra move.
+    //   actingPlayerSetPlayerAction=move + steps (white route: 1,2)
+    //   -> actingPlayerSetPlayerId=null (the action ends)
+    //   -> goForItRoll (successful)
+    //   -> actingPlayerSetPlayerId=X (re-selection — NO action re-emit)
+    //   -> the GFI steps MUST open a NEW RED route (3,4). Before the fix
+    //   they were appended to the white route and the flag was stranded.
+    {
+        pump(3000); // out of the report-dedup window (2.5 s)
+        freshTurn(sx, sy);
+        QJsonArray ch;
+        change(ch, QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+               QJsonValue(QStringLiteral("move")));
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx + 1) << sy);
+        change(ch, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx + 2) << sy);
+        w.onModelSync(ch, QJsonArray());
+        pump(300);
+        QJsonArray ch2;
+        change(ch2, QStringLiteral("actingPlayerSetPlayerId"), QString(),
+               QJsonValue()); // the action ends (Id=None)
+        w.onModelSync(ch2, QJsonArray());
+        pump(200);
+        QJsonArray rep2;
+        {
+            QJsonObject r;
+            r.insert(QStringLiteral("reportId"), QStringLiteral("goForItRoll"));
+            r.insert(QStringLiteral("playerId"), actor);
+            r.insert(QStringLiteral("successful"), true);
+            rep2.append(r);
+        }
+        w.onModelSync(QJsonArray(), rep2);
+        pump(200);
+        QJsonArray ch3;
+        change(ch3, QStringLiteral("actingPlayerSetPlayerId"), QString(),
+               QJsonValue(actor)); // re-selection — NO action re-emit
+        change(ch3, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx + 3) << sy);
+        change(ch3, QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+               QJsonArray() << (sx + 3) << (sy - 1));
+        w.onModelSync(ch3, QJsonArray());
+        pump(900);
+        dumpTrace();
+        cropCells(sx, sy - 2, sx + 4, sy + 1,
+                 QStringLiteral("gfi_noreemit.png"));
     }
 
     // --- Section H: ACTION LOG WRAP — a long line ("Catch (Inaccurate Pass

@@ -43,6 +43,7 @@ private slots:
     void boxAndRemovePlayer();
     void moveTrailAccumulatesAndClears();
     void moveNumbersContinuousAcrossBlitzBlockAndFrenzy();
+    void gfiExtraMoveWithoutActionReEmit();
     void turnMarksAndBlockMarkerLifecycle();
     void staticHelpers();
     void positionNames();
@@ -562,6 +563,77 @@ void GameModelTest::moveNumbersContinuousAcrossBlitzBlockAndFrenzy()
     QCOMPARE(model.moveSegments().size(), 1);
     QVERIFY(model.moveSegments().first().stepNumbers.isEmpty());
     QVERIFY(model.moveSegments().first().goForIt); // red trail
+}
+
+// The GO-FOR-IT extra move, as it actually comes on the wire (the bug the
+// user reported: the red trail NEVER appeared). GROUND TRUTH (ffb-common
+// ActingPlayer.setPlayerAction: `if (pPlayerAction == fPlayerAction)
+// return;` — NO sync when the action does not change): after a successful
+// GFI roll the server re-selects the SAME player (Id=X is always emitted)
+// but does NOT re-emit actingPlayerSetPlayerAction=move (it is already
+// "move"). m_movePending therefore stays false, and the GFI step must
+// still open a NEW RED route (not be appended to the previous white one),
+// continuing the count.
+void GameModelTest::gfiExtraMoveWithoutActionReEmit()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadFixtureGame()));
+    // Fixture: 18109690 at (3,2); 18109691 at (4,3).
+
+    QJsonArray changes;
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+    auto coords = [](int x, int y) { QJsonArray a; a << x << y; return QJsonValue(a); };
+    const QString actor = QStringLiteral("18109690");
+
+    // MOVE: (3,2) -> (4,2) -> (5,2) — the white route, numbers 1,2.
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue(actor)));
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerAction"), QString(),
+                          QJsonValue(QStringLiteral("move"))));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(4, 2)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(5, 2)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 1);
+    QCOMPARE(model.moveSegments().first().stepNumbers, QVector<int>({1, 2}));
+    QVERIFY(!model.moveSegments().first().goForIt);
+
+    // The action ENDS (Id=None between actions — the capture-verified
+    // pattern). The trace (and the pending state) must survive it.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue()));
+    model.applyModelChanges(changes);
+
+    // The GFI roll succeeds.
+    model.setGoForItPending(actor);
+
+    // The GFI move: re-selection of the SAME player (always emitted) and
+    // NO actingPlayerSetPlayerAction. The steps (5,2) -> (6,2) -> (6,3)
+    // open a NEW RED route, count continues (3,4).
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("actingPlayerSetPlayerId"), QString(),
+                          QJsonValue(actor)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(6, 2)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"), actor,
+                          coords(6, 3)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.moveSegments().size(), 2);
+    const GameModel::MoveSegment &gfi = model.moveSegments().last();
+    QCOMPARE(gfi.cells,
+             QVector<QPoint>({QPoint(5, 2), QPoint(6, 2), QPoint(6, 3)}));
+    QCOMPARE(gfi.stepNumbers, QVector<int>({3, 4}));
+    QVERIFY(gfi.goForIt);
+    // The original route stays white.
+    QVERIFY(!model.moveSegments().first().goForIt);
 }
 
 void GameModelTest::staticHelpers()
