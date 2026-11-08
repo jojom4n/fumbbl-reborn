@@ -175,7 +175,9 @@ bool CredentialStore::backendGet(const QString &coach, QByteArray &passwordMd5, 
     passwordMd5.clear();
     const QByteArray target = credTarget(coach);
     DWORD count = 0;
-    LPSTRUCT_CREDENTIALA creds = nullptr;
+    // Plain pointer type (NOT the SDK's LPSTRUCT_CREDENTIALA): MinGW-w64's
+    // wincred.h does not define that alias.
+    CREDENTIALA *creds = nullptr;
     if (!CredReadA(target.constData(), CRED_TYPE_GENERIC, 0, &count, &creds) || count != 1) {
         if (GetLastError() == ERROR_NOT_FOUND)
             return true; // ok — simply no entry yet
@@ -208,7 +210,8 @@ bool CredentialStore::backendSet(const QString &coach, const QByteArray &passwor
     CREDENTIALA cred {};
     cred.Type = CRED_TYPE_GENERIC;
     cred.TargetName = const_cast<LPSTR>(target.constData());
-    cred.CredentialBlob = const_cast<LPBYTE>(payload.constData());
+    // char* -> BYTE* is a (signedness) reinterpretation, NOT a const_cast.
+    cred.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<char *>(payload.constData()));
     cred.CredentialBlobSize = static_cast<DWORD>(payload.size());
     cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
     if (!CredWriteA(&cred, 0)) {
@@ -221,7 +224,9 @@ bool CredentialStore::backendSet(const QString &coach, const QByteArray &passwor
 bool CredentialStore::backendClear(const QString &coach, QString &error)
 {
     const QByteArray target = credTarget(coach);
-    if (!CredFreeA(target.constData(), CRED_TYPE_GENERIC, 0)) {
+    // CredDeleteA (delete-by-name) — the canonical API for this; the SDK's
+    // CredFreeA alias is not in MinGW-w64's wincred.h.
+    if (!CredDeleteA(target.constData(), CRED_TYPE_GENERIC, 0)) {
         const DWORD code = GetLastError();
         if (code == ERROR_NOT_FOUND)
             return true;

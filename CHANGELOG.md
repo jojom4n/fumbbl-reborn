@@ -18,9 +18,12 @@ record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
   "WebSocket closed: 1000" which clobbered the "Logged in as …"
   status.
 - **Windows build fixed in CI**: Qt for Windows does not ship the DBus
-  module — `find_package(Qt6 ... DBus)` was REQUIRED and broke the CI
-  configure; DBus is now a non-Windows-only dependency and the QDBus
-  includes in the credential store are Linux-only.
+  module (it was REQUIRED and broke the configure), and the
+  credential store used Windows-SDK-only names (`LPSTRUCT_CREDENTIALA`,
+  `CredFreeA`) and a malformed `const_cast` that MinGW rejects. DBus
+  is now a non-Windows-only dependency, the credential code uses
+  portable Win32 forms (`CREDENTIALA*`, `CredDeleteA`,
+  `reinterpret_cast`), verified against the CI MinGW log.
 
 ## 0.2.8 — 2026-11-07
 - **Login: the verification match no longer touches the UI at all**
