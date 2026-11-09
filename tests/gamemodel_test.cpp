@@ -48,6 +48,7 @@ private slots:
     void staticHelpers();
     void positionNames();
     void resetClearsState();
+    void sppInducementsAndCarrier();
 };
 
 namespace {
@@ -856,6 +857,115 @@ void GameModelTest::turnMarksAndBlockMarkerLifecycle()
     QVERIFY(!model.blockMarkerActive());
     QVERIFY(model.actedThisTurn().isEmpty());
     QVERIFY(model.blitzingPlayerId().isEmpty());
+}
+
+void GameModelTest::sppInducementsAndCarrier()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadFixtureGame()));
+
+    QJsonArray changes;
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+
+    // --- SPP (playerResultSetCurrentSpps, key = playerId) ------------------
+    changes.append(change(QStringLiteral("playerResultSetCurrentSpps"),
+                          QStringLiteral("18109690"), QJsonValue(2)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.sppBase(QStringLiteral("18109690")), 2); // first sight = own
+    QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 2);
+
+    // An in-match gain moves `current`; base stays the player's own SPP.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("playerResultSetCurrentSpps"),
+                          QStringLiteral("18109690"), QJsonValue(5)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.sppBase(QStringLiteral("18109690")), 2);
+    QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 5);
+
+    // Unknown player: zeros.
+    QCOMPARE(model.sppBase(QStringLiteral("nope")), 0);
+    QCOMPARE(model.sppCurrent(QStringLiteral("nope")), 0);
+
+    // --- Carrier (standing player on the ball square) -----------------------
+    QJsonArray coords;
+    coords << 12 << 3;
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetBallCoordinate"),
+                          QString(), QJsonValue(coords)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                          QStringLiteral("18109690"), QJsonValue(coords)));
+    changes.append(change(QStringLiteral("fieldModelSetPlayerState"),
+                          QStringLiteral("18109690"), QJsonValue(0))); // STANDING
+    model.applyModelChanges(changes);
+    QCOMPARE(model.carrierId(), QStringLiteral("18109690"));
+
+    // The carrier goes PRONE: the ball is on an empty (of standers) square.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerState"),
+                          QStringLiteral("18109690"), QJsonValue(3))); // PRONE
+    model.applyModelChanges(changes);
+    QCOMPARE(model.carrierId(), QString());
+
+    // Carrier back up, ball elsewhere: no carrier.
+    QJsonArray other;
+    other << 5 << 5;
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("fieldModelSetPlayerState"),
+                          QStringLiteral("18109690"), QJsonValue(0)));
+    changes.append(change(QStringLiteral("fieldModelSetBallCoordinate"),
+                          QString(), QJsonValue(other)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.carrierId(), QString());
+
+    // --- Inducements (inducementSet* model changes) --------------------------
+    // The fixture carries no inducements.
+    QVERIFY(model.inducementsHome().isEmpty());
+    QVERIFY(model.inducementsAway().isEmpty());
+
+    QJsonObject ind;
+    ind.insert(QStringLiteral("inducementType"), QStringLiteral("briberyAndCorruption"));
+    ind.insert(QStringLiteral("value"), 1);
+    ind.insert(QStringLiteral("uses"), 0);
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("inducementSetAddInducement"),
+                          QStringLiteral("home"), QJsonValue(ind)));
+    model.applyModelChanges(changes);
+    const QVector<InducementInfo> inds = model.inducementsHome();
+    QCOMPARE(inds.size(), 1);
+    QCOMPARE(inds.first().typeId, QStringLiteral("briberyAndCorruption"));
+    QCOMPARE(inds.first().value, 1);
+
+    // An ADD of the same type UPDATES (no duplicate).
+    QJsonObject ind2 = ind;
+    ind2.insert(QStringLiteral("value"), 2);
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("inducementSetAddInducement"),
+                          QStringLiteral("home"), QJsonValue(ind2)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.inducementsHome().size(), 1);
+    QCOMPARE(model.inducementsHome().first().value, 2);
+
+    // A REMOVE drops it.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("inducementSetRemoveInducement"),
+                          QStringLiteral("home"), QJsonValue(ind)));
+    model.applyModelChanges(changes);
+    QVERIFY(model.inducementsHome().isEmpty());
+
+    // Prayers (value = the prayer name).
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("inducementSetAddPrayer"),
+                          QStringLiteral("away"),
+                          QJsonValue(QStringLiteral("Fouling Frenzy"))));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.prayersAway(),
+             QStringList() << QStringLiteral("Fouling Frenzy"));
 }
 
 QTEST_MAIN(GameModelTest)

@@ -122,6 +122,7 @@ private slots:
     void blockReportsShowDiceAndNames();
     void unresolvedNumericIdNeverShown();
     void capturedLiveReportsParse();
+    void parseToastEvents();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -1462,6 +1463,89 @@ void UiWiringTest::capturedLiveReportsParse()
     QVERIFY2(blockDiceLines > 0, "no block-roll line carried dice");
     QVERIFY2(d6Lines > 0, "no d6 line at all");
     QVERIFY2(sawPlayerActionSubject, "playerAction lost its subject (actingPlayerId?)");
+}
+
+// parseToastEvents: the structured twin of parseReport. Synthetic reports
+// with the EXACT field names from the FFB ground truth (ReportSkillRoll:
+// playerId/successful; ReportTimeoutEnforced: coach; the mixed injury
+// report: defenderId/armorBroken/injury).
+void UiWiringTest::parseToastEvents()
+{
+    auto report = [](const QString &id, const QJsonObject &extra = QJsonObject()) {
+        QJsonObject r;
+        r.insert(QStringLiteral("reportId"), id);
+        for (auto it = extra.cbegin(); it != extra.cend(); ++it)
+            r.insert(it.key(), it.value());
+        return r;
+    };
+
+    // A SUCCEEDED catch: the CATCHER carries the playerId.
+    QJsonObject e;
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p1"));
+    e.insert(QStringLiteral("successful"), true);
+    const QVector<ToastEvent> completion = ::parseToastEvents(report(QStringLiteral("catchRoll"), e));
+    QCOMPARE(completion.size(), 1);
+    QCOMPARE(completion.first().kind, QStringLiteral("completion"));
+    QCOMPARE(completion.first().playerId, QStringLiteral("p1"));
+    QVERIFY(completion.first().success);
+
+    // A FAILED catch: no toast.
+    e.insert(QStringLiteral("successful"), false);
+    QVERIFY(::parseToastEvents(report(QStringLiteral("catchRoll"), e)).isEmpty());
+
+    // A succeeded regeneration roll.
+    e = QJsonObject();
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p2"));
+    e.insert(QStringLiteral("successful"), true);
+    const QVector<ToastEvent> regen = ::parseToastEvents(report(QStringLiteral("regenerationRoll"), e));
+    QCOMPARE(regen.size(), 1);
+    QCOMPARE(regen.first().kind, QStringLiteral("regeneration"));
+    QCOMPARE(regen.first().playerId, QStringLiteral("p2"));
+
+    // Raise the Dead.
+    e = QJsonObject();
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p3"));
+    const QVector<ToastEvent> raised = ::parseToastEvents(report(QStringLiteral("raiseDead"), e));
+    QCOMPARE(raised.size(), 1);
+    QCOMPARE(raised.first().kind, QStringLiteral("raiseDead"));
+
+    // A timeout carries the COACH name (free text, not a player id).
+    e = QJsonObject();
+    e.insert(QStringLiteral("coach"), QStringLiteral("Coach McDowell"));
+    const QVector<ToastEvent> timeout = ::parseToastEvents(report(QStringLiteral("timeoutEnforced"), e));
+    QCOMPARE(timeout.size(), 1);
+    QCOMPARE(timeout.first().kind, QStringLiteral("timeout"));
+    QCOMPARE(timeout.first().text, QStringLiteral("Coach McDowell"));
+
+    // Injury: the armor breaks, no outcome enum yet (stunned) -> the ARMOUR
+    // BREAK event.
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p4"));
+    e.insert(QStringLiteral("armorBroken"), true);
+    const QVector<ToastEvent> armour = ::parseToastEvents(report(QStringLiteral("injury"), e));
+    QCOMPARE(armour.size(), 1);
+    QCOMPARE(armour.first().kind, QStringLiteral("injury"));
+    QCOMPARE(armour.first().playerId, QStringLiteral("p4"));
+    QVERIFY(armour.first().armorBroken);
+    QVERIFY(armour.first().result.isEmpty());
+
+    // Injury: a KO outcome -> the event carries the result.
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p5"));
+    e.insert(QStringLiteral("armorBroken"), false);
+    e.insert(QStringLiteral("injury"), QStringLiteral("knockedOut"));
+    const QVector<ToastEvent> ko = ::parseToastEvents(report(QStringLiteral("injury"), e));
+    QCOMPARE(ko.size(), 1);
+    QCOMPARE(ko.first().result, QStringLiteral("knockedOut"));
+
+    // Injury: the armor holds, nothing else -> no toast (it stays in the log).
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p6"));
+    e.insert(QStringLiteral("armorBroken"), false);
+    QVERIFY(::parseToastEvents(report(QStringLiteral("injury"), e)).isEmpty());
+
+    // An unrelated report: nothing.
+    QVERIFY(::parseToastEvents(report(QStringLiteral("move"))).isEmpty());
 }
 
 // The action log chevron points where the click takes the log — compact

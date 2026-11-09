@@ -151,6 +151,56 @@ void fillD6Rolls(DiceLogLine &l, const QJsonArray &d)
 
 } // namespace
 
+QVector<ToastEvent> parseToastEvents(const QJsonObject &report)
+{
+    QVector<ToastEvent> out;
+    const QString id = enumName(report.value(QStringLiteral("reportId")));
+    if (id.isEmpty())
+        return out;
+
+    ToastEvent e;
+    if (id == QLatin1String("catchRoll")) {
+        // ReportCatchRoll (a ReportSkillRoll): playerId = the CATCHER who
+        // rolls; the passer is turn context, not in the report. Only a
+        // SUCCEDED catch is toast-worthy (an interception is its own drama
+        // and stays in the log).
+        e.kind = QStringLiteral("completion");
+        e.playerId = report.value(QStringLiteral("playerId")).toString();
+        e.success = report.value(QStringLiteral("successful")).toBool();
+        if (e.success && !e.playerId.isEmpty())
+            out.append(e);
+    } else if (id == QLatin1String("regenerationRoll")) {
+        e.kind = QStringLiteral("regeneration");
+        e.playerId = report.value(QStringLiteral("playerId")).toString();
+        e.success = report.value(QStringLiteral("successful")).toBool();
+        if (e.success && !e.playerId.isEmpty())
+            out.append(e);
+    } else if (id == QLatin1String("raiseDead")) {
+        e.kind = QStringLiteral("raiseDead");
+        e.playerId = report.value(QStringLiteral("playerId")).toString();
+        if (!e.playerId.isEmpty())
+            out.append(e);
+    } else if (id == QLatin1String("timeoutEnforced")) {
+        e.kind = QStringLiteral("timeout");
+        e.text = report.value(QStringLiteral("coach")).toString();
+        out.append(e);
+    } else if (id == QLatin1String("injury")) {
+        // The report mixes armor + injury + casualty rolls for the SAME
+        // player (defenderId = the injured one). Toast cases:
+        //  - armorBroken && no result  -> ARMOUR BREAK (the player is
+        //    stunned and still plays; the armor did break — that's the news)
+        //  - a result (knockedOut/badlyHurt/seriousInjury/rip) -> OUT etc.
+        //  - armor holds, no result    -> nothing (stays in the log)
+        e.kind = QStringLiteral("injury");
+        e.playerId = report.value(QStringLiteral("defenderId")).toString();
+        e.armorBroken = report.value(QStringLiteral("armorBroken")).toBool();
+        e.result = enumName(report.value(QStringLiteral("injury")));
+        if (!e.playerId.isEmpty() && (e.armorBroken || !e.result.isEmpty()))
+            out.append(e);
+    }
+    return out;
+}
+
 QVector<DiceLogLine> parseReport(const QJsonObject &report)
 {
     QVector<DiceLogLine> out;
