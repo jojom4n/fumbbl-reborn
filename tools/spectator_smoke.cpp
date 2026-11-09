@@ -74,9 +74,12 @@ int main(int argc, char *argv[])
     }
 
     // --- Load credentials (shared line file, see credentialsPath) ---------
-    // The password is hashed in-process and NEVER printed.
+    // The password is hashed in-process and NEVER printed. The file may
+    // carry either password= (plaintext, hashed here) or passwordMd5=
+    // (the 32-hex MD5 the protocol expects — the app's stored form).
     QString coach;
     QString password;
+    QString storedMd5;
     {
         QFile credsFile(credentialsPath);
         if (!credsFile.open(QIODevice::ReadOnly)) {
@@ -94,6 +97,9 @@ int main(int argc, char *argv[])
                 coach = value;
             else if (key == QLatin1String("password"))
                 password = value;
+            else if (key == QLatin1String("passwordMd5")
+                     || key == QLatin1String("password_md5"))
+                storedMd5 = value;
         }
     }
     if (coach.isEmpty()) {
@@ -183,6 +189,9 @@ int main(int argc, char *argv[])
                                    : fumbbl::PasswordChallenge::encodePassword(password);
     if (!fileMd5.isEmpty()) {
         startSession(fileMd5);
+    } else if (!storedMd5.isEmpty()) {
+        logLine(QStringLiteral("Using passwordMd5= from the credentials file."));
+        startSession(storedMd5.toLatin1());
     } else if (CredentialStore::hasBackend()) {
         logLine(QStringLiteral("No password in the file — looking up the OS keychain …"));
         CredentialStore store;
