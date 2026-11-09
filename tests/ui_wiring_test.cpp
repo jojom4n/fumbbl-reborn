@@ -125,6 +125,7 @@ private slots:
     void capturedLiveReportsParse();
     void parseToastEvents();
     void toastMilestonesAndReportEvents();
+    void matchListDivisionTabsAndPolling();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -1620,6 +1621,54 @@ void UiWiringTest::toastMilestonesAndReportEvents()
     QCOMPARE(toasts->findChildren<QLabel *>().size(), before + 1);
     QTest::qWait(700);
     QCOMPARE(toasts->findChildren<QLabel *>().size(), before);
+}
+
+// R0 match list: division tabs filter the table, the polling interval is
+// the fixed 20 s, and a reloaded list (as polling does) keeps the user's
+// selected row.
+void UiWiringTest::matchListDivisionTabsAndPolling()
+{
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    dialog.show();
+
+    // R0 fixed polling interval.
+    QCOMPARE(dialog.pollIntervalMsForTest(), 20000);
+
+    auto makeMatch = [](int id, const QString &division, const QString &home) {
+        FFBLiveMatch m;
+        m.id = id;
+        m.half = 1;
+        m.division = division;
+        m.home = FFBMatchTeam{home, QStringLiteral("coachA"),
+                              QStringLiteral("Orcs"), QString(), 0};
+        m.away = FFBMatchTeam{QStringLiteral("Away Team"), QStringLiteral("coachB"),
+                              QStringLiteral("Gnomes"), QString(), 0};
+        return m;
+    };
+    QVector<FFBLiveMatch> matches;
+    matches << makeMatch(101, QStringLiteral("Competitive"), QStringLiteral("Team A"))
+            << makeMatch(102, QStringLiteral("Competitive"), QStringLiteral("Team B"))
+            << makeMatch(103, QStringLiteral("League"), QStringLiteral("Team C"));
+    dialog.loadMatchesForTest(matches);
+    QCOMPARE(dialog.tableRowCount(), 3);
+    // Tabs: "All" + the two divisions present.
+    QCOMPARE(dialog.divisionTabCountForTest(), 3);
+
+    // Selecting a tab filters the table.
+    QVERIFY(dialog.selectDivisionTabForTest(QStringLiteral("League")));
+    QCOMPARE(dialog.tableRowCount(), 1);
+    QVERIFY(dialog.selectFirstGame());
+    QCOMPARE(dialog.selectedGameId(), 103);
+
+    // Back to All, select a row; a RELOAD (as polling does) keeps it.
+    QVERIFY(dialog.selectDivisionTabForTest(QStringLiteral("All")));
+    QCOMPARE(dialog.tableRowCount(), 3);
+    QVERIFY(dialog.selectGame(102));
+    QVector<FFBLiveMatch> reloaded = matches;
+    reloaded[0].home.score = 1; // a score changed between polls
+    dialog.loadMatchesForTest(reloaded);
+    QCOMPARE(dialog.tableRowCount(), 3);
+    QCOMPARE(dialog.selectedGameId(), 102);
 }
 
 // The action log chevron points where the click takes the log — compact

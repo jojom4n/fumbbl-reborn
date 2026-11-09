@@ -13,7 +13,10 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
+#include <QTabBar>
 #include <QTableWidget>
+#include <QTime>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -24,20 +27,22 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     setWindowTitle(tr("Spectate a FUMBBL match"));
     resize(860, 560);
 
+    // --- Division tabs (R0): "All" + one tab per division -------------------
+    m_divisionTabs = new QTabBar(this);
+    m_divisionTabs->addTab(tr("All"));
+    m_divisionTabs->setTabData(0, QString());
+
     // --- Filter bar ---------------------------------------------------------
     m_textFilter = new QLineEdit(this);
     m_textFilter->setPlaceholderText(tr("Filter by team or coach name…"));
     m_textFilter->setClearButtonEnabled(true);
     m_raceFilter = new QComboBox(this);
     m_raceFilter->setMinimumWidth(170);
-    m_divisionFilter = new QComboBox(this);
-    m_divisionFilter->setMinimumWidth(130);
     m_refreshBtn = new QPushButton(tr("Refresh"), this);
 
     auto *filterRow = new QHBoxLayout();
     filterRow->addWidget(m_textFilter, 1);
     filterRow->addWidget(m_raceFilter);
-    filterRow->addWidget(m_divisionFilter);
     filterRow->addWidget(m_refreshBtn);
 
     // --- Match table ---------------------------------------------------------
@@ -83,6 +88,7 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     btnRow->addWidget(cancelBtn);
 
     auto *root = new QVBoxLayout(this);
+    root->addWidget(m_divisionTabs);
     root->addLayout(filterRow);
     root->addWidget(m_table, 1);
     root->addWidget(m_status);
@@ -91,7 +97,8 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
     // --- Wiring --------------------------------------------------------------
     connect(m_textFilter, &QLineEdit::textChanged, this, &SpectateDialog::applyFilters);
     connect(m_raceFilter, &QComboBox::currentTextChanged, this, &SpectateDialog::applyFilters);
-    connect(m_divisionFilter, &QComboBox::currentTextChanged, this, &SpectateDialog::applyFilters);
+    connect(m_divisionTabs, &QTabBar::currentChanged, this,
+            [this](int) { this->applyFilters(); });
     connect(m_refreshBtn, &QPushButton::clicked, this, &SpectateDialog::refreshList);
     connect(m_spectateBtn, &QPushButton::clicked, this, &SpectateDialog::spectate);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
@@ -126,9 +133,19 @@ SpectateDialog::SpectateDialog(QWidget *parent, bool autoLoadList) : QDialog(par
                 this->spectateBtnState();
             });
 
-    // The match list is public: always auto-load (tests opt out).
+    // The match list is public: always auto-load (tests opt out) and keep
+    // it fresh with the R0 fixed 20 s polling (skipped while a fetch is
+    // already in flight).
+    m_pollTimer = new QTimer(this);
+    m_pollTimer->setInterval(20000);
+    connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+        if (!m_matchList->isBusy())
+            refreshList();
+    });
+
     if (autoLoadList) {
         refreshList();
+        m_pollTimer->start();
     } else {
         m_status->setText(tr("Ready."));
     }
@@ -152,14 +169,41 @@ void SpectateDialog::onMatchesReceived(QVector<FFBLiveMatch> matches)
     m_matches = matches;
     rebuildFilterCombos();
     applyFilters();
-    m_status->setText(tr("%1 live match(es) found.").arg(m_matches.size()));
+    m_status->setText(tr("%1 live matches · updated %2")
+                         .arg(m_matches.size())
+                         .arg(QTime::currentTime().toString("HH:mm:ss")));
     emit listLoaded();
 }
 
 void SpectateDialog::rebuildFilterCombos()
 {
+    // Division tabs: "All" + the divisions present in the list. The active
+    // division survives a polling rebuild (the same division may vanish and
+    // reappear between polls).
+    const QString divKeep =
+        m_divisionTabs->tabData(m_divisionTabs->currentIndex()).toString();
+    m_divisionTabs->blockSignals(true);
+    while (m_divisionTabs->count() > 0)
+        m_divisionTabs->removeTab(0);
+    m_divisionTabs->addTab(tr("All"));
+    m_divisionTabs->setTabData(0, QString());
+    QSet<QString> divs;
+    for (const FFBLiveMatch &m : m_matches)
+        divs.insert(m.division);
+    QStringList dsorted = divs.values();
+    std::sort(dsorted.begin(), dsorted.end());
+    for (const QString &d : dsorted) {
+        m_divisionTabs->addTab(d);
+        m_divisionTabs->setTabData(m_divisionTabs->count() - 1, d);
+    }
+    int keep = 0;
+    for (int i = 0; i < m_divisionTabs->count(); ++i)
+        if (m_divisionTabs->tabData(i).toString() == divKeep)
+            keep = i;
+    m_divisionTabs->setCurrentIndex(keep);
+    m_divisionTabs->blockSignals(false);
+
     const QString raceKeep = m_raceFilter->currentText();
-    const QString divKeep = m_divisionFilter->currentText();
 
     m_raceFilter->blockSignals(true);
     m_raceFilter->clear();
@@ -176,27 +220,17 @@ void SpectateDialog::rebuildFilterCombos()
     const int ri = m_raceFilter->findData(raceKeep);
     m_raceFilter->setCurrentIndex(ri >= 0 ? ri : 0);
     m_raceFilter->blockSignals(false);
-
-    m_divisionFilter->blockSignals(true);
-    m_divisionFilter->clear();
-    m_divisionFilter->addItem(tr("All divisions"), QString());
-    QSet<QString> divs;
-    for (const FFBLiveMatch &m : m_matches)
-        divs.insert(m.division);
-    QStringList dsorted = divs.values();
-    std::sort(dsorted.begin(), dsorted.end());
-    for (const QString &d : dsorted)
-        m_divisionFilter->addItem(d, d);
-    const int di = m_divisionFilter->findData(divKeep);
-    m_divisionFilter->setCurrentIndex(di >= 0 ? di : 0);
-    m_divisionFilter->blockSignals(false);
 }
 
 void SpectateDialog::applyFilters()
 {
     const QString text = m_textFilter->text().trimmed().toLower();
     const QString race = m_raceFilter->currentData().toString();
-    const QString div = m_divisionFilter->currentData().toString();
+    const QString div =
+        m_divisionTabs->tabData(m_divisionTabs->currentIndex()).toString();
+
+    // The user's selection must survive a polling rebuild.
+    const int keepId = selectedGameId();
 
     m_table->setSortingEnabled(false);
     m_table->setRowCount(0);
@@ -231,6 +265,16 @@ void SpectateDialog::applyFilters()
     }
     m_table->setSortingEnabled(true);
     m_table->sortByColumn(1, Qt::AscendingOrder);
+
+    // Restore the pre-rebuild selection (polling must not drop the pick).
+    if (keepId > 0) {
+        for (int r = 0; r < m_table->rowCount(); ++r)
+            if (m_table->item(r, 1)
+                && m_table->item(r, 1)->data(Qt::UserRole).toInt() == keepId) {
+                m_table->setCurrentCell(r, 1);
+                break;
+            }
+    }
 }
 
 int SpectateDialog::selectedGameId() const
