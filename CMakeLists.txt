@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.2.18
+    VERSION 0.2.19
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )
@@ -159,6 +159,8 @@ add_executable(fumbbl-qt
     src/ui/panel.cpp
     src/ui/toastoverlay.h
     src/ui/toastoverlay.cpp
+    src/ui/reportcard.h
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )
@@ -281,6 +283,7 @@ add_executable(hud_preview
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
     src/ui/toastoverlay.cpp
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )
@@ -321,6 +324,7 @@ add_executable(move_numbers_preview
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
     src/ui/toastoverlay.cpp
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )

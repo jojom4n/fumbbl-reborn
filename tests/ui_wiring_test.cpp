@@ -36,6 +36,7 @@
 #include <QResource>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QTableWidget>
 #include <QToolButton>
 #include <QThread>
 
@@ -51,6 +52,7 @@
 #include "ui/mainwindow.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "ui/reportcard.h"
 #include "core/credentialstore.h"
 #include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
@@ -127,6 +129,7 @@ private slots:
     void toastMilestonesAndReportEvents();
     void matchListDivisionTabsAndPolling();
     void joinWaitingBoardShowsVsAndDiesOnGameState();
+    void reportCardShowsAtFullTime();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -1725,6 +1728,66 @@ void UiWiringTest::joinWaitingBoardShowsVsAndDiesOnGameState()
     // The game state arrives: the board dies (the stadium takes over).
     w.onGameState(fixtureGame());
     QVERIFY(!board->isVisible());
+}
+
+// R0 report card v1: full time (turnMode endGame) shows the summary once
+// (score + both rosters); a second endGame batch must not stack a card.
+void UiWiringTest::reportCardShowsAtFullTime()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.onGameState(fixtureGame());
+    QVERIFY2(w.findChild<ReportCardDialog *>() == nullptr, "card before full time");
+
+    // Give a home player SPP (first sight = base 2, then +2 in-match).
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(4)));
+    w.onModelSync(ch, QJsonArray());
+
+    QJsonArray ch2;
+    QJsonObject mode;
+    mode.insert(QStringLiteral("name"), QStringLiteral("endGame"));
+    ch2.append(makeChange(QStringLiteral("gameSetTurnMode"), QString(),
+                          QJsonValue(mode)));
+    w.onModelSync(ch2, QJsonArray());
+
+    ReportCardDialog *card = w.findChild<ReportCardDialog *>();
+    QVERIFY2(card, "report card not shown at full time");
+    QVERIFY(card->isVisible());
+    // Score line: both team names + the final score.
+    bool sawScore = false;
+    for (QLabel *l : card->findChildren<QLabel *>())
+        if (l->text().contains(QStringLiteral("Orcs United"))
+            && l->text().contains(QStringLiteral("Dwarves FC")))
+            sawScore = true;
+    QVERIFY2(sawScore, "score line missing the team names");
+    // Both rosters rendered (11 players each in the fixture).
+    const auto tables = card->findChildren<QTableWidget *>();
+    QCOMPARE(tables.size(), 2);
+    QCOMPARE(tables[0]->rowCount(), 11);
+    QCOMPARE(tables[1]->rowCount(), 11);
+    // The in-match SPP gain is shown ("base (+gain)").
+    bool sawSpp = false;
+    for (QTableWidget *t : tables)
+        for (int r = 0; r < t->rowCount(); ++r)
+            if (t->item(r, 3) && t->item(r, 3)->text().contains(QStringLiteral("(+2)")))
+                sawSpp = true;
+    QVERIFY2(sawSpp, "SPP gain missing from the roster tables");
+
+    card->close();
+    // A second endGame batch: no second card (m_toastTurnMode already
+    // endGame AND the card exists until deleted).
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetTurnMode"), QString(),
+                         QJsonValue(mode)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.findChildren<ReportCardDialog *>().size(), 1);
 }
 
 // The action log chevron points where the click takes the log — compact

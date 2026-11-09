@@ -25,6 +25,7 @@
 #include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "ui/reportcard.h"
 #include "ui/toastoverlay.h"
 
 #include <QAction>
@@ -614,6 +615,8 @@ void MainWindow::onGameState(const QJsonObject &game)
         m_toastCarrier.clear();
         m_toastSpp.clear();
         hideWaitBoard(); // the stadium (with the real state) replaces it
+        if (m_reportCard) // a new match ends the previous report card
+            m_reportCard->close();
         setConnectionStatus(tr("Game state received"), true);
     }
 }
@@ -895,8 +898,10 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
         m_toasts->showCenter(QStringLiteral("2ND HALF"));
     else if (m_toastHalf == 2 && half == 3)
         m_toasts->showCenter(QStringLiteral("EXTRA TIME"));
-    if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame"))
+    if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame")) {
         m_toasts->showCenter(QStringLiteral("FULL TIME"));
+        showReportCard();
+    }
 
     // Advance the snapshot to this batch's state.
     m_toastScoreH = sh;
@@ -945,6 +950,20 @@ void MainWindow::hideWaitBoard()
 {
     if (m_waitBoard)
         m_waitBoard->hide();
+}
+
+void MainWindow::showReportCard()
+{
+    if (m_reportCard || !m_model || !m_model->isInitialized())
+        return;
+    m_reportCard = new ReportCardDialog(m_model, this);
+    m_reportCard->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_reportCard, &QObject::destroyed, this, [this]() {
+        m_reportCard = nullptr;
+    });
+    // Non-modal: the ended match stays live (chat/review) behind the card.
+    m_reportCard->show();
+    m_reportCard->raise();
 }
 
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)

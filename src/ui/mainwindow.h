@@ -38,6 +38,7 @@ class GameModel;
 class HeaderView;
 class QCloseEvent;
 class QNetworkAccessManager;
+class ReportCardDialog;
 class ToastOverlay;
 class QNetworkReply;
 class QPlainTextEdit;
@@ -239,6 +240,9 @@ private:
     // R0 toasts: post-batch milestone diff (score/half/turnMode/carrier/
     // SPP) -> center ribbons + pills. Sets m_toast* to the new snapshot.
     void toastMilestones(bool sawCatchRoll);
+    // R0 report card v1: full-time summary (shown once per match end).
+    void showReportCard();
+    ReportCardDialog *m_reportCard = nullptr;
     // The FloatingPanel wrapping a content widget (nullptr if none).
     FloatingPanel *panelFor(QWidget *content);
     // Per-match team logos (field watermarks + header crests): fetched from
