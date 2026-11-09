@@ -331,7 +331,8 @@ void HeaderView::paintEvent(QPaintEvent *)
     const QString turnT = QStringLiteral("TURN %1").arg(m_turn);
     const QString halfT = m_half == 1 ? QStringLiteral("1ST HALF")
                           : m_half == 2 ? QStringLiteral("2ND HALF")
-                          : QStringLiteral("%1TH HALF").arg(m_half);
+                          : m_half == 3 ? QStringLiteral("EXTRA TIME")
+                          : QStringLiteral("PRE-GAME");
     const QString timeT = formatElapsed(m_elapsedSeconds);
     const QFontMetricsF fmChip(chipF), fmTime(timeF), fmLab(labF);
     const qreal w1 = fmChip.horizontalAdvance(turnT) + 14;

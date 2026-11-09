@@ -25,6 +25,7 @@
 #include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "ui/toastoverlay.h"
 
 #include <QAction>
 #include <QApplication>
@@ -256,6 +257,10 @@ void MainWindow::createCentralWidget()
 
     m_field = new FieldView(m_stage);
     m_field->setObjectName(QStringLiteral("field"));
+    // The live toast overlay sits above the field (below the floating
+    // panels): center ribbons + edge pills, transparent to the mouse.
+    m_toasts = new ToastOverlay(m_stage);
+    m_toasts->setGeometry(m_stage->rect());
     setCentralWidget(m_stage);
 }
 
@@ -468,6 +473,8 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj == m_stage && event->type() == QEvent::Resize) {
         m_field->setGeometry(m_stage->rect());
+        if (m_toasts)
+            m_toasts->setGeometry(m_stage->rect());
         onStageFirstSized();
         clampPanelsToStage();
         pinOverlays();
@@ -582,8 +589,17 @@ void MainWindow::onGameState(const QJsonObject &game)
 {
     if (m_loginSuppressMatchUi)
         return; // verification join: its game state never reaches the UI
-    if (m_model->initialize(game))
+    if (m_model->initialize(game)) {
+        // New match: the toast milestone snapshot restarts from scratch
+        // (otherwise the previous match's carrier/score would diff against
+        // the new one and fire phantom toasts).
+        m_toastScoreH = m_toastScoreA = 0;
+        m_toastHalf = 0;
+        m_toastTurnMode.clear();
+        m_toastCarrier.clear();
+        m_toastSpp.clear();
         setConnectionStatus(tr("Game state received"), true);
+    }
 }
 
 void MainWindow::applyModelToUi()
@@ -766,6 +782,117 @@ static QString reportFingerprint(const QJsonObject &report)
     return QString::fromLatin1(md5.constData(), 8);
 }
 
+// R0 toasts — report side: the structured events of one ACCEPTED report ->
+// edge pills (the log keeps its own text). Returns true when the report was
+// a SUCCEEDED catch (the batch's carrier change is a completion, not a
+// turnover).
+bool MainWindow::toastFromReport(const QJsonObject &report)
+{
+    if (!m_toasts)
+        return false;
+    bool sawCatch = false;
+    for (const ToastEvent &e : parseToastEvents(report)) {
+        if (e.kind == QLatin1String("completion")) {
+            sawCatch = true;
+            const QString name = resolveId(e.playerId);
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("COMPLETION — %1").arg(name),
+                                   QColor(46, 158, 91));
+        } else if (e.kind == QLatin1String("regeneration")) {
+            const QString name = resolveId(e.playerId);
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("REGENERATION — %1").arg(name),
+                                   QColor(142, 92, 246));
+        } else if (e.kind == QLatin1String("raiseDead")) {
+            const FFBPlayer *p =
+                m_model ? m_model->findPlayerById(e.playerId) : nullptr;
+            const QString team = p
+                                     ? (p->sideHome ? m_model->teamHomeName()
+                                                    : m_model->teamAwayName())
+                                     : QString();
+            if (!team.isEmpty())
+                m_toasts->showEdge(
+                    QStringLiteral("RAISE THE DEAD — %1 adds a Lineman").arg(team),
+                    QColor(142, 92, 246));
+        } else if (e.kind == QLatin1String("timeout")) {
+            m_toasts->showEdge(QStringLiteral("TIMEOUT — %1").arg(e.text),
+                               QColor(70, 81, 95));
+        } else if (e.kind == QLatin1String("injury")) {
+            const QString name = resolveId(e.playerId);
+            if (name.isEmpty())
+                continue;
+            const QString text =
+                e.result == QLatin1String("knockedOut")
+                    ? QStringLiteral("OUT — %1").arg(name)
+                    : e.result == QLatin1String("seriousInjury")
+                          ? QStringLiteral("Serious Injury — %1").arg(name)
+                          : e.result == QLatin1String("badlyHurt")
+                                ? QStringLiteral("Badly Hurt — %1").arg(name)
+                                : e.result == QLatin1String("rip")
+                                      ? QStringLiteral("Dead — %1").arg(name)
+                                      : e.result == QLatin1String("missNextGame")
+                                            ? QStringLiteral("Miss next game — %1").arg(name)
+                                            : QStringLiteral("ARMOUR BREAK — %1").arg(name);
+            m_toasts->showEdge(text, QColor(192, 57, 43));
+        }
+    }
+    return sawCatch;
+}
+
+// R0 toasts — milestone side: the POST-batch snapshot diff. Score up ->
+// CENTER TOUCHDOWN ribbon; half 1->2 / 2->3 -> 2ND HALF / EXTRA TIME;
+// turnMode endGame -> FULL TIME; SPP up -> "+N SPP" pill; carrier changed
+// without a completion and the old carrier still standing -> TURNOVER.
+void MainWindow::toastMilestones(bool sawCatchRoll)
+{
+    if (!m_model || !m_model->isInitialized() || !m_toasts)
+        return;
+    const int sh = m_model->scoreHome();
+    const int sa = m_model->scoreAway();
+    const int half = m_model->half();
+    const QString mode = m_model->turnMode();
+    const QString carrier = m_model->carrierId();
+    const QHash<QString, SppInfo> spp = m_model->sppTable();
+
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it) {
+        // First sight of a player's SPP = their baseline (no toast); only
+        // gains AFTER it fire (a re-join re-sends the values: delta 0).
+        const bool firstSight = !m_toastSpp.contains(it.key());
+        const int delta = it.value().current - m_toastSpp.value(it.key(), 0);
+        if (!firstSight && delta > 0) {
+            const QString name = resolveId(it.key());
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("+%1 SPP — %2").arg(delta).arg(name),
+                                   QColor(217, 165, 20));
+        }
+    }
+    if (!m_toastCarrier.isEmpty() && !carrier.isEmpty()
+        && carrier != m_toastCarrier && !sawCatchRoll) {
+        if (const FFBPlayer *prev = m_model->findPlayerById(m_toastCarrier))
+            if (prev->hasCoords && GameModel::isOnField(prev->fieldX, prev->fieldY)
+                && GameModel::baseState(prev->state) == 0) // STANDING
+                m_toasts->showEdge(QStringLiteral("TURNOVER"), QColor(230, 81, 60));
+    }
+    if (sh > m_toastScoreH || sa > m_toastScoreA)
+        m_toasts->showCenter(QStringLiteral("CENTER TOUCHDOWN"));
+    if (m_toastHalf == 1 && half == 2)
+        m_toasts->showCenter(QStringLiteral("2ND HALF"));
+    else if (m_toastHalf == 2 && half == 3)
+        m_toasts->showCenter(QStringLiteral("EXTRA TIME"));
+    if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame"))
+        m_toasts->showCenter(QStringLiteral("FULL TIME"));
+
+    // Advance the snapshot to this batch's state.
+    m_toastScoreH = sh;
+    m_toastScoreA = sa;
+    m_toastHalf = half;
+    m_toastTurnMode = mode;
+    m_toastCarrier = carrier;
+    m_toastSpp.clear();
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it)
+        m_toastSpp.insert(it.key(), it.value().current);
+}
+
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
 {
     if (m_loginSuppressMatchUi)
@@ -792,6 +919,7 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         m_loggedReportCount = 0;
     }
     const qint64 now = m_clock.elapsed();
+    bool sawCatchRoll = false; // a SUCCEEDED catch in this batch
     for (const QJsonValue &rv : reports) {
         const QJsonObject report = rv.toObject();
         if (report.isEmpty())
@@ -802,6 +930,8 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
             continue; // the server re-sent this exact report: drop it
         m_reportFpTimes.insert(fp, now);
         ++m_loggedReportCount;
+        if (toastFromReport(report))
+            sawCatchRoll = true; // a completion is not a turnover
 
         // The RED GLOW on the DEFENDER (the player being blocked) must be
         // on for the whole block action and die when the ATTACKER's blue
@@ -855,6 +985,22 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
                 target = m_model->blockTargetId();
             if (!target.isEmpty()) {
                 m_model->setBlockTargetId(target);
+                // WATCH-OUT: the block lands on the BALL CARRIER (pre-batch
+                // snapshot) — the drama of a ball-lost attempt.
+                if (!victim.isEmpty() && victim == m_toastCarrier) {
+                    const QString who = resolveId(victim);
+                    if (!who.isEmpty() && m_toasts) {
+                        const bool blitz =
+                            !m_model->blitzingPlayerId().isEmpty()
+                            && m_model->blitzingPlayerId() == m_model->activePlayerId();
+                        m_toasts->showEdge(
+                            QStringLiteral("WATCH-OUT: %1 on %2")
+                                .arg(blitz ? QStringLiteral("Blitz")
+                                           : QStringLiteral("Block"))
+                                .arg(who),
+                            QColor(217, 119, 6));
+                    }
+                }
                 // The blockChoice carries the CHOSEN die: blockRoll[] +
                 // diceIndex (capture-verified). The marker between
                 // attacker/defender switches helmet -> die symbol.
@@ -914,6 +1060,9 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         for (auto it = m_reportFpTimes.begin(); it != m_reportFpTimes.end(); )
             it = (it.value() < cutoff) ? m_reportFpTimes.erase(it) : std::next(it);
     }
+    // Milestone toasts: the POST-batch snapshot diff (score/half/turnMode/
+    // carrier/SPP) fires the center ribbons and the SPP/turnover pills.
+    toastMilestones(sawCatchRoll);
 }
 
 // Resolves a raw server id to a display name (no numeric ids in the

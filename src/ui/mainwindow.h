@@ -38,6 +38,7 @@ class GameModel;
 class HeaderView;
 class QCloseEvent;
 class QNetworkAccessManager;
+class ToastOverlay;
 class QNetworkReply;
 class QPlainTextEdit;
 class QToolBar;
@@ -100,6 +101,8 @@ public:
     // --- Core (spectator) -----------------------------------------------------
     // The game model (exposed for tests / tooling; the UI reads from it).
     GameModel *model() const { return m_model; }
+    // The live toast overlay (test seam).
+    ToastOverlay *toastOverlay() const { return m_toasts; }
     // Show the info card for a player (no selection: the spectator does not
     // select players — the field rim glow is the REMOTE coach's selection,
     // driven by the model's actingPlayer).
@@ -200,6 +203,15 @@ private:
     int m_lastKickoffSeq = 0; // kickoff flights already started
     QElapsedTimer m_clock;
     int m_loggedReportCount = 0;
+    // Toast overlay + the milestone snapshot diffed in onModelSync (the
+    // PRE-batch values: score/half/turnMode/carrier/SPP).
+    ToastOverlay *m_toasts = nullptr;
+    int m_toastScoreH = 0;
+    int m_toastScoreA = 0;
+    int m_toastHalf = 0;
+    QString m_toastTurnMode;
+    QString m_toastCarrier;
+    QHash<QString, int> m_toastSpp; // playerId -> current SPP (prev batch)
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
     // Hover card: show/hide the player info on the opposite side
@@ -209,6 +221,12 @@ private:
     void hidePlayerCard();
     // Pin the corner overlays (action log / chat) to the stage.
     void pinOverlays();
+    // R0 toasts: one report's structured events -> edge pills.
+    // Returns true on a succeeded catch (not a turnover).
+    bool toastFromReport(const QJsonObject &report);
+    // R0 toasts: post-batch milestone diff (score/half/turnMode/carrier/
+    // SPP) -> center ribbons + pills. Sets m_toast* to the new snapshot.
+    void toastMilestones(bool sawCatchRoll);
     // The FloatingPanel wrapping a content widget (nullptr if none).
     FloatingPanel *panelFor(QWidget *content);
     // Per-match team logos (field watermarks + header crests): fetched from

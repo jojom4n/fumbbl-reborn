@@ -54,6 +54,7 @@
 #include "core/credentialstore.h"
 #include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
+#include "ui/toastoverlay.h"
 
 namespace {
 
@@ -123,6 +124,7 @@ private slots:
     void unresolvedNumericIdNeverShown();
     void capturedLiveReportsParse();
     void parseToastEvents();
+    void toastMilestonesAndReportEvents();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -1546,6 +1548,78 @@ void UiWiringTest::parseToastEvents()
 
     // An unrelated report: nothing.
     QVERIFY(::parseToastEvents(report(QStringLiteral("move"))).isEmpty());
+}
+
+// R0 toasts end-to-end (offline): the overlay receives the milestone diff
+// (score/half/SPP via onModelSync) and the report events (completion /
+// injury), and the toasts fade away on their own.
+void UiWiringTest::toastMilestonesAndReportEvents()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    ToastOverlay *toasts = w.toastOverlay();
+    QVERIFY(toasts);
+    w.onGameState(fixtureGame());
+    QVERIFY(w.model()->isInitialized());
+    // The overlay is transparent to the mouse (never blocks field input).
+    QVERIFY(toasts->testAttribute(Qt::WA_TransparentForMouseEvents));
+
+    // 1. Score up -> CENTER TOUCHDOWN center ribbon.
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("teamResultSetScore"),
+                         QStringLiteral("home"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(labelContains(toasts, QStringLiteral("CENTER TOUCHDOWN")));
+
+    // 2. SPP: first sight (base, NO toast), then a +3 gain -> pill.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(!labelContains(toasts, QStringLiteral("SPP —")));
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(5)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(labelContains(toasts, QStringLiteral("+3 SPP —")));
+
+    // 3. Half 1 -> 2 -> 2ND HALF ribbon (deterministic: force half 1 first).
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetHalf"), QString(), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetHalf"), QString(), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(labelContains(toasts, QStringLiteral("2ND HALF")));
+
+    // 4. Report event: a SUCCEEDED catch -> COMPLETION pill with the name.
+    QJsonObject catchR;
+    catchR.insert(QStringLiteral("reportId"), QStringLiteral("catchRoll"));
+    catchR.insert(QStringLiteral("playerId"), QStringLiteral("18109690"));
+    catchR.insert(QStringLiteral("successful"), true);
+    QJsonArray rep;
+    rep.append(catchR);
+    w.onModelSync(QJsonArray(), rep);
+    QVERIFY(labelContains(toasts, QStringLiteral("COMPLETION —")));
+
+    // 5. Report event: armor broken + KO -> OUT pill.
+    QJsonObject inj;
+    inj.insert(QStringLiteral("reportId"), QStringLiteral("injury"));
+    inj.insert(QStringLiteral("defenderId"), QStringLiteral("18109690"));
+    inj.insert(QStringLiteral("armorBroken"), true);
+    inj.insert(QStringLiteral("injury"), QStringLiteral("knockedOut"));
+    rep = QJsonArray();
+    rep.append(inj);
+    w.onModelSync(QJsonArray(), rep);
+    QVERIFY(labelContains(toasts, QStringLiteral("OUT —")));
+
+    // 6. A toast fades away and is deleted (no leak of pills/ribbons).
+    const int before = toasts->findChildren<QLabel *>().size();
+    toasts->showCenter(QStringLiteral("FADETEST"), 30);
+    QCOMPARE(toasts->findChildren<QLabel *>().size(), before + 1);
+    QTest::qWait(700);
+    QCOMPARE(toasts->findChildren<QLabel *>().size(), before);
 }
 
 // The action log chevron points where the click takes the log — compact
