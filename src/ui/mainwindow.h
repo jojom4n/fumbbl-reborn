@@ -103,6 +103,12 @@ public:
     GameModel *model() const { return m_model; }
     // The live toast overlay (test seam).
     ToastOverlay *toastOverlay() const { return m_toasts; }
+    // The join waiting board (big HOME VS AWAY + status, centered on the
+    // stage while the session is being established; dies when the game
+    // state arrives). Public so tests can drive it without a network.
+    void showWaitBoard(const QString &home, const QString &away,
+                       const QString &status);
+    void hideWaitBoard();
     // Show the info card for a player (no selection: the spectator does not
     // select players — the field rim glow is the REMOTE coach's selection,
     // driven by the model's actingPlayer).
@@ -212,6 +218,12 @@ private:
     QString m_toastTurnMode;
     QString m_toastCarrier;
     QHash<QString, int> m_toastSpp; // playerId -> current SPP (prev batch)
+    // Join waiting board (HOME VS AWAY + status) — visible from the
+    // connect request until the game state initializes the model.
+    QLabel *m_waitBoard = nullptr;
+    QString m_waitHome;
+    QString m_waitAway;
+    QString m_waitStatus;
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
     // Hover card: show/hide the player info on the opposite side

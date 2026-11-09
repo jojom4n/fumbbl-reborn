@@ -71,8 +71,10 @@ signals:
     // The match list table has been populated (diagnostic/tests).
     void listLoaded();
     // Emitted right before accept(). The session is started with the
-    // client's login credentials (MainWindow holds them).
-    void connectRequested(int gameId);
+    // client's login credentials (MainWindow holds them). Team names are
+    // the match-list's (the waiting board shows them before the game
+    // state arrives; a manual game id has none — empty strings).
+    void connectRequested(int gameId, const QString &homeName, const QString &awayName);
 
 private slots:
     void onMatchesReceived(QVector<FFBLiveMatch> matches);

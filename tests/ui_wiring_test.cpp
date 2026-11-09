@@ -126,6 +126,7 @@ private slots:
     void parseToastEvents();
     void toastMilestonesAndReportEvents();
     void matchListDivisionTabsAndPolling();
+    void joinWaitingBoardShowsVsAndDiesOnGameState();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -1669,6 +1670,61 @@ void UiWiringTest::matchListDivisionTabsAndPolling()
     dialog.loadMatchesForTest(reloaded);
     QCOMPARE(dialog.tableRowCount(), 3);
     QCOMPARE(dialog.selectedGameId(), 102);
+}
+
+// R0 waiting board: while a join is in flight the stage shows a big
+// "HOME VS AWAY + status" board (fed by the session progress), and it
+// dies as soon as the game state initializes the model. The dialog's
+// connectRequested signal carries the match-list team names.
+void UiWiringTest::joinWaitingBoardShowsVsAndDiesOnGameState()
+{
+    // Signal contract: the names come from the match list row.
+    {
+        SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+        FFBLiveMatch m;
+        m.id = 777;
+        m.division = QStringLiteral("Competitive");
+        m.home = FFBMatchTeam{QStringLiteral("We Human"), QStringLiteral("c1"),
+                              QStringLiteral("Orc"), QString(), 0};
+        m.away = FFBMatchTeam{QStringLiteral("Kozlingo!"), QStringLiteral("c2"),
+                              QStringLiteral("Chaos Chosen"), QString(), 0};
+        QVector<FFBLiveMatch> matches;
+        matches.push_back(m);
+        dialog.loadMatchesForTest(matches);
+        QVERIFY(dialog.selectGame(777));
+        QSignalSpy spy(&dialog, &SpectateDialog::connectRequested);
+        dialog.spectate();
+        QCOMPARE(spy.count(), 1);
+        const QList<QVariant> args = spy.takeFirst();
+        QCOMPARE(args.at(0).toInt(), 777);
+        QCOMPARE(args.at(1).toString(), QStringLiteral("We Human"));
+        QCOMPARE(args.at(2).toString(), QStringLiteral("Kozlingo!"));
+    }
+
+    // Board lifecycle on the main window.
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    QLabel *board = w.findChild<QLabel *>(QStringLiteral("waitBoard"));
+    QVERIFY2(board, "waiting board label missing");
+    QVERIFY(!board->isVisible());
+
+    w.showWaitBoard(QStringLiteral("Orcs United"), QStringLiteral("Dwarves FC"),
+                    QStringLiteral("Connecting to game 42…"));
+    QVERIFY(board->isVisible());
+    QVERIFY(board->text().contains(QStringLiteral("Orcs United")));
+    QVERIFY(board->text().contains(QStringLiteral("VS")));
+    QVERIFY(board->text().contains(QStringLiteral("Dwarves FC")));
+    QVERIFY(board->text().contains(QStringLiteral("Connecting to game 42")));
+
+    // Session progress feeds the board while it is visible.
+    w.onSessionProgress(QStringLiteral("Syncing state…"));
+    QVERIFY(board->isVisible());
+    QVERIFY(board->text().contains(QStringLiteral("Syncing state")));
+
+    // The game state arrives: the board dies (the stadium takes over).
+    w.onGameState(fixtureGame());
+    QVERIFY(!board->isVisible());
 }
 
 // The action log chevron points where the click takes the log — compact

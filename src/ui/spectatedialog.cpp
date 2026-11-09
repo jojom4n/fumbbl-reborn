@@ -362,6 +362,14 @@ void SpectateDialog::spectate()
 
     QSettings().setValue(QStringLiteral("connect/lastGameId"), gameId);
 
-    emit connectRequested(gameId);
+    // The waiting board wants the team names (a manual id has none).
+    QString homeName, awayName;
+    for (const FFBLiveMatch &m : m_matches)
+        if (m.id == gameId) {
+            homeName = m.home.name;
+            awayName = m.away.name;
+            break;
+        }
+    emit connectRequested(gameId, homeName, awayName);
     accept();
 }

@@ -261,6 +261,18 @@ void MainWindow::createCentralWidget()
     // panels): center ribbons + edge pills, transparent to the mouse.
     m_toasts = new ToastOverlay(m_stage);
     m_toasts->setGeometry(m_stage->rect());
+    // The join waiting board: a big "HOME VS AWAY + status" card, centered
+    // on the stage while the session is being established.
+    m_waitBoard = new QLabel(m_stage);
+    m_waitBoard->setObjectName(QStringLiteral("waitBoard"));
+    m_waitBoard->setAlignment(Qt::AlignCenter);
+    m_waitBoard->setWordWrap(true);
+    m_waitBoard->setTextFormat(Qt::RichText);
+    m_waitBoard->setFixedWidth(680);
+    m_waitBoard->setStyleSheet(
+        QStringLiteral("#waitBoard { background: rgba(24, 24, 30, 225); "
+                       "border-radius: 12px; padding: 24px; }"));
+    m_waitBoard->hide();
     setCentralWidget(m_stage);
 }
 
@@ -475,6 +487,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         m_field->setGeometry(m_stage->rect());
         if (m_toasts)
             m_toasts->setGeometry(m_stage->rect());
+        if (m_waitBoard && m_waitBoard->isVisible())
+            m_waitBoard->move((m_stage->width() - m_waitBoard->width()) / 2,
+                              (m_stage->height() - m_waitBoard->height()) / 2);
         onStageFirstSized();
         clampPanelsToStage();
         pinOverlays();
@@ -598,6 +613,7 @@ void MainWindow::onGameState(const QJsonObject &game)
         m_toastTurnMode.clear();
         m_toastCarrier.clear();
         m_toastSpp.clear();
+        hideWaitBoard(); // the stadium (with the real state) replaces it
         setConnectionStatus(tr("Game state received"), true);
     }
 }
@@ -891,6 +907,44 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
     m_toastSpp.clear();
     for (auto it = spp.cbegin(); it != spp.cend(); ++it)
         m_toastSpp.insert(it.key(), it.value().current);
+}
+
+void MainWindow::showWaitBoard(const QString &home, const QString &away,
+                               const QString &status)
+{
+    if (!m_waitBoard || !m_stage)
+        return;
+    m_waitHome = home;
+    m_waitAway = away;
+    m_waitStatus = status;
+    QString title;
+    if (!home.isEmpty() && !away.isEmpty())
+        title = QStringLiteral("%1<span style=\"color:#c0392b;\">&nbsp; VS &nbsp;</span>%2")
+                    .arg(home, away);
+    else if (!home.isEmpty() || !away.isEmpty())
+        title = home.isEmpty() ? away : home;
+    else
+        title = tr("JOINING");
+    m_waitBoard->setText(QStringLiteral(
+                             "<div style=\"text-align:center;\">"
+                             "<div style=\"font-size:24px;font-weight:800;"
+                             "color:#ffffff;\">%1</div>"
+                             "<div style=\"font-size:13px;color:#9aa0aa;"
+                             "margin-top:12px;\">%2</div>"
+                             "</div>")
+                             .arg(title)
+                             .arg(status));
+    m_waitBoard->adjustSize();
+    m_waitBoard->move((m_stage->width() - m_waitBoard->width()) / 2,
+                      (m_stage->height() - m_waitBoard->height()) / 2);
+    m_waitBoard->show();
+    m_waitBoard->raise();
+}
+
+void MainWindow::hideWaitBoard()
+{
+    if (m_waitBoard)
+        m_waitBoard->hide();
 }
 
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
@@ -1284,6 +1338,9 @@ void MainWindow::onSessionProgress(const QString &message)
 {
     setConnectionStatus(message, true);
     appendProtocol(QStringLiteral("progress "), message);
+    // The join waiting board tracks the session progress live.
+    if (m_waitBoard && m_waitBoard->isVisible())
+        showWaitBoard(m_waitHome, m_waitAway, message);
 }
 
 void MainWindow::onSessionFatal(const QString &message)
@@ -1298,6 +1355,7 @@ void MainWindow::onSessionFatal(const QString &message)
         return;
     }
     setConnectionStatus(message, false);
+    hideWaitBoard(); // the board dies with the failed join
     appendProtocol(QStringLiteral("FATAL "), message);
 }
 
@@ -1380,7 +1438,8 @@ void MainWindow::openSpectateDialog()
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this, &dialog](int gameId)
+            [this, &dialog](int gameId, const QString &homeName,
+                            const QString &awayName)
             {
                 // This match's session is starting: Log out becomes live
                 // (the active coach is the logged-in one).
@@ -1399,6 +1458,10 @@ void MainWindow::openSpectateDialog()
                 m_loginSuppressMatchUi = false;
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
+                // The waiting board: HOME VS AWAY (match-list names) until
+                // the game state arrives (onGameState hides it).
+                showWaitBoard(homeName, awayName,
+                              tr("Connecting to game %1…").arg(gameId));
                 m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
             });
     dialog.exec();
