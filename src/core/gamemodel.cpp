@@ -529,7 +529,7 @@ QString GameModel::carrierId() const
         if (!p.hasCoords || !isOnField(p.fieldX, p.fieldY))
             continue;
         if (p.fieldX == m_ballX && p.fieldY == m_ballY
-            && baseState(p.state) == 0) // STANDING
+            && baseState(p.state) == 1) // STANDING
             return p.playerId;
     }
     return QString();

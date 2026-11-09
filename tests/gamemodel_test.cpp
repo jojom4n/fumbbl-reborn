@@ -901,7 +901,7 @@ void GameModelTest::sppInducementsAndCarrier()
     changes.append(change(QStringLiteral("fieldModelSetPlayerCoordinate"),
                           QStringLiteral("18109690"), QJsonValue(coords)));
     changes.append(change(QStringLiteral("fieldModelSetPlayerState"),
-                          QStringLiteral("18109690"), QJsonValue(0))); // STANDING
+                          QStringLiteral("18109690"), QJsonValue(1))); // STANDING
     model.applyModelChanges(changes);
     QCOMPARE(model.carrierId(), QStringLiteral("18109690"));
 
@@ -917,7 +917,7 @@ void GameModelTest::sppInducementsAndCarrier()
     other << 5 << 5;
     changes = QJsonArray();
     changes.append(change(QStringLiteral("fieldModelSetPlayerState"),
-                          QStringLiteral("18109690"), QJsonValue(0)));
+                          QStringLiteral("18109690"), QJsonValue(1)));
     changes.append(change(QStringLiteral("fieldModelSetBallCoordinate"),
                           QString(), QJsonValue(other)));
     model.applyModelChanges(changes);

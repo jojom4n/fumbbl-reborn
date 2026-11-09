@@ -870,7 +870,7 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
         && carrier != m_toastCarrier && !sawCatchRoll) {
         if (const FFBPlayer *prev = m_model->findPlayerById(m_toastCarrier))
             if (prev->hasCoords && GameModel::isOnField(prev->fieldX, prev->fieldY)
-                && GameModel::baseState(prev->state) == 0) // STANDING
+                && GameModel::baseState(prev->state) == 1) // STANDING
                 m_toasts->showEdge(QStringLiteral("TURNOVER"), QColor(230, 81, 60));
     }
     if (sh > m_toastScoreH || sa > m_toastScoreA)
@@ -1645,6 +1645,9 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
     d.ag = p->ag;
     d.pa = p->pa;
     d.av = p->av;
+    // SPP: base (first sight) + in-match gain (red "+x" on the card).
+    d.sppBase = m_model->sppBase(p->playerId);
+    d.sppGain = qMax(0, m_model->sppCurrent(p->playerId) - d.sppBase);
     d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
     if (p->hasCoords) {
