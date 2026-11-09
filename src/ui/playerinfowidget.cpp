@@ -255,6 +255,7 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_statAg = makeStat(QStringLiteral("AG"), 0, stats, 2);
     m_statPa = makeStat(QStringLiteral("PA"), 0, stats, 3);
     m_statAv = makeStat(QStringLiteral("AV"), 0, stats, 4);
+    m_statSpp = makeStat(QStringLiteral("SPP"), 0, stats, 5);
     v->addLayout(stats);
 
     // Skills header + chips
@@ -398,6 +399,19 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     setStat(m_statAg, QStringLiteral("AG"), info.ag);
     setStat(m_statPa, QStringLiteral("PA"), info.pa);
     setStat(m_statAv, QStringLiteral("AV"), info.av);
+    // SPP: base value, plus the in-match gain in red ("SPP 4 +2").
+    {
+        QString spp = QStringLiteral(
+            "<span style=\"font-size:9px;color:#687280;letter-spacing:1px;\">SPP</span>"
+            "<br><span style=\"font-size:17px;font-weight:800;color:#222832;\">%1</span>")
+            .arg(info.sppBase);
+        if (info.sppGain > 0)
+            spp += QStringLiteral(
+                " <span style=\"font-size:12px;font-weight:800;color:#c0392b;\">"
+                "+%1</span>")
+                .arg(info.sppGain);
+        m_statSpp->setText(spp);
+    }
 
     // Skills — outlined chips (used-this-turn chips dimmed).
     QVector<SkillChipsWidget::Chip> chips;
@@ -421,18 +435,25 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     }
 
     // Player state — state only (no Active/ACTING chip, Mockup F).
-    // Colored: green for standing/moving, red for prone, amber for stunned,
-    // gray for players in the box.
+    // Colored: green for standing/moving, red for injury states (prone,
+    // KO/BH/SI/KILLED), amber for stunned, gray for box/reserve/missing.
     QString state = info.stateText;
     if (state.isEmpty() && !info.status.isEmpty())
         state = info.status;
     QString stateColor = QStringLiteral("#3d8f5f"); // green (standing/moving)
-    if (info.stateText.contains(QLatin1String("Prone"), Qt::CaseInsensitive))
-        stateColor = QStringLiteral("#c0392b"); // red
-    else if (info.stateText.contains(QLatin1String("Stun"), Qt::CaseInsensitive))
+    if (state.contains(QLatin1String("Prone"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("Knocked Out"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("Badly Hurt"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("Serious Injury"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("Killed"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("KO"), Qt::CaseInsensitive))
+        stateColor = QStringLiteral("#c0392b"); // red (injury states)
+    else if (state.contains(QLatin1String("Stun"), Qt::CaseInsensitive))
         stateColor = QStringLiteral("#c07f1f"); // amber
-    else if (info.stateText.contains(QLatin1String("box"), Qt::CaseInsensitive))
-        stateColor = QStringLiteral("#687280"); // gray (in the box)
+    else if (state.contains(QLatin1String("box"), Qt::CaseInsensitive)
+             || state.contains(QLatin1String("Reserve"), Qt::CaseInsensitive)
+             || state.contains(QLatin1String("Missing"), Qt::CaseInsensitive))
+        stateColor = QStringLiteral("#687280"); // gray (off the field)
     m_stateLabel->setText(state.toUpper());
     m_stateLabel->setStyleSheet(
         QStringLiteral("color:%1; font-weight:700;").arg(stateColor));
