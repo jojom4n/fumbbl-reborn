@@ -30,14 +30,19 @@ no web view, no installers.
 - **The field feels alive.** Animated glow on the ball and the acting
   player, movement trails with move numbers, block markers between the
   pair, and rain when the gods get moody.
+- **It tells you what matters.** Broadcast-style ribbons (CENTER
+  TOUCHDOWN, 2ND HALF, EXTRA TIME, FULL TIME) and edge toasts (+SPP,
+  completions, injuries, turnovers) — the highlights, at a glance.
 - **One download, zero setup.** Linux AppImage / tar.gz and a Windows
   zip — everything (Qt, assets, faces, dice) is bundled.
 
 ## Screenshots
 
-| The field, live | The dugouts | The player card |
-|---|---|---|
-| ![field](docs/screenshots/field.png) | ![dugout](docs/screenshots/dugout.png) | ![card](docs/screenshots/card.png) |
+| The field, mid-action | The player card |
+|---|---|
+| ![field](docs/screenshots/field.png) | ![card](docs/screenshots/card.png) |
+| The action log — dice are dice | The match list, live |
+| ![dice](docs/screenshots/dice.png) | ![spectate](docs/screenshots/spectate.png) |
 
 ## Install
 
@@ -61,18 +66,22 @@ Unpack `FUMBBL-Reborn-*-windows-x86_64.zip` anywhere and run
 
 ### First run
 
-`File ▸ Spectate Game…` — enter your FUMBBL account credentials (your
-coach name and site password — the same ones you log in to fumbbl.com
-with), pick a live match and watch. With "Remember credentials" on
-(the default), the password is stored in your **system keychain**
-(Windows Credential Manager, macOS Keychain or Linux Secret Service):
-only its MD5 hash is kept, never the plaintext. Without a keychain the
-client falls back to a local `0600` file on your machine.
+The client opens with a **sign-in dialog**: enter your FUMBBL account
+credentials (your coach name and site password — the same ones you log in
+to fumbbl.com with). The client verifies them against the live server
+before it lets you in. With "Remember credentials" on (the default), the
+password is stored in your **system keychain** (Windows Credential
+Manager, macOS Keychain or Linux Secret Service): only its MD5 hash is
+kept, never the plaintext. Without a keychain the client falls back to a
+local `0600` file on your machine.
+
+Then: `File ▸ Spectate Game…` — pick a live match and watch.
 
 ## Features (spectator)
 
-- **Live spectating** — the live match list, filterable by race, coach,
-  team and division (or jump straight to a Game ID).
+- **Live spectating** — the live match list with per-division tabs,
+  filter by race/coach/team, 20-second auto-refresh (your selection
+  survives), or jump straight to a Game ID.
 - **Real-time field** — players, ball and full game state, driven by the
   official FUMBBL protocol: the same coach + password challenge login
   the official Java client uses, on the public WebSocket channel.
@@ -80,10 +89,19 @@ client falls back to a local `0600` file on your machine.
   race-aware name resolution (a `BBT18` werewolf is named like a werewolf).
 - **Dice log** — every roll with the player's name, the skills that
   mattered, and the dice drawn as **dice**, not numbers.
+- **Scoreboard that tells the story** — half display (PRE-GAME / 1ST /
+  2ND / EXTRA TIME), turn, weather, SPP gain per player (red `+N`).
+- **Toasts** — center ribbons for the big moments, edge pills for
+  completions, regeneration, raise the dead, timeouts, injuries and
+  turnovers.
+- **Waiting board** — while a match is being joined: HOME VS AWAY plus
+  the live session status.
+- **Report card** — at full time: final score, both rosters with SPP and
+  final player states.
 - **Chat & spectators** — live match chat (send when you've joined) and
   the current spectator count.
 - **Player info card** — hover or click any player: race, position,
-  stats (MA/ST/AG/PA/AV) and skills.
+  stats (MA/ST/AG/PA/AV), SPP and skills.
 - **Resilient connection** — automatic re-join with a fresh challenge
   when a session drops, and visible server errors instead of silent
   failures.
@@ -101,10 +119,17 @@ not.
 
 ## Roadmap
 
-- [x] Spectate any live match
-- [ ] Play your own team (in-game commands)
-- [ ] Replays
-- [ ] Team management / roster view
+The work is tracked as milestones in the
+[issue tracker](https://github.com/jojom4n/fumbbl-reborn/issues) —
+every entry there is a real, scoped item:
+
+| Milestone | What's in it |
+|---|---|
+| [R0 — Spectator Quick Wins](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A1) | Toasts & SPP, division tabs + auto-refresh, waiting board, report card, inducement icons |
+| [R1 — Match Library & Replay](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A2) | Local auto-archive of watched matches, replay viewer, highlights, live scrub, multi-rulebook (BB2016/2020/2025) |
+| [R2 — Match Experience](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A3) | Live stats panel, commentary toggle, focus mode, full report card (MVP, stats), full player card, audio engine, settings, i18n, coach home pane |
+| [R3 — Platform](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A4) | Auto-update, macOS build, ARM64 AppImage (Steam Deck / Pi), in-app bug reports, accessibility, guided onboarding |
+| [R4 — Play Mode](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A5) | Play your own team — same executable, in-game commands |
 
 The protocol and model layers are already built with play in mind —
 spectating is the first milestone, not the last.

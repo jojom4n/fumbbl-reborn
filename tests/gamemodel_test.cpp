@@ -39,6 +39,7 @@ class GameModelTest : public QObject
 private slots:
     void initializeFromRealGameState();
     void initializeFromLiveGameState();
+    void initializeFromLiveHeroFixture();
     void modelChangesEssentials();
     void boxAndRemovePlayer();
     void moveTrailAccumulatesAndClears();
@@ -193,6 +194,39 @@ void GameModelTest::initializeFromLiveGameState()
 
     // Unknown id
     QVERIFY(model.findPlayerById(QStringLiteral("nope")) == nullptr);
+}
+
+// REAL live capture (game 1962007, Doom18 GraveGuards vs Hashut's Wrath 25,
+// 2nd half). Pins the live score shape: the score is ONLY in
+// gameResult.teamResultX.score (no team-level or top-level score object).
+void GameModelTest::initializeFromLiveHeroFixture()
+{
+    QFile f(QStringLiteral("liveGameState_hero.json"));
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    QVERIFY(doc.isObject());
+    const QJsonObject game =
+        doc.object().value(QStringLiteral("game")).toObject();
+
+    GameModel model;
+    QVERIFY(model.initialize(game));
+    QVERIFY(model.isInitialized());
+
+    QCOMPARE(model.teamHomeName(), QStringLiteral("Doom18 GraveGuards"));
+    QCOMPARE(model.teamAwayName(), QStringLiteral("Hashut's Wrath 25"));
+    QCOMPARE(model.teamHomeCoach(), QStringLiteral("JyrKing"));
+    QCOMPARE(model.teamAwayCoach(), QStringLiteral("MattDakka"));
+    QCOMPARE(model.teamHomeRace(), QStringLiteral("Tomb Kings"));
+    QCOMPARE(model.teamAwayRace(), QStringLiteral("Chaos Dwarf"));
+    QCOMPARE(model.rosterHome().size(), 11);
+    QCOMPARE(model.rosterAway().size(), 12);
+
+    // Score from gameResult (the ONLY score source in live payloads)
+    QCOMPARE(model.scoreHome(), 0);
+    QCOMPARE(model.scoreAway(), 1);
+
+    QCOMPARE(model.half(), 2);
+    QCOMPARE(model.turn(), 5); // home turnNr wins
 }
 
 void GameModelTest::modelChangesEssentials()

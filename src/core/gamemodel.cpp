@@ -306,6 +306,12 @@ bool GameModel::initialize(const QJsonObject &game)
         m_scoreHome = readInt(home.value(QStringLiteral("score")));
     if (away.contains(QStringLiteral("score")))
         m_scoreAway = readInt(away.value(QStringLiteral("score")));
+    // Live captures carry the score in gameResult (per team result object).
+    const QJsonObject result = game.value(QStringLiteral("gameResult")).toObject();
+    if (result.value(QStringLiteral("teamResultHome")).toObject().contains(QStringLiteral("score")))
+        m_scoreHome = readInt(result.value(QStringLiteral("teamResultHome")).toObject().value(QStringLiteral("score")));
+    if (result.value(QStringLiteral("teamResultAway")).toObject().contains(QStringLiteral("score")))
+        m_scoreAway = readInt(result.value(QStringLiteral("teamResultAway")).toObject().value(QStringLiteral("score")));
 
     m_initialized = true;
     emit stateUpdated();

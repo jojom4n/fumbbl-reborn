@@ -4,6 +4,72 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.2.20 — 2026-11-10
+- **Live matches now show the real score.** Live `serverGameState`
+  payloads carry the score ONLY in `gameResult.teamResultX.score` (no
+  top-level or per-team `score`), which the model ignored — every live
+  match rendered 0:0 until the next score update. The parser now reads
+  `gameResult` as a third score source, pinned by a new test on a real
+  live capture (game 1962007, saved as `tests/liveGameState_hero.json`).
+- **README + screenshot set refreshed**: real live-match screenshots
+  (hero, field, player card, dice log with a real captured report
+  stream, live match list), roadmap now links the five milestone issue
+  boards, first-run text updated for the startup sign-in gate.
+- **Tools**: the live report capturer now reads the `password_md5=`
+  credentials line (it only accepted plaintext `password=`, so after the
+  app's keychain migration it hung waiting on the OS keychain — which
+  offscreen processes never reach).
+
+## 0.2.19 — 2026-11-09
+- **Report card v1 at full time**: when the turn mode hits `endGame`,
+  a non-modal card shows the final score (names, coaches, races) and
+  both rosters — number, player, position, SPP (base with red
+  in-match gain) and final state. It stays open over the ended match
+  and closes when the next one starts. Test covers lifecycle, rosters,
+  SPP gain and no double card.
+
+## 0.2.18 — 2026-11-09
+- **Waiting board**: while a match is being joined, a centered
+  "HOME VS AWAY" card (names from the live match list) with the live
+  session status appears on the stage; it disappears on game state or
+  fatal session error.
+
+## 0.2.17 — 2026-11-09
+- **Match list: division tabs + auto-refresh**: the Spectate dialog
+  now has All/Competitive/League (plus per-division) tabs and polls
+  the live list every 20 s (skipped while a fetch is in flight); the
+  selected match survives reloads and the status line shows the match
+  count + update time.
+
+## 0.2.16 — 2026-11-09
+- **Player card: SPP column and injury states**: the card shows SPP
+  base with a red `+gain` for in-match growth, and the state line is
+  colored by severity (red for Prone/KO/Badly Hurt/Seriously
+  Hurt/Killed, amber for Stunned, gray for box/reserve/missing).
+
+## 0.2.15 — 2026-11-09
+- **Carrier/turnover fix**: the ball carrier is the STANDING
+  baseState==1 player (0 is UNKNOWN, not a state) — the previous
+  check misidentified the carrier on many turns.
+
+## 0.2.14 — 2026-11-09
+- **Toast system v1**: broadcast ribbons (CENTER TOUCHDOWN, 2ND HALF,
+  EXTRA TIME, FULL TIME) in the center and edge pills (+SPP,
+  COMPLETION, REGENERATION, RAISE THE DEAD, TIMEOUT, injury, TURNOVER,
+  WATCH-OUT) on the left, both self-fading and mouse-transparent.
+  Header half display: PRE-GAME / 1ST HALF / 2ND HALF / EXTRA TIME.
+
+## 0.2.13 — 2026-11-09
+- **Model: the toast/SPP data layer** — catch and regeneration roll
+  reports, per-player SPP tracking (base/current, first-sight
+  baseline), derived ball carrier, inducement sets from team sync
+  ( Keg/Bribes/Prayer add-remove), and a toast-event classifier for
+  completions, regeneration, raise the dead, timeouts and injuries.
+
+## 0.2.12 — 2026-11-09
+- **Tools**: the live smoke/capture tools accept the `password=`
+  (plaintext) credentials variant next to `password_md5=`.
+
 ## 0.2.11 — 2026-11-08
 - **Codebase hygiene**: every comment now cites only our own ground
   truth (the ffb Java sources, the official Java client, live

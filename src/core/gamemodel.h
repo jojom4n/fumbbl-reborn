@@ -190,6 +190,8 @@ public:
     // rules, niche cases included) — we only mirror the values.
     int sppBase(const QString &playerId) const;
     int sppCurrent(const QString &playerId) const;
+    // The whole SPP table (playerId -> {base, current}) — UI snapshot diff.
+    QHash<QString, SppInfo> sppTable() const { return m_spp; }
 
     // The ball carrier: the standing player on the ball's square (empty =
     // none — ball in the air, on an empty square, or no ball coordinate).

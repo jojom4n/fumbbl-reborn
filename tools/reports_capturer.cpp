@@ -103,6 +103,7 @@ int main(int argc, char *argv[])
     // in-process and never printed) -----------------------------------------
     QString coach;
     QString password;
+    QByteArray fileMd5;
     {
         QFile credsFile(credentialsPath);
         if (!credsFile.open(QIODevice::ReadOnly)) {
@@ -120,6 +121,11 @@ int main(int argc, char *argv[])
                 coach = value;
             else if (key == QLatin1String("password"))
                 password = value;
+            else if (key == QLatin1String("password_md5")) {
+                fileMd5 = QByteArray::fromHex(value.toLatin1());
+                if (fileMd5.size() != 16)
+                    fileMd5.clear();
+            }
         }
     }
     if (coach.isEmpty()) {
@@ -246,11 +252,11 @@ int main(int argc, char *argv[])
         watchdog.start(durationSec * 1000);
     };
 
-    const QByteArray fileMd5 = password.isEmpty()
-                                   ? QByteArray()
-                                   : fumbbl::PasswordChallenge::encodePassword(password);
-    if (!fileMd5.isEmpty()) {
-        startSession(fileMd5);
+    const QByteArray md5 = password.isEmpty()
+                              ? fileMd5
+                              : fumbbl::PasswordChallenge::encodePassword(password);
+    if (!md5.isEmpty()) {
+        startSession(md5);
     } else if (CredentialStore::hasBackend()) {
         logLine(QStringLiteral("No password in the file — looking up the OS keychain …"));
         CredentialStore store;
