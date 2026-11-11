@@ -5,6 +5,15 @@ record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
 ## 0.2.22 — 2026-11-11
+- **Third-party licensing (Qt 6 LGPLv3 compliance)**: added
+  `LICENSE-THIRD-PARTY.md` documenting the third-party components —
+  Qt 6 under LGPLv3 (linked dynamically against unmodified shared
+  libraries; source access statement per LGPL §4) and lz-string under
+  WTFPL (the ported UTF-16 codec in `src/core/lzstring.cpp`). The
+  README links to it, and both license files now ship at the root of
+  every release artifact.
+
+## 0.2.23 — 2026-11-11
 - **Inducement badges in the match header**: every inducement a team
   fields is now drawn as a small badge next to its re-roll dots
   (home right of the dots, away mirrored). 21 artwork icons generated

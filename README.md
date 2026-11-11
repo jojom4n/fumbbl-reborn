@@ -146,4 +146,5 @@ modify, copy or redistribute any FUMBBL proprietary content. Provided
 
 ## License
 
-[GNU General Public License v3.0 or later](LICENSE).
+This project is licensed under the GPLv3 — see the [LICENSE](LICENSE) file for details.
+For third-party component licenses (including Qt 6 under LGPLv3), see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
