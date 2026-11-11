@@ -2135,10 +2135,11 @@ void FieldView::paintEvent(QPaintEvent *)
     if (f.isEmpty())
         return;
 
-    // Dark apron behind the scene: the stadium scene is drawn in the
-    // zoomed/panned space below; this only shows if the scene ever fails to
-    // cover (no stadium art) — a dark stadium floor.
-    p.fillRect(QRectF(0, 0, width(), height()), QColor(40, 38, 36));
+    // The OUTDOORS: the manifest's surround color (per-stadium mood — deep
+    // dark for a night arena, light for a day stadium). Shown in the
+    // letterbox and whenever the scene is zoomed out; the stadium's edges
+    // feather into it below.
+    p.fillRect(QRectF(0, 0, width(), height()), m_stadium.surround);
 
     // Field navigation: the WHOLE scene (dugouts, texture, grid, tokens,
     // rain) lives in a zoomed/panned space (the dugout panels are part of
@@ -2163,8 +2164,27 @@ void FieldView::paintEvent(QPaintEvent *)
             p.setRenderHint(QPainter::SmoothPixmapTransform, true);
             p.drawPixmap(s, st, QRectF(0, 0, st.width(), st.height()));
             p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+            // FEATHER the stadium's edges into the surround: a soft gradient
+            // (surround -> transparent) over each edge, so the art melts
+            // into the outdoors instead of ending in a hard letterbox line.
+            const qreal F = qMax(24.0, s.height() * 0.05);
+            const QColor sc = m_stadium.surround;
+            const auto edge = [&](QRectF r, const QPointF &from, const QPointF &to) {
+                QLinearGradient g(from, to);
+                g.setColorAt(0.0, sc);
+                g.setColorAt(1.0, QColor(sc.red(), sc.green(), sc.blue(), 0));
+                p.fillRect(r, QBrush(g));
+            };
+            edge(QRectF(s.left(), s.top(), s.width(), F),
+                 QPointF(s.left(), s.top()), QPointF(s.left(), s.top() + F));
+            edge(QRectF(s.left(), s.bottom() - F, s.width(), F),
+                 QPointF(s.left(), s.bottom()), QPointF(s.left(), s.bottom() - F));
+            edge(QRectF(s.left(), s.top(), F, s.height()),
+                 QPointF(s.left(), s.top()), QPointF(s.left() + F, s.top()));
+            edge(QRectF(s.right() - F, s.top(), F, s.height()),
+                 QPointF(s.right(), s.top()), QPointF(s.right() - F, s.top()));
         } else {
-            p.fillRect(s, QColor(58, 56, 54)); // fallback apron
+            p.fillRect(s, m_stadium.surround); // no art: the surround itself
         }
         // (The dugout benches are painted at the END of the zoomed pass,
         // once the field + tokens + rain are on top.)

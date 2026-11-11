@@ -3,6 +3,7 @@
   "source": "Qwen-Image i2i from user reference (lr4njlayl49d1), denoise 0.85, seed 310, 1536x1088; pit flood-filled + watermarks removed",
   "fieldPit": { "x": 0.1348, "y": 0.1848, "w": 0.7305, "h": 0.6259 },
   "pitRadius": { "x": 0.0176, "y": 0.0211 },
+  "surround": "#100f16",
   "dugoutHome": { "x": 0.170, "y": 0.028, "w": 0.280, "h": 0.132 },
   "dugoutAway": { "x": 0.550, "y": 0.028, "w": 0.280, "h": 0.132 },
   "note": "Dark-fantasy top-down arena (user-approved style). Field = the pit rect (fieldRect fills it exactly); pitRadius = the frame's inner corner curve (normalized to stadium w/h) — the client clips the field to this rounded rect so the grass corners follow the stone arch. Dugout wood panel (assets/dugout/panel.png) mounted on the dugout rects."

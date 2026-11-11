@@ -4,6 +4,33 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.2.22 — 2026-11-11
+- **Inducement badges in the match header**: every inducement a team
+  fields is now drawn as a small badge next to its re-roll dots
+  (home right of the dots, away mirrored). 21 artwork icons generated
+  (Qwen-Image, 1024px — crisp at 4K) covering the full BB2025 FFB
+  inducement set: mascots, prayers, coaches, cheerleaders, weather
+  mage, wizard (Fireball / Zap!), kegs, bribes, mortuary assistant,
+  plague doctor, riotous rookies, throw a rock, master chef, biased
+  referee, coaching staff, Bugman, star players, mercenaries, plus a
+  distinct wandering-apothecary badge and a roster apothecary badge.
+  Hover shows the inducement name, effect and units still available.
+- **Consumed inducements go gray**: the badge turns grayscale when its
+  charges are exhausted (`value − uses ≤ 0`, live server data — a bribe
+  burns a charge on every use, the mascot per half, the wizard once
+  per game); passive inducements never consume and stay in color, and
+  a server recharge brings the badge back. Multi-unit inducements show
+  a small count disc with the units still available.
+
+## 0.2.21 — 2026-11-11
+- **Stadium surround**: the space outside the stadium (letterbox and
+  zoomed-out view) is no longer a flat gray band. Each stadium's
+  manifest now carries a `surround` color matching its mood (the night
+  arenas get a deep near-black; a day stadium can declare a light
+  neutral), and the stadium's edges feather into it with a soft
+  gradient — the arena reads as lit and deliberate instead of pasted
+  on a backdrop.
+
 ## 0.2.20 — 2026-11-10
 - **Live matches now show the real score.** Live `serverGameState`
   payloads carry the score ONLY in `gameResult.teamResultX.score` (no

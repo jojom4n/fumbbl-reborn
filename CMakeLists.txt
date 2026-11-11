@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.2.20
+    VERSION 0.2.21
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )

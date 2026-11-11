@@ -279,6 +279,31 @@ QPixmap blockHelmet()
     return loadPixmap(QStringLiteral("markers/helmet.png"));
 }
 
+QPixmap inducementPixmap(const QString &typeId, bool spent)
+{
+    QPixmap pm = loadPixmap(QStringLiteral("inducements/%1.png").arg(typeId));
+    if (pm.isNull())
+        pm = loadPixmap(QStringLiteral("inducements/generic.png"));
+    // The generated badges ship on a flat backdrop — key it (the keyer is
+    // guarded: real alpha or non-flat borders pass through untouched).
+    if (!pm.isNull() && !pm.hasAlphaChannel())
+        pm = QPixmap::fromImage(keyBackground(pm.toImage()));
+    if (!spent || pm.isNull())
+        return pm;
+    // SPENT badge (charges exhausted, server live data): grayscale. The
+    // conversion happens ONCE per type and is cached — paintEvent does no
+    // pixel work. If the server recharges the inducement, the caller stops
+    // passing spent and the color badge comes back.
+    static QHash<QString, QPixmap> spentCache;
+    if (auto it = spentCache.constFind(typeId); it != spentCache.end())
+        return it.value();
+    const QImage gray = pm.toImage().convertToFormat(QImage::Format_Grayscale8)
+                            .convertToFormat(QImage::Format_ARGB32);
+    const QPixmap g = QPixmap::fromImage(gray);
+    spentCache.insert(typeId, g);
+    return g;
+}
+
 QPixmap stadiumImage(const QString &name)
 {
     // Prefer the 4K asset (stadium_4k.png, 3840px) — it stays crisp at any
@@ -314,6 +339,9 @@ StadiumManifest stadiumManifest(const QString &name)
     const QJsonObject pr = o.value(QStringLiteral("pitRadius")).toObject();
     m.pitRadiusX = pr.value(QStringLiteral("x")).toDouble();
     m.pitRadiusY = pr.value(QStringLiteral("y")).toDouble();
+    m.surround = QColor(o.value(QStringLiteral("surround")).toString());
+    if (!m.surround.isValid())
+        m.surround = QColor(0x10, 0x0f, 0x16);
     m.valid = !m.fieldPit.isNull();
     return m;
 }
