@@ -3,11 +3,16 @@
 // =============================================================================
 #include "ui/headerview.h"
 
+#include "core/assets.h"
+
 #include <QFontMetricsF>
+#include <QHash>
+#include <QMouseEvent>
 #include <QPainterPath>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QTimer>
+#include <QToolTip>
 
 #include <cmath>
 #include <QPushButton>
@@ -67,6 +72,63 @@ void coin(QPainter &p, qreal cx, qreal cy, qreal r, bool active)
         p.setBrush(QColor(240, 216, 130, 200));
         p.drawEllipse(QPointF(cx - r * 0.12, cy - r * 0.22), r * 0.5, r * 0.35);
     }
+}
+
+// Inducement tooltip text: the official BB2025 rulebook name + the
+// effect. Unknown type ids fall back to a humanized form of the id.
+QString inducementTip(const QString &typeId, int count)
+{
+    static const QHash<QString, QString> tips = {
+        {QStringLiteral("bribes"),
+         QStringLiteral("Bribes — avoid the box")},
+        {QStringLiteral("bloodweiserBabes"),
+         QStringLiteral("Blitzer's Best Kegs — recover knocked-out players")},
+        {QStringLiteral("plagueDoctor"),
+         QStringLiteral("Plague Doctor — regenerate players")},
+        {QStringLiteral("mortuaryAssistant"),
+         QStringLiteral("Mortuary Assistant — regenerate players")},
+        {QStringLiteral("prayers"),
+         QStringLiteral("Prayers to Nuffle")},
+        {QStringLiteral("partTimeCoach"),
+         QStringLiteral("Part-Time Assistant Coaches")},
+        {QStringLiteral("teamMascot"),
+         QStringLiteral("Team Mascot — Re-Roll and cheer the fans")},
+        {QStringLiteral("tempCheerleader"),
+         QStringLiteral("Temp Agency Cheerleaders")},
+        {QStringLiteral("weatherMage"),
+         QStringLiteral("Weather Mage — change the weather")},
+        {QStringLiteral("wizard"),
+         QStringLiteral("Sports-Wizard — spells (Fireball / Zap!)")},
+        {QStringLiteral("apothecary"),
+         QStringLiteral("Apothecary — heals players")},
+        {QStringLiteral("wanderingApothecaries"),
+         QStringLiteral("Wandering Apothecary — heals players once")},
+        {QStringLiteral("starPlayers"),
+         QStringLiteral("Star Players")},
+        {QStringLiteral("mercenaries"),
+         QStringLiteral("Mercenary Players")},
+        {QStringLiteral("biasedRef"),
+         QStringLiteral("Biased Referee — close scrutiny / argue bonus")},
+        {QStringLiteral("infamousStaff"),
+         QStringLiteral("Infamous Coaching Staff")},
+        {QStringLiteral("josefBugman"),
+         QStringLiteral("Infamous Coaching Staff: Josef Bugman — KO recovery bonus, Dwarfen Wisdom")},
+        {QStringLiteral("bugmansXXXXXX"),
+         QStringLiteral("Infamous Coaching Staff: Bugman's XXXXXX — KO recovery bonus")},
+        {QStringLiteral("dwarfenWisdom"),
+         QStringLiteral("Dwarfen Wisdom — reset D3 players pre-kickoff")},
+        {QStringLiteral("briberyAndCorruption"),
+         QStringLiteral("Bribery and Corruption")},
+        {QStringLiteral("riotousRookies"),
+         QStringLiteral("Riotous Rookies")},
+        {QStringLiteral("throwARock"),
+         QStringLiteral("Throw a Rock")},
+        {QStringLiteral("halflingMasterChef"),
+         QStringLiteral("Halfling Master Chef")},
+    };
+    const QString name = tips.value(
+        typeId, typeId.section(QLatin1Char('_'), 0, 0).toHtmlEscaped());
+    return count > 1 ? QStringLiteral("%1 (%2)").arg(name).arg(count) : name;
 }
 
 void sunIcon(QPainter &p, qreal x, qreal y, qreal s)
@@ -304,6 +366,53 @@ void HeaderView::paintEvent(QPaintEvent *)
     for (int i = 0; i < m_rerollsTotalAway; ++i)
         coin(p, xa + i * dotGap, 16, 7, i < m_rerollsAway);
 
+    // --- inducement badges (16px, same line as the reroll dots) ------------
+    // Home: right of the last home dot; away mirrored, left of the first
+    // away dot. Hit rects are rebuilt here (positional truth for the
+    // hover tooltips).
+    m_indRectsHome.clear();
+    m_indRectsAway.clear();
+    const qreal badgeY = 8.0; // 16px badge centered on the dot line (cy 16)
+    const qreal badgeGap = 6.0;
+    const auto drawBadge = [this, &p, badgeY, badgeGap](
+                                const QVector<InducementBadge> &badges,
+                                qreal startX, qreal step,
+                                QVector<QRectF> &rects) {
+        for (int i = 0; i < badges.size(); ++i) {
+            const QRectF r(startX + i * step, badgeY, 16, 16);
+            // Spent (no units left, e.g. a used bribe) → grayscale.
+            const bool spent = badges[i].count <= 0;
+            const QPixmap pm = assets::inducementPixmap(badges[i].typeId, spent);
+            if (!pm.isNull())
+                p.drawPixmap(r, pm, QRectF(pm.rect()));
+            else {
+                // Vector fallback: neutral disc + letter (asset missing).
+                p.setPen(QPen(INK2, 1));
+                p.setBrush(QColor(226, 228, 234));
+                p.drawEllipse(r);
+                p.setPen(INK2);
+                p.setFont(QFont(font().family(), 8, QFont::Bold));
+                p.drawText(r, Qt::AlignCenter,
+                           badges[i].typeId.left(1).toUpper());
+            }
+            if (badges[i].count > 1) {
+                // Count disc bottom-right.
+                const QRectF c(r.right() - 4, r.bottom() - 4, 10, 10);
+                p.setPen(QPen(QColor(250, 250, 253), 1));
+                p.setBrush(GREEN_DARK);
+                p.drawEllipse(c);
+                p.setPen(QColor(250, 250, 253));
+                p.setFont(QFont(font().family(), 7, QFont::Bold));
+                p.drawText(c, Qt::AlignCenter, QString::number(badges[i].count));
+            }
+            rects << r;
+        }
+    };
+    const qreal homeStart = xh + m_rerollsTotalHome * dotGap + 10;
+    drawBadge(m_inducementHome, homeStart, 16 + badgeGap, m_indRectsHome);
+    const qreal awayStart = xa - 10 - 16;
+    drawBadge(m_inducementAway, awayStart, -(16 + badgeGap), m_indRectsAway);
+
     // --- center: score ---------------------------------------------------------
     // Score up (font 20, top 3), center row down (y 38) in the 62px strip:
     // a real gap between the two.
@@ -373,4 +482,45 @@ void HeaderView::paintEvent(QPaintEvent *)
     p.setPen(INK2);
     p.setFont(labF);
     p.drawText(x + 26, chipBase(fmLab), m_weather);
+}
+
+void HeaderView::setInducements(const QVector<InducementBadge> &home,
+                                const QVector<InducementBadge> &away)
+{
+    m_inducementHome = home;
+    m_inducementAway = away;
+    update();
+}
+
+QString HeaderView::inducementTipAt(const QPoint &pos) const
+{
+    for (int i = 0; i < m_indRectsHome.size(); ++i)
+        if (m_indRectsHome[i].contains(pos))
+            return inducementTip(m_inducementHome[i].typeId,
+                                 m_inducementHome[i].count);
+    for (int i = 0; i < m_indRectsAway.size(); ++i)
+        if (m_indRectsAway[i].contains(pos))
+            return inducementTip(m_inducementAway[i].typeId,
+                                 m_inducementAway[i].count);
+    return QString();
+}
+
+void HeaderView::mouseMoveEvent(QMouseEvent *event)
+{
+    const QString tip = inducementTipAt(event->pos());
+    if (!tip.isEmpty()) {
+        QToolTip::showText(mapToGlobal(event->pos()), tip);
+        setCursor(Qt::PointingHandCursor);
+    } else {
+        QToolTip::hideText();
+        setCursor(Qt::ArrowCursor);
+    }
+    QWidget::mouseMoveEvent(event);
+}
+
+void HeaderView::leaveEvent(QEvent *event)
+{
+    QToolTip::hideText();
+    setCursor(Qt::ArrowCursor);
+    QWidget::leaveEvent(event);
 }

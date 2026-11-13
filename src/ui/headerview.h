@@ -52,6 +52,18 @@ public:
     void setLogos(const QPixmap &home, const QPixmap &away);
     void setWeather(const QString &weather); // display name ("Nice Weather")
 
+    // Team inducements: one badge per type, drawn right of the home reroll
+    // dots (left of the away ones, mirrored). Hover shows a tooltip with
+    // the FFB display name and the effect.
+    struct InducementBadge {
+        QString typeId; // protocol id ("bribes", "bloodweiserBabes", ...)
+        int count = 0;  // UNITS STILL AVAILABLE (value − uses, server live
+                        // data). <= 0 = fully consumed → badge drawn gray.
+                        // A count > 1 shows a small disc with the number.
+    };
+    void setInducements(const QVector<InducementBadge> &home,
+                        const QVector<InducementBadge> &away);
+
     // State accessors (used by the UI wiring tests).
     QString teamHomeName() const { return m_home; }
     QString teamAwayName() const { return m_away; }
@@ -65,11 +77,18 @@ public:
     int rerollsAway() const { return m_rerollsAway; }
     int rerollsTotalHome() const { return m_rerollsTotalHome; } // number of dots
     int rerollsTotalAway() const { return m_rerollsTotalAway; }
+    int inducementCountHome() const { return m_inducementHome.size(); }
+    int inducementCountAway() const { return m_inducementAway.size(); }
+    // Tooltip text for the badge under `pos` (empty = none) — test seam for
+    // the hover tooltips.
+    QString inducementTipAt(const QPoint &pos) const;
 
     QSize sizeHint() const override { return QSize(800, 62); }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
 
 private:
     // "m:ss" for a count-up elapsed time.
@@ -96,6 +115,11 @@ private:
     QPixmap m_homeLogo;
     QPixmap m_awayLogo;
     QString m_weather;
+    QVector<InducementBadge> m_inducementHome;
+    QVector<InducementBadge> m_inducementAway;
+    // Badge hit rects, rebuilt on every paint (positional truth).
+    QVector<QRectF> m_indRectsHome;
+    QVector<QRectF> m_indRectsAway;
 
     // The ACTIVE team's name GLOWS with a breathing pulse (the turn holder
     // must pop out of the strip). A timer advances the phase; greenEmboss

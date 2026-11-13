@@ -100,6 +100,7 @@ private slots:
     void glowFollowsRemoteSelection();
     void cardFollowsModelSync();
     void gameTimeDrivesTimer();
+    void inducementBadgesInHeader();
     void talkAndJoinPopulateChatAndSpectators();
     void assetsLoad();
     void panelLayoutPersistAndReset();
@@ -454,6 +455,106 @@ void UiWiringTest::gameTimeDrivesTimer()
     // no clamping: 99000 ms -> 1:39
     w.onGameTime(0, 99000);
     QCOMPARE(hv->elapsedSeconds(), 99);
+}
+
+void UiWiringTest::inducementBadgesInHeader()
+{
+    MainWindow w;
+    w.show();
+    HeaderView *hv = w.findChild<HeaderView *>();
+    QVERIFY(hv);
+
+    w.onGameState(fixtureGame());
+
+    // The fixture's AWAY roster has an apothecary (a ROSTER flag, not an
+    // inducement) — it gets its own badge. Home has none.
+    QCOMPARE(hv->inducementCountHome(), 0);
+    QCOMPARE(hv->inducementCountAway(), 1);
+
+    // The badge hit rects are built during paint — fix the header geometry
+    // (offscreen sizeHint math is unreliable), paint, then scan the header
+    // for tooltip hits (robust against exact badge positions).
+    hv->setFixedSize(900, 62);
+    QApplication::processEvents();
+    const auto collectTips = [hv]() {
+        QStringList tips;
+        for (int x = 0; x < hv->width(); x += 2)
+            for (int y = 0; y < hv->height(); y += 2) {
+                const QString tip = hv->inducementTipAt(QPoint(x, y));
+                if (!tip.isEmpty() && !tips.contains(tip))
+                    tips << tip;
+            }
+        return tips;
+    };
+    hv->repaint();
+    QStringList tips = collectTips();
+    QVERIFY(tips.contains(
+        QStringLiteral("Apothecary — heals players"))); // away roster flag
+
+    // LIVE sync: home buys 3 bribes and 2 kegs (inducementSetAddInducement,
+    // the server also re-sends it on every use with updated `uses`).
+    QJsonArray changes;
+    QJsonObject bribes;
+    bribes.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    bribes.insert(QStringLiteral("value"), QJsonValue(3));
+    bribes.insert(QStringLiteral("uses"), QJsonValue(0));
+    changes.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                              QStringLiteral("home"), QJsonValue(bribes)));
+    QJsonObject kegs;
+    kegs.insert(QStringLiteral("inducementType"),
+                QStringLiteral("bloodweiserBabes"));
+    kegs.insert(QStringLiteral("value"), QJsonValue(2));
+    kegs.insert(QStringLiteral("uses"), QJsonValue(0));
+    changes.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                              QStringLiteral("home"), QJsonValue(kegs)));
+    w.onModelSync(changes, {});
+    QCOMPARE(hv->inducementCountHome(), 2);
+
+    hv->repaint();
+    tips = collectTips();
+    // Tip format: "<name> — <effect> (N available)".
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box (3)")));
+    QVERIFY(tips.contains(
+        QStringLiteral("Blitzer's Best Kegs — recover knocked-out players (2)")));
+
+    // One bribe used (server increments `uses` live) → one unit less.
+    QJsonArray useChanges;
+    QJsonObject used;
+    used.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    used.insert(QStringLiteral("value"), QJsonValue(3));
+    used.insert(QStringLiteral("uses"), QJsonValue(1));
+    useChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                 QStringLiteral("home"), QJsonValue(used)));
+    w.onModelSync(useChanges, {});
+    hv->repaint();
+    tips = collectTips();
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box (2)")));
+    QVERIFY(!tips.contains(QStringLiteral("Bribes — avoid the box (3)")));
+
+    // All 3 bribes spent → no unit suffix (the badge itself goes gray via
+    // value − uses <= 0 in the paint path).
+    QJsonArray spentChanges;
+    QJsonObject spent;
+    spent.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    spent.insert(QStringLiteral("value"), QJsonValue(3));
+    spent.insert(QStringLiteral("uses"), QJsonValue(3));
+    spentChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                   QStringLiteral("home"), QJsonValue(spent)));
+    w.onModelSync(spentChanges, {});
+    hv->repaint();
+    tips = collectTips();
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box")));
+    QVERIFY(!tips.contains(QStringLiteral("Bribes — avoid the box (2)")));
+
+    // A removed inducement leaves the header.
+    QJsonArray removeChanges;
+    QJsonObject remove;
+    remove.insert(QStringLiteral("inducementType"),
+                  QStringLiteral("bloodweiserBabes"));
+    removeChanges.append(makeChange(QStringLiteral("inducementSetRemoveInducement"),
+                                    QStringLiteral("home"), QJsonValue(remove)));
+    w.onModelSync(removeChanges, {});
+    QCOMPARE(hv->inducementCountHome(), 1);
 }
 
 void UiWiringTest::talkAndJoinPopulateChatAndSpectators()

@@ -85,7 +85,8 @@ struct FieldToken {
 struct InducementInfo {
     QString typeId; // "briberyAndCorruption", "bloodweiserBabes", ...
     int value = 0;  // current count (purchases; 1 for a team special rule)
-    int uses = 0;   // uses this turn
+    int uses = 0;   // uses so far this game (the server increments it LIVE
+                    // on every consumption event and notifies the client)
 };
 
 // Star Player Points tracked per player (model change
@@ -182,6 +183,10 @@ public:
     // inducementSetAddInducement / RemoveInducement / AddPrayer changes.
     QVector<InducementInfo> inducementsHome() const { return m_inducementsHome; }
     QVector<InducementInfo> inducementsAway() const { return m_inducementsAway; }
+    // Roster apothecary flag (teamX.roster.apothecary) — the apothecary is
+    // a ROSTER entry, not an inducement: its badge is derived from this.
+    bool apothecaryHome() const { return m_apothecaryHome; }
+    bool apothecaryAway() const { return m_apothecaryAway; }
     QStringList prayersHome() const { return m_prayersHome; }
     QStringList prayersAway() const { return m_prayersAway; }
 
@@ -447,6 +452,8 @@ private:
     // Inducements (teamX.inducementSet) + SPP per player.
     QVector<InducementInfo> m_inducementsHome;
     QVector<InducementInfo> m_inducementsAway;
+    bool m_apothecaryHome = false;
+    bool m_apothecaryAway = false;
     QStringList m_prayersHome;
     QStringList m_prayersAway;
     QHash<QString, SppInfo> m_spp; // playerId -> {base, current}

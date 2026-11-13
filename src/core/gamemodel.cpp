@@ -327,8 +327,11 @@ void GameModel::parseRosterPositions(const QJsonObject &team, bool homeSide)
     QHash<QString, QString> &shorts = homeSide ? m_positionShortHome : m_positionShortAway;
     QHash<QString, QString> &kwds = homeSide ? m_positionKeywordsHome : m_positionKeywordsAway;
 
-    const QJsonArray positions =
-        team.value(QStringLiteral("roster")).toObject().value(QStringLiteral("positionArray")).toArray();
+    const QJsonObject roster = team.value(QStringLiteral("roster")).toObject();
+    bool &apothecary = homeSide ? m_apothecaryHome : m_apothecaryAway;
+    apothecary = roster.value(QStringLiteral("apothecary")).toBool();
+
+    const QJsonArray positions = roster.value(QStringLiteral("positionArray")).toArray();
     for (const QJsonValue &pv : positions) {
         const QJsonObject pos = pv.toObject();
         const QString id = playerIdKey(pos.value(QStringLiteral("positionId")));

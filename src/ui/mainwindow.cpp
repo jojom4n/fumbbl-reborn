@@ -636,6 +636,28 @@ void MainWindow::applyModelToUi()
     // white once used (turnData.reRolls).
     m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway(),
                              m_model->turnReRollsHome(), m_model->turnReRollsAway());
+    // Inducement badges: remaining units = value − uses (server LIVE data;
+    // a fully consumed inducement paints gray, and a server recharge brings
+    // it back). The apothecary is a ROSTER flag — appended as its own badge.
+    const auto buildBadges = [this](const QVector<InducementInfo> &list, bool apoth) {
+        QVector<HeaderView::InducementBadge> badges;
+        for (const InducementInfo &info : list) {
+            HeaderView::InducementBadge b;
+            b.typeId = info.typeId;
+            b.count = qMax(0, info.value - info.uses);
+            badges.append(b);
+        }
+        if (apoth) {
+            HeaderView::InducementBadge b;
+            b.typeId = QStringLiteral("apothecary");
+            b.count = 1;
+            badges.append(b);
+        }
+        return badges;
+    };
+    m_headerView->setInducements(
+        buildBadges(m_model->inducementsHome(), m_model->apothecaryHome()),
+        buildBadges(m_model->inducementsAway(), m_model->apothecaryAway()));
     // The header strip exists only once a game state has loaded — this
     // function is only reached after initialize(), so make it visible now.
     m_headerToolbar->setVisible(true);
@@ -1627,6 +1649,7 @@ void MainWindow::clearMatchUi()
     setTurn(1);
     m_headerView->setTurnElapsedSeconds(0);
     m_headerView->setRerolls(0, 0, 0, 0);
+    m_headerView->setInducements({}, {});
     // The header goes back to hidden until a new game loads.
     m_headerToolbar->setVisible(false);
     m_headerView->setWeather(QString());
