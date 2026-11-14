@@ -1633,7 +1633,7 @@ void UiWiringTest::parseToastEvents()
     auto report = [](const QString &id, const QJsonObject &extra = QJsonObject()) {
         QJsonObject r;
         r.insert(QStringLiteral("reportId"), id);
-        for (auto it = extra.cbegin(); it != extra.cend(); ++it)
+        for (auto it = extra.constBegin(); it != extra.constEnd(); ++it)
             r.insert(it.key(), it.value());
         return r;
     };
@@ -2879,8 +2879,8 @@ void UiWiringTest::sunnyBrightensScene()
     QVERIFY2(sunny - base > 3.0,
              qPrintable(QStringLiteral(
                             "sunny brightens the whole scene (base %1, sunny %2)")
-                            .arg(base, 'f', 1)
-                            .arg(sunny, 'f', 1)));
+                            .arg(QString::number(base, 'f', 1))
+                            .arg(QString::number(sunny, 'f', 1))));
 }
 
 // The lightning flash is a SOFT, CAPPED brightness pulse and RARE (every
@@ -2894,7 +2894,7 @@ void UiWiringTest::lightningFlashEnvelope()
     const double mid = FieldView::flashAlphaAtMs(250.0);
     QVERIFY2(mid > 0.0 && mid <= FieldView::kFlashMaxAlpha(),
              qPrintable(QStringLiteral("mid-flash is on and capped: %1")
-                            .arg(mid, 'f', 1)));
+                            .arg(QString::number(mid, 'f', 1))));
     // The whole envelope never exceeds the cap.
     for (double t = 0.0; t <= FieldView::kFlashDurationMs(); t += 5.0)
         QVERIFY(FieldView::flashAlphaAtMs(t) <= FieldView::kFlashMaxAlpha());
