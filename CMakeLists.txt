@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.2.23
+    VERSION 0.3.0
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )
@@ -147,8 +147,8 @@ add_executable(fumbbl-qt
     src/ui/fieldview.h
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.h
-    src/ui/actionlog.cpp
+    src/ui/matchlog.h
+    src/ui/matchlog.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
     src/ui/headerview.h
@@ -159,6 +159,8 @@ add_executable(fumbbl-qt
     src/ui/panel.cpp
     src/ui/toastoverlay.h
     src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.h
+    src/ui/touchdownbanner.cpp
     src/ui/reportcard.h
     src/ui/reportcard.cpp
 
@@ -265,7 +267,7 @@ fumbbl_add_credential_store(reports_capturer)
 
 # Offscreen HUD verification: drives a real MainWindow offscreen (live game
 # fixture + synthetic reports/changes) and saves PNG crops — window, field,
-# dugouts, header, action log, block glows/markers, move trail, ball flight,
+# dugouts, header, match log, block glows/markers, move trail, ball flight,
 # kickoff, rain.
 add_executable(hud_preview
     tools/hud_preview.cpp
@@ -282,12 +284,13 @@ add_executable(hud_preview
     src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.cpp
+    src/ui/matchlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
     src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.cpp
     src/ui/reportcard.cpp
 
     ${DICE_RCC}
@@ -323,12 +326,13 @@ add_executable(move_numbers_preview
     src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.cpp
+    src/ui/matchlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
     src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.cpp
     src/ui/reportcard.cpp
 
     ${DICE_RCC}
@@ -350,6 +354,7 @@ fumbbl_add_credential_store(move_numbers_preview)
 add_executable(field_preview
     tools/field_preview.cpp
     src/core/assets.cpp
+    src/core/gamemodel.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
 )

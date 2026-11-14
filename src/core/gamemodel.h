@@ -334,6 +334,16 @@ public:
     // Box column: x in {-1..-7} (home) or {30..36} (away).
     static bool isBoxX(int x);
 
+    // --- Weather (BB2025 WEATHER TABLE + ffb Weather.java) -------------------
+    // The server sends the ffb Weather names ("Sweltering Heat", "Very
+    // Sunny", "Nice Weather", "Pouring Rain", "Blizzard", "Intro"). The
+    // KIND drives the scene effects; the DISPLAY NAME is the RULEBOOK
+    // wording (the header never shows the server string: "Nice Weather"
+    // is "Perfect Conditions" in the rulebook).
+    enum class WeatherKind { None, Rain, Blizzard, Sunny, Heat };
+    static WeatherKind weatherKind(const QString &serverName);
+    static QString weatherDisplayName(const QString &serverName);
+
     // --- Player state helpers (port of ffb-common PlayerState) ---------------
     // State ids carry bit flags (0x100 ACTIVE, 0x200 CONFUSED, ...); the base
     // state (UNKNOWN..IN_THE_AIR, 0..19) is id & 0xFF.

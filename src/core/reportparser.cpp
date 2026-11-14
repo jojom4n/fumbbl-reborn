@@ -357,7 +357,7 @@ QVector<DiceLogLine> parseReport(const QJsonObject &report)
         push(QStringLiteral("blocks"), kYellow, QString(), defenderId);
     } else if (id == QLatin1String("blockRoll")) {
         // ReportBlockRoll: choosingTeamId + blockRoll[6] + defenderId.
-        // The six block dice — the star of the action log.
+        // The six block dice — the star of the match log.
         // The actor is the ACTING PLAYER (the blitzer / the blocking
         // attacker) — actorId left empty, like the `block` report; MainWindow
         // fills it from the model. (Titled with the team, the line showed

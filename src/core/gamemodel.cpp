@@ -1140,6 +1140,44 @@ bool GameModel::isBoxX(int x)
     return (x >= -7 && x <= -1) || (x >= 30 && x <= 36);
 }
 
+GameModel::WeatherKind GameModel::weatherKind(const QString &serverName)
+{
+    const QString s = serverName.toLower();
+    if (s.contains(QLatin1String("blizzard")))
+        return WeatherKind::Blizzard;
+    if (s.contains(QLatin1String("rain")))
+        return WeatherKind::Rain;
+    if (s.contains(QLatin1String("sunny")))
+        return WeatherKind::Sunny;
+    if (s.contains(QLatin1String("heat")))
+        return WeatherKind::Heat;
+    return WeatherKind::None;
+}
+
+QString GameModel::weatherDisplayName(const QString &serverName)
+{
+    switch (weatherKind(serverName)) {
+    case WeatherKind::Rain:
+        return QStringLiteral("Pouring Rain");
+    case WeatherKind::Blizzard:
+        return QStringLiteral("Blizzard");
+    case WeatherKind::Sunny:
+        return QStringLiteral("Very Sunny");
+    case WeatherKind::Heat:
+        return QStringLiteral("Sweltering Heat");
+    case WeatherKind::None:
+        break;
+    }
+    const QString s = serverName.toLower();
+    if (s.contains(QLatin1String("nice"))
+        || s.contains(QLatin1String("perfect")))
+        return QStringLiteral("Perfect Conditions");
+    // "Intro" (pre-weather) / empty / unknown: no rulebook name.
+    if (s.isEmpty() || s.contains(QLatin1String("intro")))
+        return QStringLiteral("\u2014");
+    return serverName;
+}
+
 QString GameModel::stateLabel(int state)
 {
     switch (baseState(state)) {
@@ -1167,12 +1205,12 @@ QString GameModel::stateText(int state)
     case 5: return QStringLiteral("Knocked Out");   // KNOCKED_OUT
     case 6: return QStringLiteral("Badly Hurt");    // BADLY_HURT
     case 7: return QStringLiteral("Serious Injury"); // SERIOUS_INJURY
-    case 8: return QStringLiteral("Killed");        // RIP
+    case 8: return QStringLiteral("Dead");         // RIP
     case 9: return QStringLiteral("Reserve");       // RESERVE
-    case 10: return QStringLiteral("Missing");      // MISSING
+    case 10: return QStringLiteral("Miss next game"); // MISSING
     case 11: return QStringLiteral("Falling Down"); // FALLING
     case 12: return QStringLiteral("Blocked");      // BLOCKED
-    case 13: return QStringLiteral("Banned");       // BANNED
+    case 13: return QStringLiteral("Sent off");     // BANNED
     case 14: return QStringLiteral("Exhausted");    // EXHAUSTED
     case 15: return QStringLiteral("Being Dragged"); // BEING_DRAGGED
     case 16: return QStringLiteral("Picked Up");    // PICKED_UP

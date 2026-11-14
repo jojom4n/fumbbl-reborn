@@ -315,6 +315,11 @@ QPixmap stadiumImage(const QString &name)
     return loadPixmap(QStringLiteral("stadiums/%1/stadium.png").arg(name));
 }
 
+QPixmap touchdownBanner()
+{
+    return loadPixmap(QStringLiteral("touchdown_banner.png"));
+}
+
 StadiumManifest stadiumManifest(const QString &name)
 {
     StadiumManifest m;

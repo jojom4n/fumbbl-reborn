@@ -5,15 +5,23 @@
 ![FUMBBL Reborn — live match](docs/screenshots/hero.png)
 
 Watch any live match on FUMBBL in real time: the full field with a face for
-every piece of all 31 BB2025 races, a dice log with real dice and player
-names, chat, roster and player stats — floating where you want it, over a
-stadium that looks the part.
+every piece of all 31 BB2025 races, a match log with real dice and player
+names, chat, dugout boxes and player stats — floating where you want it,
+over a stadium that looks the part, in the weather the gods rolled.
 
 Built in **native C++/Qt6**: it starts in a second, uses almost no
 resources, and renders razor-sharp at 1080p, 4K and beyond. No browser,
 no web view, no installers.
 
----
+## Screenshots
+
+| The field, mid-action | The match log — dice are dice |
+|---|---|
+| ![field](docs/screenshots/field.png) | ![matchlog](docs/screenshots/matchlog.png) |
+| Touchdown: the full celebration | Pouring Rain: the whole stadium gets wet |
+| ![td](docs/screenshots/td.png) | ![rain](docs/screenshots/rain.png) |
+| Blizzard: snow falls and accumulates | The match list, live |
+| ![blizzard](docs/screenshots/blizzard.png) | ![spectate](docs/screenshots/spectate.png) |
 
 ## Why FUMBBL Reborn?
 
@@ -23,26 +31,27 @@ no web view, no installers.
 - **Built for the 2025 rules (Third Season).** All 31 races, 127 unique
   pieces, race-aware name resolution — every piece on the field is
   *who they are*, not a generic token.
-- **A HUD made for watching.** Floating, draggable, auto-snapping panels
-  with a layout that remembers itself: score & turn header, **dice log
-  with real d6 faces** (never bare numbers), live chat with unread badge,
-  dugout reserves/KO/injured, player info card on hover.
+- **A HUD made for watching.** Floating, draggable panels with a layout
+  that remembers itself: score & turn header, **match log with real d6
+  faces** (never bare numbers), live chat with unread badge, dugout
+  reserves/KO/injured, player info card on hover.
 - **The field feels alive.** Animated glow on the ball and the acting
   player, movement trails with move numbers, block markers between the
-  pair, and rain when the gods get moody.
-- **It tells you what matters.** Broadcast-style ribbons (CENTER
-  TOUCHDOWN, 2ND HALF, EXTRA TIME, FULL TIME) and edge toasts (+SPP,
-  completions, injuries, turnovers) — the highlights, at a glance.
+  pair — and the weather from the rulebook table: rain that wets the
+  whole stadium, blizzards that snow the pitch under, sunny days that
+  brighten the scene, heat that shimmers it, and the occasional,
+  gentle lightning flash.
+- **It tells you what matters.** Broadcast-style ribbons (2ND HALF,
+  EXTRA TIME, FULL TIME) and edge toasts (+SPP, completions, injuries,
+  turnovers) — plus a full **touchdown celebration**: a golden
+  TOUCHDOWN banner over the field with confetti, and the next play only
+  starts when the confetti has fallen.
+- **Considerate by default.** Settings let you turn the weather visuals
+  off entirely, or keep the rain falling while removing the field
+  puddles and snow — and a dedicated switch for the lightning flash,
+  for photo-sensitive spectators.
 - **One download, zero setup.** Linux AppImage / tar.gz and a Windows
   zip — everything (Qt, assets, faces, dice) is bundled.
-
-## Screenshots
-
-| The field, mid-action | The player card |
-|---|---|
-| ![field](docs/screenshots/field.png) | ![card](docs/screenshots/card.png) |
-| The action log — dice are dice | The match list, live |
-| ![dice](docs/screenshots/dice.png) | ![spectate](docs/screenshots/spectate.png) |
 
 ## Install
 
@@ -87,13 +96,24 @@ Then: `File ▸ Spectate Game…` — pick a live match and watch.
   the official Java client uses, on the public WebSocket channel.
 - **Faces for every piece** — all 31 races of the 2025 edition, with
   race-aware name resolution (a `BBT18` werewolf is named like a werewolf).
-- **Dice log** — every roll with the player's name, the skills that
+- **Match log** — every roll with the player's name, the skills that
   mattered, and the dice drawn as **dice**, not numbers.
 - **Scoreboard that tells the story** — half display (PRE-GAME / 1ST /
-  2ND / EXTRA TIME), turn, weather, SPP gain per player (red `+N`).
-- **Toasts** — center ribbons for the big moments, edge pills for
-  completions, regeneration, raise the dead, timeouts, injuries and
-  turnovers.
+  2ND / EXTRA TIME), turn, weather (in the rulebook's own words:
+  *Perfect Conditions*, *Sweltering Heat*, *Very Sunny*, *Pouring Rain*,
+  *Blizzard*), SPP gain per player (red `+N`).
+- **Live weather** — the rulebook's WEATHER TABLE, animated over the
+  whole scene: rain streaks with splash ripples and worn-turf puddles
+  that accumulate during the match, blizzard snow with mounds that build
+  up on the pitch, sunny brightening, heat shimmer — and a rare, soft
+  lightning flash when it rains.
+- **Toasts & celebrations** — center ribbons for the big moments, edge
+  pills for completions, regeneration, raise the dead, timeouts,
+  injuries and turnovers — and the touchdown banner with falling
+  confetti.
+- **Settings** — weather effects master switch, field-only switch
+  (keep the sky, drop the puddles and snow) and the lightning flash
+  switch; all persisted.
 - **Waiting board** — while a match is being joined: HOME VS AWAY plus
   the live session status.
 - **Report card** — at full time: final score, both rosters with SPP and
@@ -127,7 +147,7 @@ every entry there is a real, scoped item:
 |---|---|
 | [R0 — Spectator Quick Wins](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A1) | Toasts & SPP, division tabs + auto-refresh, waiting board, report card, inducement icons |
 | [R1 — Match Library & Replay](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A2) | Local auto-archive of watched matches, replay viewer, highlights, live scrub, multi-rulebook (BB2016/2020/2025) |
-| [R2 — Match Experience](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A3) | Live stats panel, commentary toggle, focus mode, full report card (MVP, stats), full player card, audio engine, settings, i18n, coach home pane |
+| [R2 — Match Experience](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A3) | Live stats panel, commentary toggle, focus mode, full report card (MVP, stats), full player card, audio engine (thunder with the lightning), i18n, coach home pane |
 | [R3 — Platform](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A4) | Auto-update, macOS build, ARM64 AppImage (Steam Deck / Pi), in-app bug reports, accessibility, guided onboarding |
 | [R4 — Play Mode](https://github.com/jojom4n/fumbbl-reborn/issues?q=is%3Aissue+milestone%3A5) | Play your own team — same executable, in-game commands |
 

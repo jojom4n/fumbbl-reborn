@@ -80,15 +80,44 @@ public:
     // Per-match team logos (FUMBBL /i/<id> PNGs) drawn as watermarks centered
     // on each half (~18% alpha). Null pixmaps = no watermark.
     void setTeamLogos(const QPixmap &home, const QPixmap &away);
-    // Weather display name ("Nice Weather", "Light Rain", "Pouring Rain",
-    // ...). When it contains "rain" a top-down droplet overlay is drawn.
+    // Weather: the SERVER name ("Nice Weather", "Light Rain", "Pouring
+    // Rain", "Blizzard", "Very Sunny", "Sweltering Heat", "Intro"). The
+    // effects follow the rulebook kind (GameModel::weatherKind); the header
+    // shows the RULEBOOK name (GameModel::weatherDisplayName).
     void setWeather(const QString &weather);
     bool isRaining() const { return m_raining; }
+    bool isSnowing() const { return m_snowing; }
+    GameModel::WeatherKind weatherKind() const;
+    // Settings menu (MainWindow persists): all = every weather visual;
+    // field = the FIELD-local part (puddles/snow patches/splashes) while
+    // the top-down rain/snow keeps falling over the whole scene; lightning
+    // = the rare flash (photo-epilepsy off-switch).
+    void setWeatherFx(bool all, bool field, bool lightning);
+    bool weatherFxAllForTest() const { return m_fxAll; }
+    bool weatherFxFieldForTest() const { return m_fxField; }
+    bool weatherFxLightningForTest() const { return m_fxLightning; }
+    int snowPatchCountForTest() const { return m_snowPatches.size(); }
+    // Test-only: advance the weather clock by `ms` in 33 ms chunks (the
+    // same steps the timer does) without waiting real time — the unit
+    // tests drive the MINUTES-scale patch accumulation deterministically.
+    void pumpWeatherForTest(double ms);
+    // Test-only: the radius (field fraction) of the first rain puddle or
+    // snow patch (0 when there are none) — the patch EXPANSION check.
+    qreal firstPatchRadiusForTest() const;
+    // The lightning flash envelope (pure, for the tests): 0 at the ends,
+    // a soft sin^2 rise-and-fall, capped at kFlashMaxAlpha/255. The gaps
+    // between flashes are RARE: 5..8 minutes (anti-epilepsy).
+    static qreal flashAlphaAtMs(double tMs);
+    static double kFlashDurationMs() { return 500.0; }
+    static double kFlashMaxAlpha() { return 70.0; }
+    static double flashGapMinMs() { return 300000.0; }
+    static double flashGapMaxMs() { return 480000.0; }
     // The STADIUM (an interchangeable top-down backdrop, its own asset +
     // manifest). The field is fitted into the manifest's pit and the
     // dugout faces into the manifest's dugout rects — data-driven, so any
-    // stadium aligns. `name` defaults to "medieval_arena".
-    void setStadium(const QString &name = QStringLiteral("medieval_arena"));
+    // stadium aligns. `name` defaults to "dark_arena" (the only installed
+    // stadium).
+    void setStadium(const QString &name = QStringLiteral("dark_arena"));
     // The widget-space center of field cell (x,y) under the CURRENT
     // zoom/pan (zoom 1 / pan 0 = the fitted scene). Used by the tests so the
     // click points never hard-code the scene geometry.
@@ -202,10 +231,13 @@ signals:
     // Play mode only: right-click landed on a player — the action wheel
     // target was set and the game logic should show the wheel menu.
     void actionWheelRequested(const QString &playerId);
+    // A lightning flash just STARTED (the rare rain one, every 5-8 min).
+    // The hook for the (future) thunder sound; the flash itself is drawn.
+    void lightningFlash();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override; // reseed the rain
+    void resizeEvent(QResizeEvent *event) override; // reconfigure weather
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
@@ -279,41 +311,61 @@ private:
     QString m_kickoffKickerId;      // blue-glow kicker
     QPixmap m_homeLogo;  // watermark for the home half
     QPixmap m_awayLogo;  // watermark for the away half
-    QString m_weather;   // display name; "rain" substring => ANIMATED rain
+    QString m_weather;   // SERVER weather name; parsed by GameModel::weatherKind
 
     // The STADIUM (interchangeable backdrop + manifest). m_stadium carries
     // the normalized fieldPit / dugoutHome / dugoutAway rects that drive
     // the alignment. The art is loaded on demand (assets).
-    QString m_stadiumName = QStringLiteral("medieval_arena");
+    QString m_stadiumName = QStringLiteral("dark_arena");
     assets::StadiumManifest m_stadium;
 
-    // Animated rain: falling droplet streaks + splash ripples where they
-    // land; ripples inside the puddles are bigger and last longer. The sim
-    // is stepped by a ~30fps timer and painted in the zoomed field space
-    // (the rain belongs to the field scene).
+    // Weather effects (BB2025 WEATHER TABLE): rain + splashes + puddles,
+    // blizzard (snow) + snow patches, sunny (brighter scene), heat (shimmer).
+    // Particles cover the WHOLE SCENE (stadium + surround — the weather is
+    // outside); the field-local part (puddles/snow patches/splashes) is
+    // what the Settings menu can disable without killing the sky.
     RainSim m_rain;
     QTimer *m_rainTimer = nullptr;
     QElapsedTimer m_rainClock;
+    QElapsedTimer m_fxWallClock; // monotonic wall time (heat shimmer phase)
     bool m_raining = false;
-    // Puddles: DYNAMIC — they accumulate over match time (stepPuddles),
-    // smaller and organic, fading in. Stored as FRACTIONS of the field so
-    // they stay put across resizes.
+    bool m_snowing = false;
+    double m_fxElapsedMs = 0.0; // weather-clock since configure (timer-stepped)
+    // Field-local settings (Settings menu, persisted by MainWindow):
+    bool m_fxAll = true;        // false = NO weather visuals at all
+    bool m_fxField = true;      // false = no puddles/snow/splashes on the field
+    bool m_fxLightning = true;  // false = no lightning flash (photo-epilepsy)
+    // Lightning: a single soft brightness pulse, RARE (every 5-8 minutes,
+    // random) — anti-epilepsy by design (never continuous, never bright).
+    double m_flashStartMs = -1e9;
+    double m_nextFlashAt = -1.0;
+    // Field patches: DYNAMIC — they accumulate over MATCH time (minutes),
+    // smaller and organic, fading in, and they can EXPAND. Stored as
+    // FRACTIONS of the field so they stay put across resizes.
     struct Puddle {
         qreal fx = 0.5, fy = 0.5; // center, fraction of the field (0..1)
         qreal fr = 0.03;          // radius, fraction of the field height
+        qreal frMax = 0.0;        // growth cap (existing patches expand, slowly)
         qreal squash = 0.7;       // ry/rx (0.55..0.8)
         qreal rotDeg = 0.0;       // rotation (organic, not a perfect ellipse)
-        double birthMs = 0.0;     // when it appeared (m_puddleClockMs)
+        double birthMs = 0.0;     // when it appeared (its clock)
+        double nextGrowAt = 0.0;  // next expansion (minutes-scale)
     };
-    QVector<Puddle> m_puddles;
+    QVector<Puddle> m_puddles;      // rain: worn-turf stains (3-5 min cadence)
     double m_puddleClockMs = 0.0;
     double m_nextPuddleAt = 0.0;
-    void rainConfigure();
-    void stepPuddles(float dtMs);
-    QRectF puddleRect(const Puddle &pd, const QRectF &f) const;
-    QVector<QRectF> puddleRects() const;
+    QVector<Puddle> m_snowPatches;  // blizzard: snow mounds (1.5-3 min cadence)
+    double m_snowClockMs = 0.0;
+    double m_nextSnowAt = 0.0;
+    void weatherConfigure();
+    void stepFieldPatches(float dtMs);
+    QRectF patchRect(const Puddle &pd, const QRectF &f) const;
+    QVector<QRectF> fieldPatchRects() const;
     void drawPuddles(QPainter &p, const QRectF &f) const;
-    void drawRain(QPainter &p);
+    void drawSnowPatches(QPainter &p, const QRectF &f) const;
+    void drawPrecipitation(QPainter &p) const; // whole-scene rain/snow
+    void drawHeatShimmer(QPainter &p) const;   // whole-scene heat waves
+    void drawSceneWeather(QPainter &p) const;  // particles + sunny + heat + flash
     void drawMowStripes(QPainter &p, const QRectF &f) const;
     void drawTouchdownZones(QPainter &p, const QRectF &f) const;
     void drawMoveTrail(QPainter &p);

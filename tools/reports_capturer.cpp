@@ -1,7 +1,7 @@
 // =============================================================================
 // reports_capturer — live raw-report capture
 //
-// The action log could not show subjects/dice on many live reports ("move",
+// The match log could not show subjects/dice on many live reports ("move",
 // "stand up" without a name; numeric ids; no dice). Root cause suspected:
 // the C++ parser was written against ffb-common field names that do not all
 // match what the server actually sends. This tool removes the guesswork: it

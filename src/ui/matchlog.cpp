@@ -1,7 +1,7 @@
 // =============================================================================
-// ActionLogWidget — implementation (BB3-like readability)
+// MatchLogWidget — implementation (BB3-like readability)
 // =============================================================================
-#include "ui/actionlog.h"
+#include "ui/matchlog.h"
 
 #include <QEnterEvent>
 #include <QEvent>
@@ -70,7 +70,7 @@ public:
         // The width is dictated by the row (stretch 1): size against the
         // current width so the wrapped height is right from the start.
         // (The log's stack height is NOT derived from this — see
-        // ActionLogWidget::contentHeight, which measures the laid-out
+        // MatchLogWidget::contentHeight, which measures the laid-out
         // rows instead, immune to mid-layout cache staleness.)
         const int w = parentWidget() ? qMax(40, parentWidget()->width()) : 200;
         return QSize(0, measure(w).h);
@@ -261,22 +261,22 @@ void AutoScrollToggle::paintEvent(QPaintEvent *)
                Qt::AlignVCenter | Qt::AlignLeft, QStringLiteral("auto-scroll"));
 }
 
-ActionLogWidget::ActionLogWidget(QWidget *parent)
+MatchLogWidget::MatchLogWidget(QWidget *parent)
     : QWidget(parent)
 {
-    setObjectName(QStringLiteral("action_log"));
+    setObjectName(QStringLiteral("match_log"));
     setFixedHeight(compactHeight());
 
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
 
-    // Header: "ACTION LOG" + expand chevron (mockup style).
+    // Header: "MATCH LOG" + expand chevron (mockup style).
     auto *header = new QWidget(this);
     header->setFixedHeight(kHeaderH);
     auto *hl = new QHBoxLayout(header);
     hl->setContentsMargins(kPad, 0, kPad, 0);
-    m_title = new QLabel(QStringLiteral("ACTION LOG"), header);
+    m_title = new QLabel(QStringLiteral("MATCH LOG"), header);
     m_title->setStyleSheet(QStringLiteral("color: #222832; font-weight: bold;"));
     QFont tf = m_title->font();
     tf.setPointSizeF(9);
@@ -333,17 +333,17 @@ ActionLogWidget::ActionLogWidget(QWidget *parent)
             [this](int) { onScrollbarMoved(); });
 }
 
-int ActionLogWidget::compactHeight()
+int MatchLogWidget::compactHeight()
 {
-    return kHeaderH + 3 * kRowH + kPad + 2;
+    return kHeaderH + 6 * kRowH + kPad + 2;
 }
 
-int ActionLogWidget::expandedHeight()
+int MatchLogWidget::expandedHeight()
 {
     return kHeaderH + 10 * kRowH + kPad + 2;
 }
 
-void ActionLogWidget::paintEvent(QPaintEvent *)
+void MatchLogWidget::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -359,7 +359,7 @@ void ActionLogWidget::paintEvent(QPaintEvent *)
     p.drawRoundedRect(r, 10, 10);
 }
 
-void ActionLogWidget::onScrollbarMoved()
+void MatchLogWidget::onScrollbarMoved()
 {
     // USER scroll detection. A value change that is NOT ours = the user
     // moved the view: at the bottom (or a hair above) -> autoscroll
@@ -385,7 +385,7 @@ void ActionLogWidget::onScrollbarMoved()
 // the new content height. Coalesced to one pass per event-loop iteration
 // (m_settlePending) so a batch of appends settles exactly once, after the
 // whole batch has laid out.
-void ActionLogWidget::settleScroll()
+void MatchLogWidget::settleScroll()
 {
     if (m_settlePending)
         return;
@@ -417,7 +417,7 @@ void ActionLogWidget::settleScroll()
     });
 }
 
-int ActionLogWidget::contentHeight() const
+int MatchLogWidget::contentHeight() const
 {
     if (!m_stackLayout || !m_stack)
         return 0;
@@ -433,7 +433,7 @@ int ActionLogWidget::contentHeight() const
     return h;
 }
 
-void ActionLogWidget::scrollToEnd()
+void MatchLogWidget::scrollToEnd()
 {
     if (!m_scroll)
         return;
@@ -446,7 +446,7 @@ void ActionLogWidget::scrollToEnd()
     QTimer::singleShot(0, this, [this] { m_progScroll = false; });
 }
 
-bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
+bool MatchLogWidget::eventFilter(QObject *watched, QEvent *event)
 {
     // The NAME hover. `watched` is a name label (the id is in a dynamic
     // property); entering emits the id, leaving emits empty.
@@ -466,7 +466,7 @@ bool ActionLogWidget::eventFilter(QObject *watched, QEvent *event)
     return QWidget::eventFilter(watched, event);
 }
 
-bool ActionLogWidget::atBottom() const
+bool MatchLogWidget::atBottom() const
 {
     // Stick-to-bottom: true when the user is already at
     // (or within a hair of) the newest line. New entries only auto-scroll
@@ -539,7 +539,7 @@ static MidParts splitMiddle(const DiceLogLine &line)
     return parts;
 }
 
-void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName,
+void MatchLogWidget::addEntry(const DiceLogLine &line, const QString &actorName,
                                const QString &defenderName, const QString &actorId,
                                const QString &defenderId, const QColor &actorColor,
                                const QColor &defenderColor)
@@ -716,7 +716,7 @@ void ActionLogWidget::addEntry(const DiceLogLine &line, const QString &actorName
     // the live user-driven stick-to-bottom state.)
 }
 
-void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
+void MatchLogWidget::appendLine(const DiceLogLine &line, const QString &actorName,
                                  const QString &defenderName, const QString &actorId,
                                  const QString &defenderId, const QColor &actorColor,
                                  const QColor &defenderColor)
@@ -724,7 +724,7 @@ void ActionLogWidget::appendLine(const DiceLogLine &line, const QString &actorNa
     addEntry(line, actorName, defenderName, actorId, defenderId, actorColor, defenderColor);
 }
 
-void ActionLogWidget::resizeEvent(QResizeEvent *event)
+void MatchLogWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     // Manual inner geometry: keep the stack as wide as the viewport and at
@@ -751,7 +751,7 @@ void ActionLogWidget::resizeEvent(QResizeEvent *event)
     }
 }
 
-void ActionLogWidget::mousePressEvent(QMouseEvent *event)
+void MatchLogWidget::mousePressEvent(QMouseEvent *event)
 {
     // Chevron click: expand/collapse the log (mockup behavior).
     const QPoint inChevron = m_chevron ? m_chevron->mapFrom(this, event->pos()) : QPoint(-1, -1);
@@ -764,7 +764,7 @@ void ActionLogWidget::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-void ActionLogWidget::clearLog()
+void MatchLogWidget::clearLog()
 {
     // Entries are ROW WIDGETS (name labels inside) — delete the direct
     // children (the rows), not just top-level labels. (Safe to do under the
@@ -775,7 +775,7 @@ void ActionLogWidget::clearLog()
     m_entryCount = 0;
 }
 
-QString ActionLogWidget::toPlainText() const
+QString MatchLogWidget::toPlainText() const
 {
     return m_plain.join(QStringLiteral("\n"));
 }

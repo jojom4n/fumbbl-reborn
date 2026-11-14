@@ -52,9 +52,12 @@ struct StadiumManifest {
     QColor surround = QColor(0x10, 0x0f, 0x16); // deep night dark (default)
 };
 // The stadium art for `name`. Null pixmap when missing.
-QPixmap stadiumImage(const QString &name = QStringLiteral("medieval_arena"));
+QPixmap stadiumImage(const QString &name = QStringLiteral("dark_arena"));
 // The stadium manifest for `name` (valid=false when missing/malformed).
-StadiumManifest stadiumManifest(const QString &name = QStringLiteral("medieval_arena"));
+StadiumManifest stadiumManifest(const QString &name = QStringLiteral("dark_arena"));
+// The touchdown celebration banner art (Qwen-Image, 3840x1920, the word
+// TOUCHDOWN is painted into the art). Null pixmap when missing.
+QPixmap touchdownBanner();
 
 // Resolved assets directory (empty string when not found).
 QString assetsDir();

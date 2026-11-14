@@ -446,13 +446,15 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
         || state.contains(QLatin1String("Badly Hurt"), Qt::CaseInsensitive)
         || state.contains(QLatin1String("Serious Injury"), Qt::CaseInsensitive)
         || state.contains(QLatin1String("Killed"), Qt::CaseInsensitive)
+        || state.contains(QLatin1String("Dead"), Qt::CaseInsensitive)
         || state.contains(QLatin1String("KO"), Qt::CaseInsensitive))
         stateColor = QStringLiteral("#c0392b"); // red (injury states)
     else if (state.contains(QLatin1String("Stun"), Qt::CaseInsensitive))
         stateColor = QStringLiteral("#c07f1f"); // amber
     else if (state.contains(QLatin1String("box"), Qt::CaseInsensitive)
              || state.contains(QLatin1String("Reserve"), Qt::CaseInsensitive)
-             || state.contains(QLatin1String("Missing"), Qt::CaseInsensitive))
+             || state.contains(QLatin1String("Miss next game"), Qt::CaseInsensitive)
+             || state.contains(QLatin1String("Sent off"), Qt::CaseInsensitive))
         stateColor = QStringLiteral("#687280"); // gray (off the field)
     m_stateLabel->setText(state.toUpper());
     m_stateLabel->setStyleSheet(

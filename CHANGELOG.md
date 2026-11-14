@@ -4,6 +4,42 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.3.0 — 2026-11-14
+- **Touchdown celebration**: a transparent golden TOUCHDOWN banner (4K,
+  chroma-keyed — the field shows through) sweeps over the field with
+  animated vector confetti (thin wavy + spiral streamers), and the
+  post-touchdown field wipe is deferred ~4.5 s so the celebration plays
+  before the next play (a newer field change supersedes the pending
+  wipe).
+- **Live weather — the rulebook's WEATHER TABLE, animated over the
+  whole scene**: Pouring Rain (top-down streaks with splash ripples and
+  worn-turf puddles that accumulate and expand over match time),
+  Blizzard (soft snowflakes over the whole scene + snow mounds that
+  build up on the pitch, with a settled-snow wash by match end — field
+  lines stay visible), Very Sunny (warm brightening over the scene),
+  Sweltering Heat (animated heat shimmer + faint warm tint), and a rare,
+  soft lightning flash during rain (every 5-8 minutes, 500 ms sin²
+  envelope, capped at 70/255 — photo-epilepsy safe: never continuous,
+  never bright). The header shows the rulebook names (Perfect
+  Conditions, Sweltering Heat, Very Sunny, Pouring Rain, Blizzard) with
+  a per-weather icon, never the server string.
+- **Settings menu**: three persisted switches — weather effects master
+  (off = no weather visuals at all), weather effects on the field (off
+  = the rain/snow keeps falling over the scene but nothing hits the
+  pitch: no puddles, snow or splashes), and lightning flashes (off =
+  the flash is skipped for photo-sensitive spectators). Applied live.
+- **Stadium**: the dark arena ships with a new 4K surround; the medieval
+  arena is removed (dark_arena is the installed default).
+- **Match log**: the action log is now the MATCH LOG (panel, code and
+  tooling renamed).
+- **README + screenshot gallery**: refreshed for the new UI (hero,
+  field, match log, touchdown celebration, rain, blizzard, live match
+  list); the `hud_preview` tool gains `--weather <name>`, `--td` and
+  `--spectate` captures.
+- **Tests**: new weather suites (rulebook mapping, whole-scene snow
+  coverage, sunny brightness, lightning envelope, Settings wiring) on
+  top of the existing rain sim tests.
+
 ## 0.2.22 — 2026-11-11
 - **Third-party licensing (Qt 6 LGPLv3 compliance)**: added
   `LICENSE-THIRD-PARTY.md` documenting the third-party components —

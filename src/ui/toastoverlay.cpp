@@ -33,7 +33,9 @@ void ToastOverlay::showCenter(const QString &text, int visibleMs)
     QFont f = font();
     f.setPointSizeF(20);
     f.setBold(true);
-    const int w = int(QFontMetricsF(f).horizontalAdvance(text)) + 48;
+    // Same width formula as makeToast (advance CEILED + 32px padding) so
+    // the centering matches the label's real size.
+    const int w = int(qCeil(QFontMetricsF(f).horizontalAdvance(text))) + 32;
     makeToast(text, QColor(24, 24, 30, 215), qMax(8, (width() - w) / 2), 36,
               visibleMs, false);
 }
@@ -61,7 +63,9 @@ void ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
         "background: %1; color: #ffffff; border-radius: 8px; padding: 6px 16px;")
         .arg(rgba(bg)));
     const QFontMetricsF fm(f);
-    const int w = int(fm.horizontalAdvance(text)) + 32;
+    // CEIL the advance: int() truncation left the last glyph short by a
+    // fraction of a pixel (and the padding is exactly 16px per side).
+    const int w = int(qCeil(fm.horizontalAdvance(text))) + 32;
     const int h = edge ? 30 : 44;
     label->setGeometry(x, y, w, h);
     label->show();

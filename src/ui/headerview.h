@@ -79,6 +79,9 @@ public:
     int rerollsTotalAway() const { return m_rerollsTotalAway; }
     int inducementCountHome() const { return m_inducementHome.size(); }
     int inducementCountAway() const { return m_inducementAway.size(); }
+    // Last painted badge size (px) — the badges must track the team-name
+    // font (136% of its height); test seam for that contract.
+    qreal inducementBadgeSize() const { return m_lastBadgeSize; }
     // Tooltip text for the badge under `pos` (empty = none) — test seam for
     // the hover tooltips.
     QString inducementTipAt(const QPoint &pos) const;
@@ -120,6 +123,7 @@ private:
     // Badge hit rects, rebuilt on every paint (positional truth).
     QVector<QRectF> m_indRectsHome;
     QVector<QRectF> m_indRectsAway;
+    qreal m_lastBadgeSize = 0.0; // last painted badge size (px)
 
     // The ACTIVE team's name GLOWS with a breathing pulse (the turn holder
     // must pop out of the strip). A timer advances the phase; greenEmboss

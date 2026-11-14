@@ -1,9 +1,9 @@
 // =============================================================================
-// ActionLogWidget — Mockup F action log (bottom-left overlay)
+// MatchLogWidget — Mockup F match log (bottom-left overlay)
 //
 // Design (Mockup F):
 //   * a very translucent light card pinned to the stage corner (no title
-//     bar chrome — just "ACTION LOG" + an expand chevron, like the mockup)
+//     bar chrome — just "MATCH LOG" + an expand chevron, like the mockup)
 //   * bold ink text on the near-transparent card
 //   * rolls are rendered as DIE FACE IMAGES (the official GW-style block
 //     dice and the red d6 from assets/dice/), never as numbers: the
@@ -63,12 +63,12 @@ private:
     bool m_on = true;
 };
 
-class ActionLogWidget : public QWidget
+class MatchLogWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit ActionLogWidget(QWidget *parent = nullptr);
+    explicit MatchLogWidget(QWidget *parent = nullptr);
 
     // Append one parsed report line. `actorName` / `defenderName` are the
     // already-resolved display names (empty = no participant on that role);
@@ -87,7 +87,7 @@ public:
     // Plain-text dump of all entries (tests / debugging).
     QString toPlainText() const;
 
-    // Compact (3 rows) vs expanded (10 rows) heights.
+    // Compact (6 rows) vs expanded (10 rows) heights.
     static int compactHeight();
     static int expandedHeight();
 

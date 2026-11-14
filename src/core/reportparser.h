@@ -1,5 +1,5 @@
 // =============================================================================
-// ReportParser — FUMBBL server reports -> action log lines
+// ReportParser — FUMBBL server reports -> match log lines
 //
 // FIELD-BY-FIELD ALIGNED with the authoritative ffb-common Java sources:
 //   /home/saruman/Projects/ffb/ffb-common/src/main/java/com/fumbbl/ffb/

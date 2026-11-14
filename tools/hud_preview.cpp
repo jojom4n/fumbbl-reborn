@@ -8,7 +8,7 @@
 //                          crimson TD zones, vertical TOUCHDOWN, center line
 //   hud_dugouts.png    the two full-height dugout panels + the visible
 //                          gap (apron) between each panel and the TD column
-//   hud_actionlog.png  action log: block + d6 dice at 44px with spacing
+//   hud_matchlog.png  match log: block + d6 dice at 44px with spacing
 //   hud_header.png     header: active-team breathing glow, equal font
 //                          for both team names, more line spacing
 //   hud_trail.png      the actor's cumulative move trail (grid-following
@@ -30,10 +30,12 @@
 
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
-#include "ui/actionlog.h"
+#include "ui/matchlog.h"
 #include "ui/fieldview.h"
 #include "ui/headerview.h"
 #include "ui/mainwindow.h"
+#include "ui/spectatedialog.h"
+#include "ui/touchdownbanner.h"
 
 static void saveCrop(QWidget &w, const QRect &r, const QString &path)
 {
@@ -66,6 +68,9 @@ int main(int argc, char *argv[])
         QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("game")).toObject();
 
     MainWindow w;
+    // Deterministic capture: the real client persists the panel layout in
+    // QSettings — the README/tool shots always start from the defaults.
+    w.resetLayout();
     w.showNormal();
     w.resize(1400, 860);
     w.show();
@@ -73,7 +78,7 @@ int main(int argc, char *argv[])
     w.onGameState(game);
 
     FieldView *field = w.findChild<FieldView *>();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     HeaderView *header = w.findChild<HeaderView *>();
     if (!field || !log || !header)
         qFatal("missing a widget");
@@ -513,6 +518,105 @@ int main(int argc, char *argv[])
     w.grab().save(outDir + "/hud_window.png");
     qInfo().noquote() << "saved" << outDir << "/hud_window.png";
 
+    // --td: fire the TOUCHDOWN celebration (banner + falling streamers) and
+    // capture it mid-fall.
+    for (int a = 1; a < argc; ++a)
+        if (QString::fromLocal8Bit(argv[a]) == QLatin1String("--td")) {
+            w.tdBanner()->celebrate();
+            for (int i = 0; i < 13; ++i) { // ~1.3 s: streamers mid-fall
+                QThread::msleep(100);
+                QApplication::processEvents();
+            }
+            w.grab().save(outDir + "/hud_td.png");
+            qInfo().noquote() << "saved" << outDir << "/hud_td.png";
+        }
+
+    // --spectate: the live match list dialog over the HUD (a realistic
+    // sample list) — the README capture.
+    for (int a = 1; a < argc; ++a)
+        if (QString::fromLocal8Bit(argv[a]) == QLatin1String("--spectate")) {
+            SpectateDialog dlg(&w, /*autoLoadList=*/false);
+            dlg.show();
+            dlg.raise();
+            auto team = [](const QString &n, const QString &c, const QString &r,
+                           int s) {
+                FFBMatchTeam t;
+                t.name = n;
+                t.coach = c;
+                t.race = r;
+                t.score = s;
+                return t;
+            };
+            QVector<FFBLiveMatch> ms;
+            const char *rows[][11] = {
+                {"2", "3", "Competitive", "Doom18 Graveguards", "JyrKing",
+                 "Tomb Kings", "HASHUT'S WRATH 25", "MattDakka", "Chaos Dwarf",
+                 "0", "1"},
+                {"2", "7", "Competitive", "Barcelona Rats Creatures", "Nörbi",
+                 "Skaven", "Stripedayve", "Poor Man's Humans", "Bretonnia",
+                 "1", "0"},
+                {"2", "1", "Competitive", "Ozts Fermenters", "Ozt", "Nurgles",
+                 "Hobbelknopf", "BBT 18 Nackarna", "Necromantic", "0", "0"},
+                {"1", "6", "League", "Namek Zuper Boyz", "Gallo", "Orcs",
+                 "Tonal", "Nurglet taas", "Nurgles", "2", "1"},
+                {"1", "3", "League", "Ass-Ass-Ins", "MerryZ", "Dark Elf",
+                 "VitusBenzon", "Penn-dragons", "Bretonnia", "1", "2"},
+                {"2", "5", "Competitive", "145 Must A Liaison", "PacoPorvari",
+                 "Dark Elf", "SideshowBob", "Varg-Egon jag ser dig",
+                 "Ogre", "3", "1"},
+                {"1", "8", "League", "Edinburgh Ironclads", "Thebunnneh",
+                 "Human", "Zeffir", "Primal_Instinct", "Lizardman", "0", "1"},
+                {"2", "2", "Competitive", "High and Mighty", "mwebe",
+                 "High Elf", "Xandores", "Vampyvampvos V3", "Vampire",
+                 "1", "1"},
+                {"1", "2", "League", "Blood4Scrilla", "Locuzt", "Orcs",
+                 "Masta_piggioto", "Southstorm Squids", "NFC", "0", "2"},
+                {"2", "4", "Competitive", "Ghyran's Good Guys", "GnordGniesta",
+                 "Orcs", "Wurzelwurzer", "Wurzelwurzer Clan", "Chaos",
+                 "1", "0"},
+            };
+            int id = 1962400;
+            for (const auto &r : rows) {
+                FFBLiveMatch m;
+                m.id = id++;
+                m.half = QString(r[0]).toInt();
+                m.turn = QString(r[1]).toInt();
+                m.division = r[2];
+                m.home = team(r[3], r[4], r[5], QString(r[9]).toInt());
+                m.away = team(r[6], r[7], r[8], QString(r[10]).toInt());
+                ms.append(m);
+            }
+            dlg.loadMatchesForTest(ms);
+            for (int i = 0; i < 10; ++i) {
+                QThread::msleep(100);
+                QApplication::processEvents();
+            }
+            // The dialog is a separate top-level window: grab IT (a window
+            // grab of the main window would not include it).
+            dlg.grab().save(outDir + "/hud_spectate.png");
+            qInfo().noquote() << "saved" << outDir << "/hud_spectate.png";
+        }
+
+    // --weather <name>: set the weather (server name, e.g. "Pouring Rain",
+    // "Blizzard", "Very Sunny", "Sweltering Heat") on the field + header,
+    // let the effects run, and save hud_weather_<slug>.png (README gallery).
+    for (int a = 1; a + 1 < argc; ++a) {
+        if (QString::fromLocal8Bit(argv[a]) != QLatin1String("--weather"))
+            continue;
+        const QString name = QString::fromLocal8Bit(argv[a + 1]);
+        field->setWeather(name);
+        header->setWeather(name);
+        for (int i = 0; i < 100; ++i) { // ~10 s: particles + seeded patches
+            QThread::msleep(100);
+            QApplication::processEvents();
+        }
+        QString slug = name.toLower();
+        slug.replace(QLatin1Char(' '), QLatin1Char('_'));
+        const QString out = outDir + "/hud_weather_" + slug + QStringLiteral(".png");
+        w.grab().save(out);
+        qInfo().noquote() << "saved" << out;
+    }
+
     // --- Stadium geometry: the scene is the STADIUM (cover); the field is
     //     fitted into the manifest pit; the dugouts are the top band. Crop
     //     using the widget-space geometry (zoom 1 / pan 0).
@@ -535,7 +639,7 @@ int main(int argc, char *argv[])
     header->grab().save(outDir + "/hud_header.png");
     qInfo().noquote() << "saved" << outDir << "/hud_header.png";
 
-    // --- Action log: 44px spaced dice --------------------------------------------
+    // --- Match log: 44px spaced dice --------------------------------------------
     for (QLabel *l : log->findChildren<QLabel *>())
         if (l->text() == QString::fromUtf8("\u25b4")) {
             const QPoint at = l->mapTo(log, QPoint(l->width() / 2, l->height() / 2));
@@ -545,7 +649,7 @@ int main(int argc, char *argv[])
             break;
         }
     QApplication::processEvents();
-    saveCrop(*log, log->rect(), outDir + "/hud_actionlog.png");
+    saveCrop(*log, log->rect(), outDir + "/hud_matchlog.png");
 
     // --- Rain: switch to pouring rain, let drops + dynamic puddles build up -------
     // (top-down rain over the WHOLE field, puddles appear over time).

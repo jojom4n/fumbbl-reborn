@@ -33,7 +33,7 @@
 #include <QScrollArea>
 
 #include "core/gamemodel.h"
-#include "ui/actionlog.h"
+#include "ui/matchlog.h"
 #include "ui/fieldview.h"
 #include "ui/mainwindow.h"
 
@@ -460,7 +460,7 @@ int main(int argc, char *argv[])
                  QStringLiteral("gfi_noreemit.png"));
     }
 
-    // --- Section H: ACTION LOG WRAP — a long line ("Catch (Inaccurate Pass
+    // --- Section H: MATCH LOG WRAP — a long line ("Catch (Inaccurate Pass
     // or Scattered)" + dice + result) must WRAP, not clip. The log's height
     // is fixed (compact), so each shot carries just the lines it needs:
     // compact width (a short line + the long one) and a narrow width (the
@@ -468,11 +468,11 @@ int main(int argc, char *argv[])
     {
         const auto shootLog = [&](const QString &name, int width,
                                   bool withShort) {
-            const int height = ActionLogWidget::compactHeight();
+            const int height = MatchLogWidget::compactHeight();
             auto *holder = new QWidget(&w);
             holder->resize(width + 4, height + 4);
             holder->move(qMax(0, 1900 - width - 120), 40);
-            auto *log = new ActionLogWidget(holder);
+            auto *log = new MatchLogWidget(holder);
             log->resize(width, height);
             holder->show();
             log->show();

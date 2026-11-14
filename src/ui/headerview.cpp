@@ -4,6 +4,7 @@
 #include "ui/headerview.h"
 
 #include "core/assets.h"
+#include "core/gamemodel.h"
 
 #include <QFontMetricsF>
 #include <QHash>
@@ -159,6 +160,55 @@ void rainIcon(QPainter &p, qreal x, qreal y, qreal s)
     }
 }
 
+// BLIZZARD: a 6-spoke snowflake (spokes + one pair of side ticks each),
+// cool light blue — the same hand-drawn language as the other icons.
+void snowflakeIcon(QPainter &p, qreal x, qreal y, qreal s)
+{
+    const QPointF c(x + s * 0.5, y + s * 0.5);
+    const qreal r = s * 0.42;
+    p.setPen(QPen(QColor(110, 150, 205), 2, Qt::SolidLine, Qt::RoundCap));
+    for (int k = 0; k < 6; ++k) {
+        const qreal ang = k * M_PI / 3.0;
+        const QPointF tip(c.x() + r * std::cos(ang), c.y() + r * std::sin(ang));
+        p.drawLine(c, tip);
+        // Side ticks 60% out along the spoke.
+        const QPointF mid(c.x() + r * 0.6 * std::cos(ang),
+                          c.y() + r * 0.6 * std::sin(ang));
+        for (const qreal d : { M_PI / 6.0, -M_PI / 6.0 }) {
+            p.drawLine(mid, QPointF(mid.x() + s * 0.14 * std::cos(ang + d),
+                                     mid.y() + s * 0.14 * std::sin(ang + d)));
+        }
+    }
+}
+
+// SWELTERING HEAT: a small sun with THREE wavy heat lines rising below it.
+void heatIcon(QPainter &p, qreal x, qreal y, qreal s)
+{
+    const QPointF c(x + s * 0.5, y + s * 0.28);
+    p.setPen(QPen(QColor(190, 140, 40), 1));
+    p.setBrush(QColor(240, 176, 60));
+    p.drawEllipse(c, s * 0.18, s * 0.18);
+    p.setPen(QPen(QColor(240, 176, 60), 2));
+    for (int k = 0; k < 8; ++k) {
+        const qreal ang = k * 3.14159265 / 4.0;
+        p.drawLine(c + QPointF(s * 0.3 * std::cos(ang), s * 0.3 * std::sin(ang)),
+                   c + QPointF(s * 0.42 * std::cos(ang), s * 0.42 * std::sin(ang)));
+    }
+    // Wavy heat lines (3), each a short sine sampled across the width.
+    p.setPen(QPen(QColor(214, 120, 60), 1.8, Qt::SolidLine, Qt::RoundCap));
+    for (int row = 0; row < 3; ++row) {
+        const qreal y0 = y + s * (0.62 + 0.18 * row);
+        for (int i = 0; i < 22; ++i) {
+            const qreal t0 = i / 22.0, t1 = (i + 1) / 22.0;
+            const qreal x0 = x + s * 0.1 + s * 0.8 * t0;
+            const qreal x1 = x + s * 0.1 + s * 0.8 * t1;
+            const qreal w0 = y0 + s * 0.05 * std::sin(6.0 * M_PI * t0);
+            const qreal w1 = y0 + s * 0.05 * std::sin(6.0 * M_PI * t1);
+            p.drawLine(QPointF(x0, w0), QPointF(x1, w1));
+        }
+    }
+}
+
 } // namespace
 
 HeaderView::HeaderView(QWidget *parent)
@@ -166,6 +216,10 @@ HeaderView::HeaderView(QWidget *parent)
 {
     setFixedHeight(62);
     setAutoFillBackground(true);
+    // Hover tooltips on the inducement badges need mouse-move events even
+    // without a pressed button: without mouse tracking, mouseMoveEvent is
+    // never delivered and the tooltips can never appear.
+    setMouseTracking(true);
     // Expand to the full toolbar width so the ZONES land where the mockup
     // puts them (left team / center info / right team) instead of
     // clustering at the left edge.
@@ -366,20 +420,23 @@ void HeaderView::paintEvent(QPaintEvent *)
     for (int i = 0; i < m_rerollsTotalAway; ++i)
         coin(p, xa + i * dotGap, 16, 7, i < m_rerollsAway);
 
-    // --- inducement badges (16px, same line as the reroll dots) ------------
+    // --- inducement badges (85% of the team-name size, same line as the
+    //     reroll dots) ------------------------------------------------------
     // Home: right of the last home dot; away mirrored, left of the first
     // away dot. Hit rects are rebuilt here (positional truth for the
     // hover tooltips).
     m_indRectsHome.clear();
     m_indRectsAway.clear();
-    const qreal badgeY = 8.0; // 16px badge centered on the dot line (cy 16)
+    const qreal badgeS = 1.36 * fmName.height(); // 136% of the team name (user: 60% bigger)
+    m_lastBadgeSize = badgeS;
+    const qreal badgeY = 16.0 - badgeS / 2.0;    // centered on the dot line (cy 16)
     const qreal badgeGap = 6.0;
-    const auto drawBadge = [this, &p, badgeY, badgeGap](
+    const auto drawBadge = [this, &p, badgeY, badgeGap, badgeS](
                                 const QVector<InducementBadge> &badges,
                                 qreal startX, qreal step,
                                 QVector<QRectF> &rects) {
         for (int i = 0; i < badges.size(); ++i) {
-            const QRectF r(startX + i * step, badgeY, 16, 16);
+            const QRectF r(startX + i * step, badgeY, badgeS, badgeS);
             // Spent (no units left, e.g. a used bribe) → grayscale.
             const bool spent = badges[i].count <= 0;
             const QPixmap pm = assets::inducementPixmap(badges[i].typeId, spent);
@@ -397,21 +454,23 @@ void HeaderView::paintEvent(QPaintEvent *)
             }
             if (badges[i].count > 1) {
                 // Count disc bottom-right.
-                const QRectF c(r.right() - 4, r.bottom() - 4, 10, 10);
+                const qreal cS = qMax(10.0, badgeS * 0.5);
+                const QRectF c(r.right() - 4, r.bottom() - 4, cS, cS);
                 p.setPen(QPen(QColor(250, 250, 253), 1));
                 p.setBrush(GREEN_DARK);
                 p.drawEllipse(c);
                 p.setPen(QColor(250, 250, 253));
-                p.setFont(QFont(font().family(), 7, QFont::Bold));
+                p.setFont(QFont(font().family(), qMax(7, int(cS * 0.55)),
+                                QFont::Bold));
                 p.drawText(c, Qt::AlignCenter, QString::number(badges[i].count));
             }
             rects << r;
         }
     };
     const qreal homeStart = xh + m_rerollsTotalHome * dotGap + 10;
-    drawBadge(m_inducementHome, homeStart, 16 + badgeGap, m_indRectsHome);
-    const qreal awayStart = xa - 10 - 16;
-    drawBadge(m_inducementAway, awayStart, -(16 + badgeGap), m_indRectsAway);
+    drawBadge(m_inducementHome, homeStart, badgeS + badgeGap, m_indRectsHome);
+    const qreal awayStart = xa - 10 - badgeS;
+    drawBadge(m_inducementAway, awayStart, -(badgeS + badgeGap), m_indRectsAway);
 
     // --- center: score ---------------------------------------------------------
     // Score up (font 20, top 3), center row down (y 38) in the 62px strip:
@@ -443,11 +502,16 @@ void HeaderView::paintEvent(QPaintEvent *)
                           : m_half == 3 ? QStringLiteral("EXTRA TIME")
                           : QStringLiteral("PRE-GAME");
     const QString timeT = formatElapsed(m_elapsedSeconds);
+    // The header shows the RULEBOOK name, never the server string
+    // ("Nice Weather" => "Perfect Conditions", "Intro" => "\u2014").
+    const QString weatherT = GameModel::weatherDisplayName(m_weather);
+    const auto weatherKind = GameModel::weatherKind(m_weather);
     const QFontMetricsF fmChip(chipF), fmTime(timeF), fmLab(labF);
-    const qreal w1 = fmChip.horizontalAdvance(turnT) + 14;
-    const qreal w2 = fmChip.horizontalAdvance(halfT) + 14;
+    // The HALF chip comes FIRST, the turn second (user layout decision).
+    const qreal w1 = fmChip.horizontalAdvance(halfT) + 14;
+    const qreal w2 = fmChip.horizontalAdvance(turnT) + 14;
     const qreal w3 = fmTime.horizontalAdvance(timeT);
-    const qreal w4 = 26 + fmLab.horizontalAdvance(m_weather);
+    const qreal w4 = 26 + fmLab.horizontalAdvance(weatherT);
     const qreal total = w1 + 8 + w2 + 16 + w3 + 16 + w4;
     const qreal y = 38; // below the score with a real gap
     // The TURN / HALF pills are 20px tall with the text vertically
@@ -463,25 +527,40 @@ void HeaderView::paintEvent(QPaintEvent *)
     p.drawRoundedRect(QRectF(x, y, w1, chipH), 10, 10);
     p.setPen(m_homeAccent);
     p.setFont(chipF);
-    p.drawText(x + 7, chipBase(fmChip), turnT);
+    p.drawText(x + 7, chipBase(fmChip), halfT);
     x += w1 + 8;
     p.setPen(QPen(INK2, 1));
     p.drawRoundedRect(QRectF(x, y, w2, chipH), 10, 10);
     p.setPen(INK2);
-    p.drawText(x + 7, chipBase(fmChip), halfT);
+    p.drawText(x + 7, chipBase(fmChip), turnT);
     x += w2 + 16;
     p.setPen(INK);
     p.setFont(timeF);
     p.drawText(x, chipBase(fmTime), timeT);
     x += w3 + 16;
     const qreal iconY = y + (chipH - 18) / 2.0;
-    if (m_weather.toLower().contains(QLatin1String("rain")))
+    switch (weatherKind) {
+    case GameModel::WeatherKind::Rain:
         rainIcon(p, x, iconY, 18);
-    else
+        break;
+    case GameModel::WeatherKind::Blizzard:
+        snowflakeIcon(p, x, iconY, 18);
+        break;
+    case GameModel::WeatherKind::Sunny:
         sunIcon(p, x, iconY, 18);
+        break;
+    case GameModel::WeatherKind::Heat:
+        heatIcon(p, x, iconY, 18);
+        break;
+    case GameModel::WeatherKind::None:
+        // "Perfect Conditions" = clear sky (sun); "Intro" / unknown: no icon.
+        if (weatherT.contains(QLatin1String("Perfect")))
+            sunIcon(p, x, iconY, 18);
+        break;
+    }
     p.setPen(INK2);
     p.setFont(labF);
-    p.drawText(x + 26, chipBase(fmLab), m_weather);
+    p.drawText(x + 26, chipBase(fmLab), weatherT);
 }
 
 void HeaderView::setInducements(const QVector<InducementBadge> &home,
