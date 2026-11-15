@@ -40,6 +40,7 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QToolButton>
+#include <QComboBox>
 #include <QThread>
 
 #include "core/assets.h"
@@ -163,6 +164,7 @@ private slots:
     void toastMilestonesAndReportEvents();
     void matchListDivisionTabsAndPolling();
     void archiveRoundTrip();
+    void localReplayRoundTrip();
     void joinWaitingBoardShowsVsAndDiesOnGameState();
     void reportCardShowsAtFullTime();
     void chatCollapsesToPillWithUnreadBadge();
@@ -4136,6 +4138,89 @@ void UiWiringTest::archiveRoundTrip()
     QCOMPARE(list.first().scoreAway, 2);
     QCOMPARE(list.first().rulesVersion, QStringLiteral("BB2025"));
     QDir().remove(tmp);
+}
+
+// R1a local replay: a synthetic 3-frame stream (score 1..3 + a turnEnd report)
+// plays through the REAL transport + MainWindow pipeline; the turn mark is
+// built at load; seek() fast-applies to the target frame.
+void UiWiringTest::localReplayRoundTrip()
+{
+    const QString dir = QDir::tempPath() + QStringLiteral("/fumbbl_replay_test_%1")
+                            .arg(QCoreApplication::applicationPid());
+    QDir().remove(dir);
+    QDir().mkpath(dir);
+
+    QJsonObject seed;
+    seed.insert(QStringLiteral("seedKind"), QStringLiteral("initial"));
+    seed.insert(QStringLiteral("game"), fixtureGame());
+
+    QJsonObject turnEnd;
+    turnEnd.insert(QStringLiteral("reportId"), QStringLiteral("turnEnd"));
+    turnEnd.insert(QStringLiteral("turn"), 1);
+    auto sync = [](QJsonArray changes, QJsonArray reports) {
+        QJsonObject f;
+        f.insert(QStringLiteral("netCommandId"), QStringLiteral("serverModelSync"));
+        f.insert(QStringLiteral("modelChangeList"),
+                 QJsonObject{{"modelChangeArray", changes}});
+        f.insert(QStringLiteral("reportList"), QJsonObject{{"reports", reports}});
+        return f;
+    };
+    const QJsonObject f1 = sync(QJsonArray{makeChange("teamResultSetScore", "home", 1)},
+                                QJsonArray());
+    const QJsonObject f2 = sync(QJsonArray{makeChange("teamResultSetScore", "home", 2)},
+                                QJsonArray{turnEnd});
+    const QJsonObject f3 = sync(QJsonArray{makeChange("teamResultSetScore", "home", 3)},
+                                QJsonArray());
+
+    {
+        QFile mf(dir + QStringLiteral("/match.json"));
+        QVERIFY(mf.open(QIODevice::WriteOnly));
+        QJsonObject meta;
+        meta.insert("gameId", 999);
+        meta.insert("source", "live");
+        mf.write(QJsonDocument(meta).toJson(QJsonDocument::Compact));
+    }
+    {
+        QFile sf(dir + QStringLiteral("/stream.jsonl"));
+        QVERIFY(sf.open(QIODevice::WriteOnly));
+        sf.write(QJsonDocument(seed).toJson(QJsonDocument::Compact) + "\n");
+        sf.write(QJsonDocument(f1).toJson(QJsonDocument::Compact) + "\n");
+        sf.write(QJsonDocument(f2).toJson(QJsonDocument::Compact) + "\n");
+        sf.write(QJsonDocument(f3).toJson(QJsonDocument::Compact) + "\n");
+    }
+
+    MainWindow w;
+    w.show();
+    w.startLocalReplay(dir);
+    QVERIFY(w.transport() != nullptr);
+    QCOMPARE(w.transport()->frameCount(), 3);
+    bool hasTurnMark = false;
+    for (const ReplayTurnMark &m : w.transport()->turnMarks())
+        if (m.label.startsWith(QStringLiteral("Turn")))
+            hasTurnMark = true;
+    QVERIFY(hasTurnMark);
+
+    // Play all three frames deterministically (the tick seam stops the timer).
+    w.transport()->tickForTest();
+    w.transport()->tickForTest();
+    w.transport()->tickForTest();
+    QCOMPARE(w.model()->scoreHome(), 3);
+
+    // The turn combo is populated with the "Turn" mark.
+    QComboBox *turnJump = w.findChild<QComboBox *>(QStringLiteral("replayTurnJump"));
+    QVERIFY(turnJump != nullptr);
+    bool comboHasTurn = false;
+    for (int i = 0; i < turnJump->count(); ++i)
+        if (turnJump->itemText(i).contains(QStringLiteral("Turn")))
+            comboHasTurn = true;
+    QVERIFY(comboHasTurn);
+
+    // Seek to frame 2: fast-apply resets + replays 1..2 -> score 2.
+    w.transport()->seek(2);
+    QApplication::processEvents();
+    QCOMPARE(w.model()->scoreHome(), 2);
+
+    QDir().remove(dir);
 }
 
 // Explicit main for the GUI-subsystem test binary (no console attached):

@@ -140,6 +140,8 @@ add_executable(fumbbl-qt
     src/core/teamfetch.cpp
     src/core/matcharchive.h
     src/core/matcharchive.cpp
+    src/ui/replaytransport.h
+    src/ui/replaytransport.cpp
 
     # UI
     src/ui/mainwindow.h
@@ -276,6 +278,7 @@ fumbbl_add_credential_store(reports_capturer)
 add_executable(hud_preview
     tools/hud_preview.cpp
     src/core/matcharchive.cpp
+    src/ui/replaytransport.cpp
     src/core/lzstring.cpp
     src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
@@ -320,6 +323,7 @@ fumbbl_add_credential_store(hud_preview)
 add_executable(move_numbers_preview
     tools/move_numbers_preview.cpp
     src/core/matcharchive.cpp
+    src/ui/replaytransport.cpp
     src/core/lzstring.cpp
     src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp

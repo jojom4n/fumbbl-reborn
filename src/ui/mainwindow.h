@@ -30,6 +30,7 @@
 #include "core/matchlist.h"
 #include "core/reportparser.h"
 #include "ui/fieldview.h"
+#include "ui/replaytransport.h"
 
 class MatchLogWidget;
 class ChatWidget;
@@ -49,6 +50,9 @@ class QPlainTextEdit;
 class QToolBar;
 class PlayerInfoWidget;
 class SpectatorSession;
+class QComboBox;
+class QSlider;
+class QToolButton;
 class QLabel;
 class QAction;
 struct FFBPlayer;
@@ -184,6 +188,11 @@ public:
     // point the archive root at a temp dir.
     void feedRawFrameForTest(const QString &netCommandId, const QJsonObject &payload);
     void setArchiveRootForTest(const QString &root);
+    // Local replay (R1a): watch an archived match. startLocalReplay is public
+    // (the My Matches dialog and the test call it); stopReplay exits the mode.
+    void startLocalReplay(const QString &dir);
+    void stopReplay();
+    ReplayTransport *transport() { return m_transport; }
 
     // Set the active coach (empty = none) and the Log out action's enabled
     // state. Production: the connect flow sets it, Log out clears it.
@@ -212,6 +221,18 @@ private:
     // Raw protocol frames (R1a archive): the login-verification match is never
     // archived; a new gameId closes the previous match and opens a fresh dir.
     void onRawProtocol(const QString &netCommandId, const QJsonObject &payload);
+    // Local replay (R1a): the transport drives the SAME pipeline as the live
+    // session; m_replayActive gates the live signals so they don't fight it.
+    void buildReplayBar();
+    void onReplayLoaded(const QJsonObject &meta, const QVector<ReplayTurnMark> &marks);
+    void onReplayFrame(int index);
+    void onReplaySeek(int index);
+    void onReplayPosition(int index);
+    void applyReplaySeed();
+    void syncReplayPlayButton();
+    // Full model-sync pipeline (TD deferral, dedup, log, toasts): shared by
+    // onModelSync (live) and onReplayFrame (replay, which bypasses the gate).
+    void applyModelPipeline(const QJsonArray &changes, const QJsonArray &reports);
     // Report dedup: the server re-sends reports (step retries / re-syncs)
     // and the official client does NOT dedupe — we do: a report whose
     // canonical fingerprint arrived within the last kDedupWindowMs is
@@ -305,6 +326,15 @@ private:
     // Match auto-archive (R1a): raw frames -> ~/.config/fumbbl-reborn/matches.
     MatchArchive m_archive;
     bool m_archiveWarned = false; // one status-bar warning per session on IO err
+    // Local replay (R1a): the transport + the bottom transport bar controls.
+    ReplayTransport *m_transport = nullptr;
+    bool m_replayActive = false;
+    QWidget *m_replayBar = nullptr;
+    QToolButton *m_replayPlayPause = nullptr;
+    QComboBox *m_replaySpeed = nullptr;
+    QSlider *m_replayScrub = nullptr;
+    QComboBox *m_replayTurnJump = nullptr;
+    QLabel *m_replayStatus = nullptr;
     QNetworkAccessManager *m_logoNam = nullptr; // team logo downloads
     QString m_homeLogoUrl; // currently loaded/loaded-in-flight logo URLs
     QString m_awayLogoUrl;
@@ -369,6 +399,8 @@ private:
     // Actions
     QAction *m_connectAction = nullptr;
     QAction *m_disconnectAction = nullptr;
+    QAction *m_replayAction = nullptr;
+    QAction *m_replayStopAction = nullptr;
     QAction *m_quitAction = nullptr;
     QAction *m_resetLayoutAction = nullptr;
     QHash<QString, QAction *> m_panelViewActions; // name -> View-menu action
