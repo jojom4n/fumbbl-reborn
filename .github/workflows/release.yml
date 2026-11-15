@@ -192,6 +192,9 @@ jobs:
           Compress-Archive -Path "staging\*" -DestinationPath "FUMBBL-Reborn-$ver-windows-x86_64.zip"
 
       - name: Build release notes
+        # This job's default shell is PowerShell; the notes script is bash
+        # (awk) — force bash like the linux job.
+        shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"
           {
