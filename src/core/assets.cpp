@@ -144,6 +144,48 @@ QPixmap loadPixmap(const QString &relPath)
     return pm;
 }
 
+// featherAlpha — one 4-tap box pass over a COPY of the alpha channel
+// (a(x,y) = mean of the in-bounds taps of the ORIGINAL alpha): a hard
+// keyed edge (binary alpha) becomes a 1px soft edge. Inducement badges
+// only — keyed assets get a binary edge from the flood fill, and that
+// edge, downscaled to header size, leaves a jagged halo.
+static QImage featherAlpha(QImage img)
+{
+    if (img.isNull())
+        return img;
+    img = img.convertToFormat(QImage::Format_ARGB32);
+    const int w = img.width(), h = img.height();
+    if (w < 2 || h < 2)
+        return img;
+    const int n = w * h;
+    QRgb *bits = reinterpret_cast<QRgb *>(img.bits());
+    QVector<quint8> src(n);
+    for (int i = 0; i < n; ++i)
+        src[i] = qAlpha(bits[i]);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int i = y * w + x;
+            int sum = src[i], taps = 1; // in-bounds taps only (no border
+                                         // replication)
+            if (x + 1 < w) {
+                sum += src[i + 1];
+                ++taps;
+            }
+            if (y + 1 < h) {
+                sum += src[i + w];
+                ++taps;
+            }
+            if (x + 1 < w && y + 1 < h) {
+                sum += src[i + w + 1];
+                ++taps;
+            }
+            // QRgb alpha is the TOP byte (0xFF000000) — shift it in.
+            bits[i] = (bits[i] & 0x00FFFFFFu) | (quint32(sum / taps) << 24);
+        }
+    }
+    return img;
+}
+
 // Slugify: lowercase, non-alphanumerics -> '_', trimmed. ('Ooligan -> ooligan,
 // "Altern Forest Treeman" -> altern_forest_treeman)
 QString slugify(const QString &name)
@@ -279,17 +321,49 @@ QPixmap blockHelmet()
     return loadPixmap(QStringLiteral("markers/helmet.png"));
 }
 
+QPixmap puddleDirtTexture()
+{
+    return loadPixmap(QStringLiteral("field/puddle_dirt.png"));
+}
+
+QPixmap snowMoundTexture()
+{
+    return loadPixmap(QStringLiteral("field/snow_mound.png"));
+}
+
+QPixmap appIcon()
+{
+    return loadPixmap(QStringLiteral("app_icon.png"));
+}
+
 QPixmap inducementPixmap(const QString &typeId, bool spent)
 {
     QPixmap pm = loadPixmap(QStringLiteral("inducements/%1.png").arg(typeId));
     if (pm.isNull())
         pm = loadPixmap(QStringLiteral("inducements/generic.png"));
+    if (pm.isNull())
+        return pm;
     // The generated badges ship on a flat backdrop — key it (the keyer is
     // guarded: real alpha or non-flat borders pass through untouched).
-    if (!pm.isNull() && !pm.hasAlphaChannel())
-        pm = QPixmap::fromImage(keyBackground(pm.toImage()));
-    if (!spent || pm.isNull())
-        return pm;
+    // The KEYED edge is binary alpha; feathered 1px it stops leaving a
+    // jagged halo after the SmoothTransformation downscale to header size.
+    // Keying + feathering run ONCE per type (cache): paintEvent does no
+    // pixel work. Real-alpha assets are cached as-is (no feather — their
+    // edges are the artist's).
+    static QHash<QString, QPixmap> keyedCache;
+    QPixmap keyed;
+    if (auto it = keyedCache.constFind(typeId); it != keyedCache.end())
+        keyed = it.value();
+    else {
+        keyed = pm;
+        if (!keyed.hasAlphaChannel()) {
+            keyed = QPixmap::fromImage(keyBackground(keyed.toImage()));
+            keyed = QPixmap::fromImage(featherAlpha(keyed.toImage()));
+        }
+        keyedCache.insert(typeId, keyed);
+    }
+    if (!spent)
+        return keyed;
     // SPENT badge (charges exhausted, server live data): grayscale. The
     // conversion happens ONCE per type and is cached — paintEvent does no
     // pixel work. If the server recharges the inducement, the caller stops
@@ -297,7 +371,7 @@ QPixmap inducementPixmap(const QString &typeId, bool spent)
     static QHash<QString, QPixmap> spentCache;
     if (auto it = spentCache.constFind(typeId); it != spentCache.end())
         return it.value();
-    const QImage gray = pm.toImage().convertToFormat(QImage::Format_Grayscale8)
+    const QImage gray = keyed.toImage().convertToFormat(QImage::Format_Grayscale8)
                             .convertToFormat(QImage::Format_ARGB32);
     const QPixmap g = QPixmap::fromImage(gray);
     spentCache.insert(typeId, g);

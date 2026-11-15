@@ -15,6 +15,7 @@
 #include "core/gamemodel.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
+#include "core/teamfetch.h"
 #include "ui/chatwidget.h"
 #include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
@@ -107,6 +108,33 @@ MainWindow::MainWindow(QWidget *parent, bool gateLogin)
 
     // Team logo downloads (field watermarks + header crests).
     m_logoNam = new QNetworkAccessManager(this);
+
+    // PRE-MATCH SPP (fumbbl.com /api/team/get per team): the base values
+    // the player card + report card show before the stream sends a change.
+    m_teamFetch = new TeamFetch(this);
+    connect(m_teamFetch, &TeamFetch::teamsReady, this,
+            [this](const QHash<qint64, QVector<TeamPlayerInfo>> &teams) {
+                m_preMatchSpp.clear();
+                for (auto it = teams.cbegin(); it != teams.cend(); ++it)
+                    for (const TeamPlayerInfo &p : it.value())
+                        m_preMatchSpp.insert(QString::number(p.id),
+                                             p.spp + p.extraSpp);
+                if (!m_model || !m_model->isInitialized())
+                    return;
+                // Seed the model (stream stays authoritative) and refresh
+                // whatever is on screen (card / report card).
+                for (auto it = m_preMatchSpp.cbegin();
+                     it != m_preMatchSpp.cend(); ++it)
+                    m_model->seedSpp(it.key(), it.value());
+                if (m_playerInfo && !m_playerInfo->shownPlayerId().isEmpty()) {
+                    if (const FFBPlayer *p =
+                            m_model->findPlayerById(m_playerInfo->shownPlayerId()))
+                        showPlayerCard(p, p->hasCoords ? p->fieldX
+                                                       : (p->sideHome ? 6 : 19));
+                }
+                if (m_reportCard)
+                    m_reportCard->refreshSpp(m_preMatchSpp);
+            });
 
     connect(m_session, &SpectatorSession::gameStateReceived, this, &MainWindow::onGameState);
     connect(m_model, &GameModel::stateUpdated, this, &MainWindow::applyModelToUi);
@@ -676,19 +704,54 @@ void MainWindow::onGameState(const QJsonObject &game)
     if (m_loginSuppressMatchUi)
         return; // verification join: its game state never reaches the UI
     if (m_model->initialize(game)) {
-        // New match: the toast milestone snapshot restarts from scratch
-        // (otherwise the previous match's carrier/score would diff against
-        // the new one and fire phantom toasts).
-        m_toastScoreH = m_toastScoreA = 0;
-        m_toastHalf = 0;
-        m_toastTurnMode.clear();
-        m_toastCarrier.clear();
+        // New match: the milestone snapshot starts from the JOINED state
+        // (baseline capture). A match joined MID-GAME already has a score,
+        // a half, a carrier and a turnMode — diffing against ZEROS instead
+        // fired a phantom TD banner / 2ND HALF / TURNOVER the instant the
+        // join settled (user-reported: the TD banner on connect with no
+        // touchdown in view). The same baseline kills the phantom FULL
+        // TIME + report card on a join of an already-ended match and the
+        // join-time deferral of a TD batch.
+        m_toastScoreH = m_model->scoreHome();
+        m_toastScoreA = m_model->scoreAway();
+        m_toastHalf = m_model->half();
+        m_toastTurnMode = m_model->turnMode();
+        m_toastCarrier = m_model->carrierId();
+        // SPP baseline: the values ALREADY earned before the join (the game
+        // state carries the counters + brought-in SPP) must not re-toast —
+        // only gains AFTER the join fire the "+x SPP" pills. (One snapshot:
+        // sppTable() builds a copy — two calls would iterate begin/end of
+        // two different temporaries.)
+        const QHash<QString, SppInfo> sppAtJoin = m_model->sppTable();
         m_toastSpp.clear();
+        for (auto it = sppAtJoin.cbegin(); it != sppAtJoin.cend(); ++it)
+            m_toastSpp.insert(it.key(), it.value().current);
+        // PRE-MATCH SPP seed: fetch both rosters from fumbbl.com (base
+        // values for the player card + report card; the live stream stays
+        // authoritative for in-match changes).
+        m_preMatchSpp.clear();
+        if (m_preMatchFetchEnabled)
+            m_teamFetch->fetchTeams({m_model->teamHomeId().toLongLong(),
+                                     m_model->teamAwayId().toLongLong()});
         hideWaitBoard(); // the stadium (with the real state) replaces it
         if (m_reportCard) // a new match ends the previous report card
             m_reportCard->close();
         setConnectionStatus(tr("Game state received"), true);
     }
+}
+
+void MainWindow::setPreMatchSppForTest(const QHash<QString, int> &spp)
+{
+    m_preMatchSpp = spp;
+    if (!m_model || !m_model->isInitialized())
+        return;
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it)
+        m_model->seedSpp(it.key(), it.value());
+    // The live teamsReady path refreshes the visible card / report card
+    // after seeding — the seam must do the same.
+    if (m_reportCard)
+        m_reportCard->refreshSpp(m_preMatchSpp);
+    applyModelToUi();
 }
 
 void MainWindow::applyModelToUi()
@@ -837,8 +900,15 @@ void MainWindow::applyModelToUi()
     m_field->setActedPlayers(m_model->actedThisTurn());
     m_field->setBlitzingPlayer(m_model->blitzingPlayerId());
     // The pass receiver's WHITE glow (fieldModelSetTargetSelectionState
-    // SELECTED -> model->passTargetId()).
-    m_field->setPassTarget(m_model->passTargetId());
+    // SELECTED -> model->passTargetId()). Suppressed while a BLITZ is
+    // active: the blitz target must keep ONLY the red block glow (the
+    // white "pass receiver" glow read as a double glow on the blitzer's
+    // target — user-reported). m_blitzingPlayerId is set for the whole
+    // blitz turn (turnDataSetBlitzUsed), so the suppression spans the
+    // whole action.
+    m_field->setPassTarget(m_model->blitzingPlayerId().isEmpty()
+                               ? m_model->passTargetId()
+                               : QString());
     // The KICKOFF flight — the model bumps its seq when the kickoff
     // landing cell arrives (the wire sends only the landing; the
     // trajectory + bounces + kicker glow are synthesized in the field
@@ -966,11 +1036,19 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
     const QHash<QString, SppInfo> spp = m_model->sppTable();
 
     for (auto it = spp.cbegin(); it != spp.cend(); ++it) {
-        // First sight of a player's SPP = their baseline (no toast); only
-        // gains AFTER it fire (a re-join re-sends the values: delta 0).
+        // Baseline: the value at the last snapshot (normally captured at
+        // JOIN — pre-join earnings must not re-toast). A player missing
+        // from the join snapshot (no gameResult in the state) falls back
+        // to the PRE-MATCH fumbbl.com value — a first stream value already
+        // above it IS a real gain (the stream sends only changes). No
+        // known baseline at all: the first value becomes the baseline
+        // (nothing to toast).
         const bool firstSight = !m_toastSpp.contains(it.key());
-        const int delta = it.value().current - m_toastSpp.value(it.key(), 0);
-        if (!firstSight && delta > 0) {
+        const int baseline =
+            firstSight ? m_preMatchSpp.value(it.key(), -1)
+                       : m_toastSpp.value(it.key(), 0);
+        const int delta = it.value().current - baseline;
+        if (baseline >= 0 && delta > 0) {
             const QString name = resolveId(it.key());
             if (!name.isEmpty())
                 m_toasts->showEdge(QStringLiteral("+%1 SPP — %2").arg(delta).arg(name),
@@ -1052,7 +1130,7 @@ void MainWindow::showReportCard()
 {
     if (m_reportCard || !m_model || !m_model->isInitialized())
         return;
-    m_reportCard = new ReportCardDialog(m_model, this);
+    m_reportCard = new ReportCardDialog(m_model, m_preMatchSpp, this);
     m_reportCard->setAttribute(Qt::WA_DeleteOnClose);
     connect(m_reportCard, &QObject::destroyed, this, [this]() {
         m_reportCard = nullptr;
@@ -1901,9 +1979,15 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
     d.ag = p->ag;
     d.pa = p->pa;
     d.av = p->av;
-    // SPP: base (first sight) + in-match gain (red "+x" on the card).
-    d.sppBase = m_model->sppBase(p->playerId);
-    d.sppGain = qMax(0, m_model->sppCurrent(p->playerId) - d.sppBase);
+    // SPP: the base is the PRE-MATCH value fetched from fumbbl.com when
+    // available (the stream only sends CHANGES, so without the fetch a
+    // player who joined with SPP would read 0), else the stream's first
+    // sight. Unknown (neither yet) = "—" on the card, never a fake zero.
+    const int pre = m_preMatchSpp.value(p->playerId, -1);
+    const int base = pre >= 0 ? pre : m_model->sppBase(p->playerId);
+    d.sppBase = base;
+    d.sppKnown = (base > 0) || m_model->sppCurrent(p->playerId) > 0;
+    d.sppGain = qMax(0, m_model->sppCurrent(p->playerId) - base);
     d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
     if (p->hasCoords) {

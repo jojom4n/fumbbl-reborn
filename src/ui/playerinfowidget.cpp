@@ -400,12 +400,15 @@ void PlayerInfoWidget::showPlayer(const PlayerInfoData &info)
     setStat(m_statPa, QStringLiteral("PA"), info.pa);
     setStat(m_statAv, QStringLiteral("AV"), info.av);
     // SPP: base value, plus the in-match gain in red ("SPP 4 +2").
+    // UNKNOWN (no pre-match fetch yet, no stream value) = a dash —
+    // never a fake zero.
     {
         QString spp = QStringLiteral(
             "<span style=\"font-size:9px;color:#687280;letter-spacing:1px;\">SPP</span>"
             "<br><span style=\"font-size:17px;font-weight:800;color:#222832;\">%1</span>")
-            .arg(info.sppBase);
-        if (info.sppGain > 0)
+            .arg(info.sppKnown ? QString::number(info.sppBase)
+                               : QString::fromUtf8("\u2014"));
+        if (info.sppKnown && info.sppGain > 0)
             spp += QStringLiteral(
                 " <span style=\"font-size:12px;font-weight:800;color:#c0392b;\">"
                 "+%1</span>")

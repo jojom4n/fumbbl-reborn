@@ -132,6 +132,9 @@ void GameModel::clearState()
     m_prayersHome.clear();
     m_prayersAway.clear();
     m_spp.clear();
+    m_sppStats.clear();
+    m_brawlinBrutesHome = false;
+    m_brawlinBrutesAway = false;
     m_weather.clear();
     m_traceActor.clear();
     clearMoveTrace();
@@ -248,6 +251,16 @@ bool GameModel::initialize(const QJsonObject &game)
                        : away.value(QStringLiteral("id")).toString();
     m_teamHomeRace = home.value(QStringLiteral("race")).toString();
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
+    // Team special rules (only BRAWLIN BRUTES matters for the client: it
+    // flips the touchdown/casualty SPP values — ffb bb2025 SppMechanic).
+    auto specialRule = [](const QJsonObject &team, const char *rule) {
+        for (const QJsonValue &v : team.value(QStringLiteral("specialRules")).toArray())
+            if (v.toString().compare(QLatin1String(rule), Qt::CaseInsensitive) == 0)
+                return true;
+        return false;
+    };
+    m_brawlinBrutesHome = specialRule(home, "BRAWLIN_BRUTES");
+    m_brawlinBrutesAway = specialRule(away, "BRAWLIN_BRUTES");
     m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();
     m_teamAwayCoach = away.value(QStringLiteral("coach")).toString();
     parseInducementSet(home, true);
@@ -312,6 +325,11 @@ bool GameModel::initialize(const QJsonObject &game)
         m_scoreHome = readInt(result.value(QStringLiteral("teamResultHome")).toObject().value(QStringLiteral("score")));
     if (result.value(QStringLiteral("teamResultAway")).toObject().contains(QStringLiteral("score")))
         m_scoreAway = readInt(result.value(QStringLiteral("teamResultAway")).toObject().value(QStringLiteral("score")));
+    // Per-player SPP at join (brought-in SPP + in-match counters so far):
+    // the BASELINE for the card/report gain and the SPP toasts (a mid-game
+    // join must not re-toast the SPP earned before the join).
+    parsePlayerResults(result, true);
+    parsePlayerResults(result, false);
 
     m_initialized = true;
     emit stateUpdated();
@@ -423,6 +441,45 @@ void GameModel::parsePlayerArray(const QJsonArray &array, bool homeSide)
     }
 }
 
+// gameResult.teamResult*.playerResults (FFB PlayerResult.toJson): one
+// entry per roster player with `currentSpps` (the SPP the player brought
+// into the match, from their record) and the in-match counters. At join
+// time this is the authoritative SPP baseline — a mid-game join carries
+// the counters earned before the join, which must NOT re-toast.
+void GameModel::parsePlayerResults(const QJsonObject &result, bool homeSide)
+{
+    const QString sideKey = homeSide ? QStringLiteral("teamResultHome")
+                                     : QStringLiteral("teamResultAway");
+    const QJsonArray results =
+        result.value(sideKey).toObject().value(QStringLiteral("playerResults")).toArray();
+    for (const QJsonValue &rv : results) {
+        const QJsonObject r = rv.toObject();
+        const QString id = playerIdKey(r.value(QStringLiteral("playerId")));
+        if (id.isEmpty())
+            continue;
+        SppStats stats;
+        stats.touchdowns = readInt(r.value(QStringLiteral("touchdowns")));
+        stats.completions = readInt(r.value(QStringLiteral("completions")));
+        stats.completionsWithAdditionalSpp =
+            readInt(r.value(QStringLiteral("completionsWithAdditionalSpp")));
+        stats.interceptions = readInt(r.value(QStringLiteral("interceptions")));
+        stats.deflections = readInt(r.value(QStringLiteral("deflections")));
+        stats.casualties = readInt(r.value(QStringLiteral("casualties")));
+        stats.casualtiesWithAdditionalSpp =
+            readInt(r.value(QStringLiteral("casualtiesWithAdditionalSpp")));
+        stats.catchesWithAdditionalSpp =
+            readInt(r.value(QStringLiteral("catchesWithAdditionalSpp")));
+        stats.landings = readInt(r.value(QStringLiteral("landings")));
+        stats.playerAwards = readInt(r.value(QStringLiteral("playerAwards")));
+        m_sppStats.insert(id, stats);
+        // Only the game state owns the brought-in baseline (the fumbbl.com
+        // pre-match seed stays a fallback for states without this).
+        if (!m_spp.contains(id))
+            m_spp.insert(id, SppInfo{readInt(r.value(QStringLiteral("currentSpps"))),
+                                     0});
+    }
+}
+
 void GameModel::applyFieldModel(const QJsonObject &fieldModel)
 {
     for (const QJsonValue &dv : fieldModel.value(QStringLiteral("playerDataArray")).toArray()) {
@@ -520,14 +577,65 @@ void GameModel::handleInducementChange(const QString &id, const QString &key,
         prayers.append(value.toString());
 }
 
+int GameModel::earnedSpp(const SppStats &s, bool brawlinBrutes)
+{
+    // GROUND TRUTH (ffb-common bb2025/SppMechanic.java + PlayerResult.
+    // totalEarnedSpps) — the official client computes the same way.
+    return s.playerAwards * 4
+           + s.touchdowns * (brawlinBrutes ? 2 : 3)
+           + s.casualties * (brawlinBrutes ? 3 : 2)
+           + s.interceptions * 2
+           + s.completions * 1
+           + s.deflections * 1
+           + s.completionsWithAdditionalSpp * 1
+           + s.casualtiesWithAdditionalSpp * 1
+           + s.catchesWithAdditionalSpp * 1
+           + s.landings * 1;
+}
+
+int GameModel::earnedFor(const QString &playerId) const
+{
+    const SppStats s = m_sppStats.value(playerId);
+    if (s == SppStats())
+        return 0;
+    const FFBPlayer *p = findPlayerById(playerId);
+    const bool br = p ? (p->sideHome ? m_brawlinBrutesHome : m_brawlinBrutesAway)
+                      : m_brawlinBrutesHome;
+    return earnedSpp(s, br);
+}
+
 int GameModel::sppBase(const QString &playerId) const
 {
     return m_spp.value(playerId, SppInfo{}).base;
 }
 
+int GameModel::sppEarned(const QString &playerId) const
+{
+    return earnedFor(playerId);
+}
+
 int GameModel::sppCurrent(const QString &playerId) const
 {
-    return m_spp.value(playerId, SppInfo{}).current;
+    return m_spp.value(playerId, SppInfo{}).base + earnedFor(playerId);
+}
+
+QHash<QString, SppInfo> GameModel::sppTable() const
+{
+    QHash<QString, SppInfo> out;
+    for (auto it = m_spp.cbegin(); it != m_spp.cend(); ++it) {
+        const int earned = earnedFor(it.key());
+        out.insert(it.key(), SppInfo{it.value().base, it.value().base + earned});
+    }
+    return out;
+}
+
+void GameModel::seedSpp(const QString &playerId, int base)
+{
+    if (playerId.isEmpty() || base < 0)
+        return;
+    if (m_spp.contains(playerId))
+        return; // the stream already set this player: it is authoritative
+    m_spp.insert(playerId, SppInfo{base, base});
 }
 
 QString GameModel::carrierId() const
@@ -810,14 +918,57 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
     }
 
     if (id == QLatin1String("playerResultSetCurrentSpps")) {
-        // key = playerId, value = the player's CURRENT total SPP. The server
-        // is the authority on who earns what (prayers, special rules and
-        // niche cases included) — we mirror the value; base = first sight.
+        // key = playerId, value = the player's CURRENT total SPP. This
+        // change is RARE on FUMBBL (the in-match gains travel as the
+        // playerResultSet* COUNTERS below) — it is the server declaring
+        // an absolute total (box path). We fold the value into `base` so
+        // the derived current (base + earned-from-counters) keeps it.
         const int v = readInt(value);
         SppInfo &info = m_spp[key];
-        if (info.current == 0 && info.base == 0)
-            info.base = v;
-        info.current = v;
+        info.base = v - earnedFor(key);
+        return;
+    }
+
+    // In-match SPP COUNTERS (PlayerResult fields, ffb ModelChangeId).
+    // The server bumps one counter per gain event; the SPP value is DERIVED
+    // (earnedSpp) — this is how a spectator sees SPP move in-match, and
+    // what drives the "+x SPP" toasts.
+    if (id == QLatin1String("playerResultSetTouchdowns")
+        || id == QLatin1String("playerResultSetCompletions")
+        || id == QLatin1String("playerResultSetCompletionsWithAdditionalSpp")
+        || id == QLatin1String("playerResultSetInterceptions")
+        || id == QLatin1String("playerResultSetDeflections")
+        || id == QLatin1String("playerResultSetCasualties")
+        || id == QLatin1String("playerResultSetCasualtiesWithAdditionalSpp")
+        || id == QLatin1String("playerResultSetCatchesWithAdditionalSpp")
+        || id == QLatin1String("playerResultSetLandings")
+        || id == QLatin1String("playerResultSetPlayerAwards")) {
+        SppStats &stats = m_sppStats[key];
+        const int v = readInt(value);
+        if (id == QLatin1String("playerResultSetTouchdowns"))
+            stats.touchdowns = v;
+        else if (id == QLatin1String("playerResultSetCompletions"))
+            stats.completions = v;
+        else if (id == QLatin1String("playerResultSetCompletionsWithAdditionalSpp"))
+            stats.completionsWithAdditionalSpp = v;
+        else if (id == QLatin1String("playerResultSetInterceptions"))
+            stats.interceptions = v;
+        else if (id == QLatin1String("playerResultSetDeflections"))
+            stats.deflections = v;
+        else if (id == QLatin1String("playerResultSetCasualties"))
+            stats.casualties = v;
+        else if (id == QLatin1String("playerResultSetCasualtiesWithAdditionalSpp"))
+            stats.casualtiesWithAdditionalSpp = v;
+        else if (id == QLatin1String("playerResultSetCatchesWithAdditionalSpp"))
+            stats.catchesWithAdditionalSpp = v;
+        else if (id == QLatin1String("playerResultSetLandings"))
+            stats.landings = v;
+        else
+            stats.playerAwards = v;
+        // The player must be in the SPP table (a counter can arrive before
+        // the playerResults baseline in degenerate states).
+        if (!m_spp.contains(key))
+            m_spp.insert(key, SppInfo{0, 0});
         return;
     }
 

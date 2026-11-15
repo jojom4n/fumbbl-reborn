@@ -89,12 +89,45 @@ struct InducementInfo {
                     // on every consumption event and notifies the client)
 };
 
-// Star Player Points tracked per player (model change
-// playerResultSetCurrentSpps): base = the value at first sight (the
-// player's "own" SPP), current = the latest server value.
+// The in-match SPP counters of a player (PlayerResult fields; the server
+// updates them via playerResultSet* model changes — see
+// earnedSpp() for how they become SPP).
+struct SppStats {
+    int touchdowns = 0;
+    int completions = 0;
+    int completionsWithAdditionalSpp = 0;
+    int interceptions = 0;
+    int deflections = 0;
+    int casualties = 0;
+    int casualtiesWithAdditionalSpp = 0;
+    int catchesWithAdditionalSpp = 0;
+    int landings = 0;
+    int playerAwards = 0;
+
+    bool operator==(const SppStats &o) const
+    {
+        return touchdowns == o.touchdowns && completions == o.completions
+               && completionsWithAdditionalSpp == o.completionsWithAdditionalSpp
+               && interceptions == o.interceptions
+               && deflections == o.deflections && casualties == o.casualties
+               && casualtiesWithAdditionalSpp == o.casualtiesWithAdditionalSpp
+               && catchesWithAdditionalSpp == o.catchesWithAdditionalSpp
+               && landings == o.landings && playerAwards == o.playerAwards;
+    }
+};
+
+// Star Player Points tracked per player.
+// GROUND TRUTH (ffb-server): in-match gains do NOT arrive as
+// playerResultSetCurrentSpps — that change is rare (box path). The server
+// sends the COUNTERS (playerResultSetTouchdowns / Completions / ...) and
+// the join game state carries `currentSpps` (the SPP the player brought
+// into the match, from their record) per player in
+// gameResult.teamResult*.playerResults.
+// `base` = the SPP outside the in-match counters (brought in / declared by
+// the server); `current` = base + earned-from-counters (derived live).
 struct SppInfo {
     int base = 0;
-    int current = 0;
+    int current = 0; // = base + earned (rebuilt by sppTable()/sppCurrent())
 };
 
 class GameModel : public QObject
@@ -192,11 +225,26 @@ public:
 
     // --- Star Player Points (R0 toasts + player tab) ------------------------
     // The server is the authority on WHO gains HOW MUCH (prayers, special
-    // rules, niche cases included) — we only mirror the values.
+    // rules, niche cases included). In-match gains arrive as the
+    // playerResultSet* COUNTERS (touchdowns, completions, ...); this is the
+    // bb2025 SPP formula (ffb-common bb2025/SppMechanic.java), applied to
+    // the counters — the official client computes the same way.
+    // base = the SPP the player brought in / that the server declared
+    // outside the counters; current = base + earned (derived live).
     int sppBase(const QString &playerId) const;
     int sppCurrent(const QString &playerId) const;
+    // SPP earned THIS match from the counters (0 = no counters yet).
+    int sppEarned(const QString &playerId) const;
     // The whole SPP table (playerId -> {base, current}) — UI snapshot diff.
-    QHash<QString, SppInfo> sppTable() const { return m_spp; }
+    QHash<QString, SppInfo> sppTable() const;
+    // The player's team has the BRAWLIN BRUTES special rule (touches the
+    // touchdown/casualty SPP values — ffb bb2025 SppMechanic).
+    bool brawlinBrutesHome() const { return m_brawlinBrutesHome; }
+    bool brawlinBrutesAway() const { return m_brawlinBrutesAway; }
+    // PRE-MATCH SPP seed (fumbbl.com /api/team/get): the base value the
+    // match starts from. Only applied when no entry exists yet — the
+    // stream is authoritative and never overridden.
+    void seedSpp(const QString &playerId, int base);
 
     // The ball carrier: the standing player on the ball's square (empty =
     // none — ball in the air, on an empty square, or no ball coordinate).
@@ -467,4 +515,18 @@ private:
     QStringList m_prayersHome;
     QStringList m_prayersAway;
     QHash<QString, SppInfo> m_spp; // playerId -> {base, current}
+    QHash<QString, SppStats> m_sppStats; // playerId -> in-match counters
+    bool m_brawlinBrutesHome = false; // team special rule (SPP values)
+    bool m_brawlinBrutesAway = false;
+
+    // The bb2025 SPP formula (ffb-common bb2025/SppMechanic.java):
+    // awards x4, touchdowns x3 (2 Brawlin Brutes), casualties x2
+    // (3 Brawlin Brutes), interceptions x2, completions x1, deflections
+    // x1, plus x1 for each "additional SPP" counter and landing.
+    static int earnedSpp(const SppStats &s, bool brawlinBrutes);
+    // earnedSpp() for one player (the player's team special rule).
+    int earnedFor(const QString &playerId) const;
+    // Parses gameResult.teamResult*.playerResults (brought-in SPP +
+    // counters at join time; the join baseline for toasts/diffs).
+    void parsePlayerResults(const QJsonObject &result, bool homeSide);
 };

@@ -109,6 +109,18 @@ QPixmap dugoutPanel();
 // field view on a white disc BETWEEN attacker and defender while the block
 // die is pending. Null pixmap when missing (vector fallback helmet).
 QPixmap blockHelmet();
+// The FIELD PATCH textures (issue 12): full-frame 1024px Qwen-Image
+// textures — wet muddy ground for rain puddles (assets/field/puddle_dirt.png)
+// and wet clumped snow for blizzard mounds (assets/field/snow_mound.png).
+// The frame IS the texture (no keying, no background). Null when missing:
+// the field view falls back to the flat fill.
+QPixmap puddleDirtTexture();
+QPixmap snowMoundTexture();
+// The APP ICON (assets/app_icon.png — the 1024 master, transparent).
+// Set as the runtime window icon in main.cpp (dev builds / AppImage / zip
+// all show it regardless of the platform install; the .desktop/.ico files
+// cover the installed case). Null when missing.
+QPixmap appIcon();
 // A team INDUCEMENT badge (assets/inducements/<typeId>.png — typeId is the
 // protocol id: "bribes", "bloodweiserBabes", "prayers" …, FFB
 // Inducement.toJsonValue). 512px source on a flat backdrop, keyed to

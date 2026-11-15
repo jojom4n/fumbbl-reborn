@@ -33,9 +33,12 @@ void ToastOverlay::showCenter(const QString &text, int visibleMs)
     QFont f = font();
     f.setPointSizeF(20);
     f.setBold(true);
-    // Same width formula as makeToast (advance CEILED + 32px padding) so
-    // the centering matches the label's real size.
-    const int w = int(qCeil(QFontMetricsF(f).horizontalAdvance(text))) + 32;
+    // Same width formula as makeToast (advance CEILED + 32px padding,
+    // capped at the stage width with word-wrap) so the centering matches
+    // the label's real size.
+    const int maxW = width() - 16;
+    const int w =
+        qMin(int(qCeil(QFontMetricsF(f).horizontalAdvance(text))) + 32, maxW);
     makeToast(text, QColor(24, 24, 30, 215), qMax(8, (width() - w) / 2), 36,
               visibleMs, false);
 }
@@ -45,12 +48,17 @@ void ToastOverlay::showEdge(const QString &text, const QColor &accent,
 {
     if (text.isEmpty())
         return;
-    const int y = 36 + m_edgeCount * 34;
+    // CUMULATIVE stacking: the new pill sits below the ones still live
+    // (36 + sum(height + 6 gap)); a fading pill's slot is reused.
+    int y = 36;
+    for (const QPair<QLabel *, int> &e : m_edgeStack)
+        y += e.second + 6;
+    QLabel *label = makeToast(text, accent, 20, y, visibleMs, true);
     ++m_edgeCount;
-    makeToast(text, accent, 20, y, visibleMs, true);
+    m_edgeStack.append({label, label->height()});
 }
 
-void ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
+QLabel *ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
                              int y, int visibleMs, bool edge)
 {
     auto *label = new QLabel(text, this);
@@ -63,10 +71,22 @@ void ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
         "background: %1; color: #ffffff; border-radius: 8px; padding: 6px 16px;")
         .arg(rgba(bg)));
     const QFontMetricsF fm(f);
-    // CEIL the advance: int() truncation left the last glyph short by a
-    // fraction of a pixel (and the padding is exactly 16px per side).
-    const int w = int(qCeil(fm.horizontalAdvance(text))) + 32;
-    const int h = edge ? 30 : 44;
+    // Full text always shown (no elision): a text wider than the stage
+    // word-wraps to a two-line toast instead of clipping (user-reported:
+    // the pills were too small for their text).
+    const qreal textW = fm.horizontalAdvance(text);
+    const int maxW = edge ? width() - 48 : width() - 16;
+    int w, h;
+    if (textW + 32 > maxW && maxW > 0) {
+        label->setWordWrap(true);
+        w = maxW;
+        h = edge ? 46 : 58; // two lines
+    } else {
+        // CEIL the advance: int() truncation left the last glyph short by
+        // a fraction of a pixel (and the padding is exactly 16px per side).
+        w = int(qCeil(textW)) + 32;
+        h = edge ? 30 : 44;
+    }
     label->setGeometry(x, y, w, h);
     label->show();
     raise();
@@ -84,9 +104,15 @@ void ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
     });
     QObject::connect(anim, &QAbstractAnimation::finished, this,
                      [this, label, edge]() {
-        if (edge && m_edgeCount > 0)
-            --m_edgeCount;
+        if (edge) {
+            if (m_edgeCount > 0)
+                --m_edgeCount;
+            for (int i = m_edgeStack.size() - 1; i >= 0; --i)
+                if (m_edgeStack.at(i).first == label)
+                    m_edgeStack.removeAt(i);
+        }
         label->deleteLater();
     });
     timer->start(visibleMs);
+    return label;
 }

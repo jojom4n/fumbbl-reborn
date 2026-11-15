@@ -26,6 +26,7 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QKeySequence>
+#include <QWheelEvent>
 #include <QLineEdit>
 #include <QScrollBar>
 #include <QScrollArea>
@@ -185,6 +186,17 @@ private slots:
     void sunnyBrightensScene();
     void lightningFlashEnvelope(); // soft, capped, RARE (5-8 min gaps)
     void settingsWeatherFxSwitches(); // the 3 Settings-menu toggles
+    void heatHazeIsFieldOnly(); // Sweltering Heat: uniform haze, FIELD only
+    void rainFollowsPan(); // the rain is anchored to the scene (world space)
+    void splashesOnlyOnField(); // drops off the pitch leave no ripples
+    void weatherIntensityVaries(); // +/-15 per cycle, clamped to the band
+    void puddleTextureRenders(); // wet-dirt texture in the mud core
+    void snowMoundTextureRenders(); // wet-snow texture, translucent
+    void joinMidMatchNoFalseTd(); // join baseline: no phantom TD / FULL TIME
+    void toastFitsLongText(); // word-wrap in stage width + cumulative stack
+    void playerCardShowsPreMatchSpp(); // fumbbl.com base + live in-match gain
+    void sppGainToastsInMatch(); // "+x SPP — Name" on the in-match counters
+    void blitzTargetHasNoWhiteGlow(); // red-only glow while a blitz is active
     void actionLogNameHoverOpensCard(); // log-name hover opens the player card
     void movementAnimationGlidesThroughGrid(); // per-square movement glide
     void dugoutHoverSurvivesModelSync(); // UAF regression: hover + model sync
@@ -511,7 +523,7 @@ void UiWiringTest::inducementBadgesInHeader()
     // The badge hit rects are built during paint — fix the header geometry
     // (offscreen sizeHint math is unreliable), paint, then scan the header
     // for tooltip hits (robust against exact badge positions).
-    hv->setFixedSize(900, 62);
+    hv->setFixedSize(900, 76);
     QApplication::processEvents();
     const auto collectTips = [hv]() {
         QStringList tips;
@@ -531,12 +543,12 @@ void UiWiringTest::inducementBadgesInHeader()
     // Mouse tracking is ON: without it mouseMoveEvent never fires, so the
     // hover tooltips can never appear (user-observed: no tooltips).
     QVERIFY(hv->hasMouseTracking());
-    // The badges track the team-name font: 85% of its height (the user
-    // wants them nearly team-name sized, not 16px dots).
+    // The badges track the team-name font: 163% of its height (the user
+    // wants them +20% over the previous 136%).
     QFont nameF = hv->font();
     nameF.setPointSizeF(17);
     nameF.setBold(true);
-    const qreal expectedBadge = 1.36 * QFontMetricsF(nameF).height();
+    const qreal expectedBadge = 1.632 * QFontMetricsF(nameF).height();
     QVERIFY2(qAbs(hv->inducementBadgeSize() - expectedBadge) < 1.0,
              qPrintable(QStringLiteral("badge %1, expected %2")
                             .arg(hv->inducementBadgeSize())
@@ -606,6 +618,52 @@ void UiWiringTest::inducementBadgesInHeader()
                                     QStringLiteral("home"), QJsonValue(remove)));
     w.onModelSync(removeChanges, {});
     QCOMPARE(hv->inducementCountHome(), 1);
+
+    // 800px (narrow window): the enlarged badges must not reach the
+    // center score zone. The badges occupy y ~4..44 — the chip row is
+    // below them — so the only possible collision is with the score text
+    // centered at the top.
+    hv->setFixedSize(800, 76);
+    QJsonArray moreChanges;
+    QJsonObject keg2;
+    keg2.insert(QStringLiteral("inducementType"),
+                QStringLiteral("bloodweiserBabes"));
+    keg2.insert(QStringLiteral("value"), QJsonValue(2));
+    keg2.insert(QStringLiteral("uses"), QJsonValue(0));
+    moreChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                  QStringLiteral("home"), QJsonValue(keg2)));
+    w.onModelSync(moreChanges, {}); // home: bribes + kegs = 2 badges
+    QCOMPARE(hv->inducementCountHome(), 2);
+    hv->repaint();
+    const int cx = hv->width() / 2;
+    int homeMaxX = -1, awayMinX = hv->width();
+    for (int x = 0; x < hv->width(); ++x)
+        for (int y = 0; y < hv->height(); y += 2)
+            if (!hv->inducementTipAt(QPoint(x, y)).isEmpty()) {
+                if (x < cx)
+                    homeMaxX = x;
+                else
+                    awayMinX = qMin(awayMinX, x);
+            }
+    QVERIFY2(homeMaxX >= 0 && awayMinX < hv->width(),
+             "badges present at 800px width");
+    // The paint rule: a badge is drawn only while it stays clear of the
+    // score text (8px margin). Compute the same score zone the header
+    // uses ("0 : 0", 20pt black, centered) and assert the badges respect
+    // it.
+    QFont sf = hv->font();
+    sf.setPointSizeF(20);
+    sf.setWeight(QFont::Black);
+    const qreal adv = QFontMetricsF(sf).horizontalAdvance(QStringLiteral("0 : 0"));
+    const qreal sL = cx - adv / 2.0, sR = cx + adv / 2.0;
+    QVERIFY2(homeMaxX < sL - 8,
+             qPrintable(QStringLiteral("home badges reach the score (x=%1, scoreL=%2)")
+                            .arg(homeMaxX)
+                            .arg(sL)));
+    QVERIFY2(awayMinX > sR + 8,
+             qPrintable(QStringLiteral("away badges reach the score (x=%1, scoreR=%2)")
+                            .arg(awayMinX)
+                            .arg(sR)));
 }
 
 void UiWiringTest::talkAndJoinPopulateChatAndSpectators()
@@ -1721,6 +1779,7 @@ void UiWiringTest::toastMilestonesAndReportEvents()
     // hidden parent every toast label rendered into nothing (user-observed:
     // no toast ever appeared in a live match).
     QVERIFY(!toasts->isHidden());
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
     w.onGameState(fixtureGame());
     QVERIFY(w.model()->isInitialized());
     // The overlay is transparent to the mouse (never blocks field input).
@@ -1987,17 +2046,19 @@ void UiWiringTest::reportCardShowsAtFullTime()
     MainWindow w;
     w.show();
     w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
     w.onGameState(fixtureGame());
     QVERIFY2(w.findChild<ReportCardDialog *>() == nullptr, "card before full time");
 
-    // Give a home player SPP (first sight = base 2, then +2 in-match).
+    // Give a home player SPP: brought-in 2 (the rare absolute set), then
+    // +2 IN-MATCH via the counters (2 completions x1 — how gains travel).
     QJsonArray ch;
     ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
                          QStringLiteral("18109690"), QJsonValue(2)));
     w.onModelSync(ch, QJsonArray());
     ch = QJsonArray();
-    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
-                         QStringLiteral("18109690"), QJsonValue(4)));
+    ch.append(makeChange(QStringLiteral("playerResultSetCompletions"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
     w.onModelSync(ch, QJsonArray());
 
     QJsonArray ch2;
@@ -2029,6 +2090,33 @@ void UiWiringTest::reportCardShowsAtFullTime()
             if (t->item(r, 3) && t->item(r, 3)->text().contains(QStringLiteral("(+2)")))
                 sawSpp = true;
     QVERIFY2(sawSpp, "SPP gain missing from the roster tables");
+
+    // LIVE SPP: a post-match award (playerResultSetCurrentSpps arrives
+    // AFTER endGame, in the end-game steps) updates the cell in place
+    // instead of the card staying stale.
+    {
+        QTableWidget *sppTable = nullptr;
+        int sppRow = -1;
+        for (QTableWidget *t : tables)
+            for (int r = 0; r < t->rowCount(); ++r)
+                if (t->item(r, 3) &&
+                    t->item(r, 3)->text().contains(QStringLiteral("(+2)"))) {
+                    sppTable = t;
+                    sppRow = r;
+                    break;
+                }
+        QVERIFY2(sppTable && sppRow >= 0, "the award row exists");
+        const QString before = sppTable->item(sppRow, 3)->text();
+        QJsonArray ch3;
+        ch3.append(makeChange(QStringLiteral("playerResultSetCompletions"),
+                              QStringLiteral("18109690"), QJsonValue(4))); // +2 more
+        w.onModelSync(ch3, QJsonArray());
+        const QString after = sppTable->item(sppRow, 3)->text();
+        QVERIFY2(after != before && after.contains(QStringLiteral("(+4)")),
+                 qPrintable(
+                     QStringLiteral("SPP cell updates in place (%1 -> %2)")
+                         .arg(before, after)));
+    }
 
     card->close();
     // A second endGame batch: no second card (m_toastTurnMode already
@@ -3433,6 +3521,522 @@ void UiWiringTest::ballGlowRepaintsOnItsOwn()
                  "ball glow did not repaint on its own (paints=%1 in 400ms) — "
                  "static glow, not animated")
                             .arg(paints)));
+}
+
+// SWELTERING HEAT: the haze is FIELD-ONLY (the pixels outside the pitch
+// are bit-identical to the no-weather frame — the stadium stays clean)
+// and it lifts the field's luminance (the warm tint + soft radials).
+// The old horizontal sine bands are gone (uniform breathing haze).
+void UiWiringTest::heatHazeIsFieldOnly()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Nice Weather"));
+    QApplication::processEvents();
+    const QPixmap base = field.grab();
+    field.setWeather(QStringLiteral("Sweltering Heat"));
+    QApplication::processEvents();
+    const QPixmap heat = field.grab();
+
+    const QImage a = base.toImage(), b = heat.toImage();
+    const QRect inside = field.fieldRectPx().toAlignedRect();
+    int outsideDiff = 0, insideDiff = 0;
+    for (int y = 0; y < a.height(); y += 2)
+        for (int x = 0; x < a.width(); x += 2) {
+            const int sa =
+                qRed(a.pixel(x, y)) + qGreen(a.pixel(x, y)) + qBlue(a.pixel(x, y));
+            const int sb =
+                qRed(b.pixel(x, y)) + qGreen(b.pixel(x, y)) + qBlue(b.pixel(x, y));
+            const int d = qAbs(sa - sb);
+            if (inside.contains(x, y))
+                insideDiff += d;
+            else
+                outsideDiff += d;
+        }
+    QCOMPARE(outsideDiff, 0); // the haze never leaves the pitch
+    QVERIFY2(insideDiff > 2000,
+             qPrintable(QStringLiteral("haze did not lift the field luma (diff=%1)")
+                            .arg(insideDiff)));
+}
+
+// RIGHT-DRAG PAN: the rain is simulated in WORLD (scene) space — the
+// drops are anchored to the stadium, so panning moves the field UNDER
+// the rain and every drop follows the drag exactly. (The old widget-space
+// sim sat stationary while the field moved.)
+void UiWiringTest::rainFollowsPan()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    field.pumpWeatherForTest(600.0); // live drops
+    QApplication::processEvents();
+
+    // Zoom in at the center (5 wheel notches -> ~2.0x): the wide stadium
+    // (2.34:1) overflows the 800x500 widget on BOTH axes, with enough
+    // pan range on each side that the (80, 40) drag is never clamped.
+    const QPoint c = field.rect().center();
+    for (int i = 0; i < 5; ++i) {
+        // (pos, globalPos, pixelDelta, angleDelta, ...) — the zoom reads
+        // ANGLE delta, so the 120 goes in the 4th arg.
+        QWheelEvent zoomIn(c, c, QPoint(0, 0), QPoint(0, 120), Qt::NoButton,
+                           Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&field, &zoomIn);
+    }
+
+    const QPointF before = field.dropWidgetPosForTest(0);
+    QVERIFY2(!before.isNull(), "a live drop exists to track");
+
+    // Right-drag (80, 40) — well inside the clamped pan range. Manual
+    // events (like the hover tests): the MOVE carries buttons=RightButton,
+    // which mouseMoveEvent's pan branch requires.
+    const QPoint start(c.x() - 40, c.y() - 20);
+    QMouseEvent press(QMouseEvent::MouseButtonPress, start, Qt::RightButton,
+                      Qt::RightButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &press);
+    QMouseEvent move(QMouseEvent::MouseMove, start + QPoint(80, 40),
+                     Qt::NoButton, Qt::RightButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &move);
+    QMouseEvent release(QMouseEvent::MouseButtonRelease, start + QPoint(80, 40),
+                        Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &release);
+    // NO processEvents between before/after: the sim has not stepped, so
+    // drop 0 is the SAME drop — only the pan changed.
+    const QPointF after = field.dropWidgetPosForTest(0);
+    QCOMPARE(after - before, QPointF(80, 40)); // the drop moved with the drag
+}
+
+// SPLASHES ONLY ON THE PITCH: with the field-rect filter, drops that land
+// on the stadium surround (off the pitch) vanish without a ripple; every
+// splash in the sim sits on the field (seeded sim = deterministic).
+void UiWiringTest::splashesOnlyOnField()
+{
+    RainSim sim;
+    sim.seed(7);
+    const QRectF field(300, 150, 200, 100); // the pitch, world space
+    sim.configure(800, 500, {}, RainSim::Mode::Rain, field);
+    for (int i = 0; i < 400; ++i) // ~13 s of rain
+        sim.step(33.0f);
+    QVERIFY2(sim.landingsOnGrass() > 0, "drops landed on the pitch");
+    QVERIFY2(sim.landingsOnGrass() < 400 * 164,
+             "most landings fall OFF the pitch (no splash for them)");
+    for (const RainSim::Splash &s : sim.splashes())
+        QVERIFY2(field.contains(QPointF(s.x, s.y)),
+                 "every splash is on the pitch");
+}
+
+// VARIABLE INTENSITY: a Pouring Rain thickens by one step (+15) per
+// pinned cycle, clamped to the strong-weather band (55..100) — the
+// deterministic seam (interval 120 s, step +15) makes the first change
+// land exactly on the band ceiling.
+void UiWiringTest::weatherIntensityVaries()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    field.setIntensityCycleForTest(120000, 15);
+    QCOMPARE(field.currentIntensityForTest(), 85); // strong base
+    field.pumpWeatherForTest(120001.0);
+    QCOMPARE(field.currentIntensityForTest(), 100); // 85+15, clamped at 100
+}
+
+// Distinct quantized colors + mean luma inside a widget rect (texture
+// DETAIL vs flat fill, sampled every 2px).
+static void patchRegionMetrics(const QImage &img, const QRectF &r,
+                               int &distinct, double &meanLuma)
+{
+    QSet<int> colors;
+    double luma = 0.0;
+    int n = 0;
+    const QRect ro = r.toAlignedRect();
+    for (int y = ro.top(); y < ro.bottom(); y += 2) {
+        for (int x = ro.left(); x < ro.right(); x += 2) {
+            const QRgb px = img.pixel(x, y);
+            colors.insert((qRed(px) >> 5) * 1024 + (qGreen(px) >> 5) * 32
+                          + (qBlue(px) >> 5));
+            luma += 0.299 * qRed(px) + 0.587 * qGreen(px)
+                    + 0.114 * qBlue(px);
+            ++n;
+        }
+    }
+    distinct = colors.size();
+    meanLuma = n ? luma / n : 0.0;
+}
+
+// PUDDLE TEXTURE (issue 12): the rain stain is no longer a flat brown
+// blob — the wet-dirt Qwen texture is clipped into the mud core, under
+// the existing painterly layers (0.8 opacity: the grass underneath and
+// the grid lines — painted after the patches — stay visible). Proof: the
+// SAME patch rendered with the texture vs forced-flat (null override)
+// carries more color detail when the texture is on.
+void UiWiringTest::puddleTextureRenders()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    QApplication::processEvents();
+    // Grow the first patch: the seeded ones start ~8px radius — below
+    // the scale at which the 1024px texture shows detail at all.
+    field.setFirstPatchRadiusForTest(0.12);
+    QApplication::processEvents();
+    const QRectF r = field.firstPatchRectForTest();
+    QVERIFY2(!r.isNull(), "a seeded puddle exists");
+    // The INNER 70% of the patch: fully inside the stain (the rim is
+    // halo + AA).
+    const QRectF inner = r.adjusted(r.width() * 0.15, r.height() * 0.15,
+                                    -r.width() * 0.15, -r.height() * 0.15);
+    const QImage textured = field.grab().toImage();
+    // Force the FLAT painterly fill (null textures), same patch geometry:
+    // the diff between the two grabs IS the texture.
+    field.setPatchTexturesForTest(true, QPixmap(), QPixmap());
+    field.update();
+    QApplication::processEvents();
+    const QImage flat = field.grab().toImage();
+
+    int texDistinct = 0, flatDistinct = 0;
+    double texLuma = 0.0, flatLuma = 0.0;
+    patchRegionMetrics(textured, inner, texDistinct, texLuma);
+    patchRegionMetrics(flat, inner, flatDistinct, flatLuma);
+    // The textured render must differ from the flat fill: the wet-dirt
+    // texture has a real mean tone of its own (a missing asset or a dead
+    // draw path renders the flat layers — Δ ≈ 0). Calibrated ~9.
+    QVERIFY2(qAbs(texLuma - flatLuma) > 4.0,
+             qPrintable(QStringLiteral(
+                            "puddle texture not rendered (Δluma %1: textured "
+                            "%2 vs flat %3; distinct %4 vs %5)")
+                            .arg(QString::number(qAbs(texLuma - flatLuma), 'f', 1))
+                            .arg(QString::number(texLuma, 'f', 1))
+                            .arg(QString::number(flatLuma, 'f', 1))
+                            .arg(texDistinct)
+                            .arg(flatDistinct)));
+}
+
+// SNOW MOUND TEXTURE (issue 12): the blizzard mound is no longer a flat
+// white blob — the wet-snow texture is clipped into the mound under the
+// white wash. Same proof as the puddle: texture-on vs forced-flat on the
+// SAME geometry; plus the translucent rule (the region stays below an
+// opaque white fill — the grass underneath shows through, and the grid
+// lines are painted on top).
+void UiWiringTest::snowMoundTextureRenders()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Blizzard"));
+    QApplication::processEvents();
+    field.setFirstPatchRadiusForTest(0.14);
+    QApplication::processEvents();
+    const QRectF r = field.firstPatchRectForTest();
+    QVERIFY2(!r.isNull(), "a seeded snow mound exists");
+    const QRectF inner = r.adjusted(r.width() * 0.15, r.height() * 0.15,
+                                    -r.width() * 0.15, -r.height() * 0.15);
+    const QImage textured = field.grab().toImage();
+    field.setPatchTexturesForTest(true, QPixmap(), QPixmap());
+    field.update();
+    QApplication::processEvents();
+    const QImage flat = field.grab().toImage();
+
+    int texDistinct = 0, flatDistinct = 0;
+    double texLuma = 0.0, flatLuma = 0.0;
+    patchRegionMetrics(textured, inner, texDistinct, texLuma);
+    patchRegionMetrics(flat, inner, flatDistinct, flatLuma);
+    // The textured render must differ from the flat wash: the wet-snow
+    // texture has a real mean tone of its own (a missing asset or a dead
+    // draw path renders the flat wash — Δ ≈ 0). Calibrated ~40.
+    QVERIFY2(qAbs(texLuma - flatLuma) > 10.0,
+             qPrintable(QStringLiteral(
+                            "snow texture not rendered (Δluma %1: textured "
+                            "%2 vs flat %3; distinct %4 vs %5)")
+                            .arg(QString::number(qAbs(texLuma - flatLuma), 'f', 1))
+                            .arg(QString::number(texLuma, 'f', 1))
+                            .arg(QString::number(flatLuma, 'f', 1))
+                            .arg(texDistinct)
+                            .arg(flatDistinct)));
+    // The mound is bright (snow is present)...
+    QVERIFY2(texLuma > 150.0,
+             qPrintable(QStringLiteral("snow mound not bright (luma %1)")
+                            .arg(QString::number(texLuma, 'f', 1))));
+    // ...but translucent: an opaque white fill would sit near 245+.
+    QVERIFY2(texLuma < 230.0,
+             qPrintable(QStringLiteral(
+                            "snow mound looks opaque (mean luma %1)")
+                            .arg(QString::number(texLuma, 'f', 1))));
+}
+
+// JOIN BASELINE: a match joined MID-GAME already has a score / half /
+// carrier / turnMode — the milestone diff must start from the JOINED state,
+// not from zeros (the user saw a TOUCHDOWN banner on connect of a match
+// with no TD in view, and a phantom FULL TIME on a join of an ended one).
+void UiWiringTest::joinMidMatchNoFalseTd()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+
+    // Case 1 — a live match already 2:1, second half: one harmless sync
+    // (the acting player "moves" to its own square) must fire nothing.
+    QJsonObject game = fixtureGame();
+    QJsonObject result;
+    QJsonObject hr, ar;
+    hr.insert(QStringLiteral("score"), 2);
+    ar.insert(QStringLiteral("score"), 1);
+    result.insert(QStringLiteral("teamResultHome"), hr);
+    result.insert(QStringLiteral("teamResultAway"), ar);
+    game.insert(QStringLiteral("gameResult"), result);
+    game.insert(QStringLiteral("half"), 2);
+    w.onGameState(game);
+    QCOMPARE(w.model()->scoreHome(), 2);
+    QCOMPARE(w.model()->scoreAway(), 1);
+    QCOMPARE(w.model()->half(), 2);
+
+    QJsonArray ch;
+    const FFBPlayer *actor = w.model()->findPlayerById(
+        QStringLiteral("18109690")); // the fixture's acting player
+    QVERIFY(actor && actor->hasCoords);
+    QJsonObject coords;
+    coords.insert(QStringLiteral("x"), actor->fieldX);
+    coords.insert(QStringLiteral("y"), actor->fieldY);
+    ch.append(makeChange(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                         actor->playerId, QJsonValue(coords)));
+    w.onModelSync(ch, QJsonArray());
+    // No TD banner celebration, no phantom 2ND HALF, no report card.
+    QVERIFY(!w.tdBanner() || !w.tdBanner()->celebrating());
+    QVERIFY(!labelContains(w.toastOverlay(), QStringLiteral("2ND HALF")));
+    QVERIFY(w.findChild<ReportCardDialog *>() == nullptr);
+
+    // Case 2 — a join of an ALREADY-ENDED match (turnMode endGame in the
+    // game state): no FULL TIME ribbon, no report card.
+    MainWindow w2;
+    w2.show();
+    w2.resize(1280, 720);
+    w2.setPreMatchFetchForTest(false);
+    QJsonObject game2 = fixtureGame();
+    QJsonObject tm;
+    tm.insert(QStringLiteral("name"), QStringLiteral("endGame"));
+    game2.insert(QStringLiteral("turnMode"), tm);
+    w2.onGameState(game2);
+    QJsonArray ch2;
+    QJsonObject coords2;
+    coords2.insert(QStringLiteral("x"), actor->fieldX);
+    coords2.insert(QStringLiteral("y"), actor->fieldY);
+    ch2.append(makeChange(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                           actor->playerId, QJsonValue(coords2)));
+    w2.onModelSync(ch2, QJsonArray());
+    QVERIFY(!labelContains(w2.toastOverlay(), QStringLiteral("FULL TIME")));
+    QVERIFY(w2.findChild<ReportCardDialog *>() == nullptr);
+}
+
+// TOAST SIZE: text wider than the stage word-wraps (full text, never
+// elided) and edge pills stack CUMULATIVELY below the live ones.
+void UiWiringTest::toastFitsLongText()
+{
+    MainWindow w;
+    w.show();
+    w.resize(480, 420);
+    QApplication::processEvents();
+    ToastOverlay *toasts = w.toastOverlay();
+    QVERIFY(toasts);
+    QVERIFY2(toasts->width() > 200,
+             qPrintable(QStringLiteral("stage is narrow for the test (%1px)")
+                            .arg(toasts->width())));
+
+    const QString longText =
+        QStringLiteral("RAISE THE DEAD — a very long coach name adds a Lineman");
+    toasts->showCenter(longText);
+    QApplication::processEvents();
+    QLabel *center = nullptr;
+    for (QLabel *l : toasts->findChildren<QLabel *>())
+        if (l->text() == longText)
+            center = l;
+    QVERIFY2(center, "the center toast exists");
+    QVERIFY2(center->width() <= w.width() - 16,
+             qPrintable(QStringLiteral("center toast overflows the stage (%1px)")
+                            .arg(center->width())));
+    QVERIFY2(center->wordWrap(), "long text wraps instead of clipping");
+
+    // Two long edge pills: the second stacks below the first. (The texts
+    // are long enough to word-wrap at ANY plausible font metrics — the
+    // stage is only ~480px wide.)
+    const QString e1 =
+        QStringLiteral("+1 SPP — an unbelievably long player name from the "
+                       "fixture, long enough to wrap on a narrow stage");
+    const QString e2 =
+        QStringLiteral("+2 SPP — another unbelievably long player name here, "
+                       "long enough to wrap on a narrow stage");
+    toasts->showEdge(e1, QColor(217, 165, 20));
+    toasts->showEdge(e2, QColor(217, 165, 20));
+    QApplication::processEvents();
+    QLabel *first = nullptr, *second = nullptr;
+    for (QLabel *l : toasts->findChildren<QLabel *>()) {
+        if (l->text() == e1)
+            first = l;
+        if (l->text() == e2)
+            second = l;
+    }
+    QVERIFY(first && second);
+    QVERIFY2(first->wordWrap(), "long edge pill wraps");
+    QVERIFY2(second->y() >= first->y() + first->height(),
+             qPrintable(QStringLiteral("edge pills overlap (y1=%1 h1=%2 y2=%3)")
+                            .arg(first->y())
+                            .arg(first->height())
+                            .arg(second->y())));
+}
+
+// PLAYER CARD SPP: the base is the PRE-MATCH value (fumbbl.com fetch; the
+// test pins it — the live fetch is switched off) and the in-match gain is
+// tracked live. Unknown (no fetch, no stream) = "—", never a fake zero.
+void UiWiringTest::playerCardShowsPreMatchSpp()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1200, 750);
+    QApplication::processEvents();
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+    w.onGameState(fixtureGame());
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+    const FFBPlayer *p = w.model()->findPlayerById(QStringLiteral("18109690"));
+    QVERIFY(p);
+
+    // 1. Unknown (no pre-match value yet, no stream value): a dash.
+    w.showPlayerCardById(p->playerId);
+    QApplication::processEvents();
+    QLabel *sppCell = nullptr;
+    for (QLabel *l : info->findChildren<QLabel *>())
+        if (l->text().contains(QStringLiteral("SPP")))
+            sppCell = l;
+    QVERIFY2(sppCell, "the SPP cell exists");
+    QVERIFY2(sppCell->text().contains(QChar(0x2014)),
+             "unknown SPP shows a dash, not a fake zero");
+
+    // 2. Pre-match fetch settles (pinned in the test): base = 5.
+    w.setPreMatchSppForTest({{p->playerId, 5}});
+    QApplication::processEvents();
+    QVERIFY2(sppCell->text().contains(QLatin1String(">5<")),
+             qPrintable(QStringLiteral("SPP cell shows the pre-match base: %1")
+                            .arg(sppCell->text())));
+
+    // 3. In-match gain (the server declares 7 = brought-in 5 + 2):
+    // the card keeps the official convention "brought-in + gain" (5 +2),
+    // and the FIRST gain above the pre-match base toasts "+2 SPP".
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         p->playerId, QJsonValue(7)));
+    w.onModelSync(ch, QJsonArray());
+    QApplication::processEvents();
+    QVERIFY2(sppCell->text().contains(QLatin1String(">5<"))
+               && sppCell->text().contains(QLatin1String("+2")),
+             qPrintable(QStringLiteral("SPP cell keeps base 5 + gain 2: %1")
+                            .arg(sppCell->text())));
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+2 SPP —")),
+             "the in-match gain above the pre-match base toasts");
+}
+
+// SPP GAIN TOASTS (the user ask): in-match SPP gains travel as COUNTER
+// changes (playerResultSetTouchdowns / Completions / ... — the ffb-server
+// never sends a live SPP total, only the rare box-path set). The join
+// state carries the per-player baseline (gameResult.*.playerResults);
+// every gain after it fires the "+x SPP — Name" pill (bb2025 values:
+// touchdown x3, completion/catch-add x1, ...).
+void UiWiringTest::sppGainToastsInMatch()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+
+    // A join state with the per-player SPP baseline (every real live state
+    // carries it — the capture's 0:0 first-half snapshot already shows
+    // players with brought-in SPP).
+    QJsonObject game = fixtureGame();
+    QJsonObject homeResult, awayResult;
+    QJsonArray homeResults;
+    QJsonObject r0;
+    r0.insert(QStringLiteral("playerId"), QStringLiteral("18109690"));
+    r0.insert(QStringLiteral("currentSpps"), 2); // brought in
+    homeResults.append(r0);
+    homeResult.insert(QStringLiteral("playerResults"), homeResults);
+    awayResult.insert(QStringLiteral("playerResults"), QJsonArray());
+    QJsonObject result;
+    result.insert(QStringLiteral("teamResultHome"), homeResult);
+    result.insert(QStringLiteral("teamResultAway"), awayResult);
+    game.insert(QStringLiteral("gameResult"), result);
+    w.onGameState(game);
+    QCOMPARE(w.model()->sppBase(QStringLiteral("18109690")), 2);
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 2);
+
+    // A TOUCHDOWN (+3 SPP in bb2025): the gain toasts.
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetTouchdowns"),
+                         QStringLiteral("18109690"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 5);
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+3 SPP —")),
+             "a touchdown gain toasts");
+
+    // A bonus CATCH (+1 SPP): it toasts too.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCatchesWithAdditionalSpp"),
+                         QStringLiteral("18109690"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 6);
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+1 SPP —")),
+             "a catch bonus gain toasts");
+}
+
+// BLITZ TARGET: while a blitz is active the target keeps ONLY the red
+// block glow — the white "pass receiver" glow is suppressed (the user saw
+// a white glow with/instead of the red). Without a blitz the white glow
+// works as before.
+void UiWiringTest::blitzTargetHasNoWhiteGlow()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(model && field);
+    w.onGameState(fixtureGame());
+
+    const QString actor = QStringLiteral("18109690"); // the fixture's acting player
+    QString target;
+    for (const FieldToken &t : model->fieldTokens()) {
+        if (t.playerId == actor)
+            continue;
+        if (model->findPlayerById(t.playerId)) {
+            target = t.playerId;
+            break;
+        }
+    }
+    QVERIFY(!target.isEmpty());
+
+    // CONTROL (no blitz): a SELECTED target glows white.
+    QJsonObject sel;
+    sel.insert(QStringLiteral("playerId"), target);
+    sel.insert(QStringLiteral("targetSelectionStatus"), QStringLiteral("SELECTED"));
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("fieldModelSetTargetSelectionState"),
+                         QString(), QJsonValue(sel)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(field->passTarget(), target);
+
+    // The BLITZ: the same target is now the blitzer's — white glow off.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("turnDataSetBlitzUsed"), QString(),
+                         QJsonValue(true)));
+    ch.append(makeChange(QStringLiteral("fieldModelSetTargetSelectionState"),
+                         QString(), QJsonValue(sel)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(field->passTarget(), QString());
+    QCOMPARE(model->blitzingPlayerId(), actor);
 }
 
 // Explicit main for the GUI-subsystem test binary (no console attached):

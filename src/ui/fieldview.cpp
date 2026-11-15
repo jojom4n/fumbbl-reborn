@@ -443,12 +443,24 @@ void FieldView::weatherConfigure()
     if (m_raining || m_snowing) {
         const int intensity =
             m_weather.toLower().contains(QLatin1String("light")) ? 45 : 85;
-        // The particles are in SCENE (widget) space: the weather covers the
-        // WHOLE scene (stadium + surround), not just the pitch.
-        m_rain.configure(width(), height(),
-                         m_fxField ? fieldPatchRects() : QVector<QRectF>(),
-                         m_raining ? RainSim::Mode::Rain : RainSim::Mode::Snow);
+        // The sim runs in WORLD (scene) space: the weather is anchored to
+        // the stadium, so a right-drag pan moves the field UNDER the rain
+        // (the drops keep falling where they are in the world). The sim
+        // bounds are the scene size; the PITCH is the splash filter
+        // (drops on the stadium surround land silently).
+        m_currentIntensity = intensity;
+        m_nextIntensityAt =
+            m_fxElapsedMs + (m_intensityCycleMs > 0.0
+                                 ? m_intensityCycleMs
+                                 : rf(180000, 300000)); // 3-5 MINUTES
+        // setIntensity BEFORE configure: configure() sizes the drop
+        // count from the current intensity (configure-then-set left the
+        // first drop count at the default level).
         m_rain.setIntensity(intensity);
+        m_rain.configure(sceneRect().width(), sceneRect().height(),
+                         m_fxField ? fieldPatchRects() : QVector<QRectF>(),
+                         m_raining ? RainSim::Mode::Rain : RainSim::Mode::Snow,
+                         fieldRect());
     }
 
     if (!m_rainTimer) {
@@ -527,6 +539,32 @@ void FieldView::stepFieldPatches(float dtMs)
         grow(m_snowPatches, m_snowClockMs, m_nextSnowAt, 90000.0, 180000.0,
              120000.0, 180000.0, 18, 1.15, 0.030, 0.055);
 
+    // VARIABLE precipitation intensity: every 3-5 GAME-minutes the rain
+    // thickens or thins by one step (+/-15, clamped to the weather's band:
+    // light 25..65, strong 55..100) — a Pouring Rain is never a perfectly
+    // constant downpour. applyIntensity() rescales the drop count without
+    // reseeding (no visible jump).
+    if ((m_raining || m_snowing) && m_nextIntensityAt >= 0.0
+        && m_fxElapsedMs >= m_nextIntensityAt) {
+        const bool light =
+            m_weather.toLower().contains(QLatin1String("light"));
+        const int lo = light ? 25 : 55;
+        const int hi = light ? 65 : 100;
+        const int step = m_intensityStep > 0
+                             ? m_intensityStep
+                             : (QRandomGenerator::global()->bounded(2) ? 15 : -15);
+        m_currentIntensity = qBound(lo, m_currentIntensity + step, hi);
+        m_rain.applyIntensity(m_currentIntensity);
+        m_nextIntensityAt =
+            m_fxElapsedMs + (m_intensityCycleMs > 0.0
+                                 ? m_intensityCycleMs
+                                 : 180000.0 +
+                                       120000.0 *
+                                           (QRandomGenerator::global()
+                                                ->bounded(1000) /
+                                            1000.0));
+    }
+
     // Lightning: RARE (every 5-8 minutes, random) — a single soft pulse.
     if (m_raining && m_fxLightning && m_fxElapsedMs >= m_nextFlashAt) {
         m_flashStartMs = m_fxElapsedMs;
@@ -555,6 +593,52 @@ qreal FieldView::firstPatchRadiusForTest() const
     if (!m_snowPatches.isEmpty())
         return m_snowPatches.first().fr;
     return 0.0;
+}
+
+QRectF FieldView::firstPatchRectForTest() const
+{
+    if (!m_puddles.isEmpty())
+        return patchRect(m_puddles.first(), fieldRectPx());
+    if (!m_snowPatches.isEmpty())
+        return patchRect(m_snowPatches.first(), fieldRectPx());
+    return QRectF();
+}
+
+void FieldView::setFirstPatchRadiusForTest(qreal fr)
+{
+    Puddle *pd = nullptr;
+    if (!m_puddles.isEmpty())
+        pd = &m_puddles.first();
+    else if (!m_snowPatches.isEmpty())
+        pd = &m_snowPatches.first();
+    if (pd) {
+        pd->fr = fr;
+        pd->frMax = qMax(fr, pd->frMax);
+    }
+}
+
+void FieldView::setPatchTexturesForTest(bool enabled, const QPixmap &puddle,
+                                        const QPixmap &snow)
+{
+    m_testPatchTextures = enabled;
+    m_testPuddleTexture = puddle;
+    m_testSnowTexture = snow;
+}
+
+QPointF FieldView::dropWidgetPosForTest(int i) const
+{
+    if (i < 0 || i >= m_rain.drops().size())
+        return QPointF(); // invalid: out of range
+    const RainSim::Drop &d = m_rain.drops().at(i);
+    return m_pan + QPointF(d.x, d.y) * m_zoom;
+}
+
+void FieldView::setIntensityCycleForTest(double intervalMs, int step)
+{
+    m_intensityCycleMs = intervalMs;
+    m_intensityStep = step;
+    if (m_intensityCycleMs > 0.0)
+        m_nextIntensityAt = m_fxElapsedMs + m_intensityCycleMs;
 }
 
 QRectF FieldView::patchRect(const Puddle &pd, const QRectF &f) const
@@ -620,6 +704,10 @@ void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
+    // Cached in assets (file path -> pixmap): one hash lookup per paint.
+    const QPixmap puddleTex = m_testPatchTextures
+                                  ? m_testPuddleTexture
+                                  : assets::puddleDirtTexture();
     for (const Puddle &pd : m_puddles) {
         const qreal fadeIn =
             qBound(0.0, (m_puddleClockMs - pd.birthMs) / 1800.0, 1.0);
@@ -640,6 +728,28 @@ void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
             const qreal t = qreal(li) / 3.0;
             p.setBrush(QColor(154, 124, 84, int(20 + 48 * t)));
             p.drawPolygon(stableMudBlob(seed, 0.14, rx * (1.55 - 0.55 * t)));
+        }
+        // 1b. Wet-dirt TEXTURE under the mud core (issue 12): the flat
+        // brown blob is now real muddy ground. Clipped to the mud-core
+        // outline, drawn TRANSLUCENT (0.8): the grid lines (painted after
+        // the patches) and the grass underneath must never be fully
+        // covered. Null texture (asset missing) = the flat fill below.
+        if (!puddleTex.isNull()) {
+            p.save();
+            const qreal mTex = rx * 1.05 * 1.25; // blob radius + wobble
+            QPainterPath clip;
+            clip.addPolygon(stableMudBlob(seed + 11, 0.18, rx * 1.05));
+            p.setClipPath(clip);
+            p.setOpacity(0.8);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            // 5% source inset: crops the texture's generated edge ring
+            // (no dark rim inside the stain).
+            const QRectF texSrc = QRectF(puddleTex.rect()).adjusted(
+                puddleTex.width() * 0.05, puddleTex.height() * 0.05,
+                -puddleTex.width() * 0.05, -puddleTex.height() * 0.05);
+            p.drawPixmap(QRectF(-mTex, -mTex, mTex * 2, mTex * 2),
+                         puddleTex, texSrc);
+            p.restore();
         }
         // 2. Wet mud: the worn core — darker, 3 layers, still wide.
         for (int li = 0; li < 3; ++li) {
@@ -679,6 +789,10 @@ void FieldView::drawSnowPatches(QPainter &p, const QRectF &f) const
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
+    // Cached in assets (file path -> pixmap): one hash lookup per paint.
+    const QPixmap snowTex = m_testPatchTextures
+                                ? m_testSnowTexture
+                                : assets::snowMoundTexture();
     for (const Puddle &pd : m_snowPatches) {
         const qreal fadeIn =
             qBound(0.0, (m_snowClockMs - pd.birthMs) / 2600.0, 1.0);
@@ -692,6 +806,27 @@ void FieldView::drawSnowPatches(QPainter &p, const QRectF &f) const
         p.rotate(pd.rotDeg);
         p.scale(1.0, pd.squash);
         p.setOpacity(fadeIn);
+        // Wet-snow TEXTURE under the white wash (issue 12): clumped moist
+        // snow instead of a flat white blob. Same rules as the puddle
+        // texture: clipped to the mound outline, TRANSLUCENT (0.8) so the
+        // grid lines and the grass underneath stay visible.
+        if (!snowTex.isNull()) {
+            p.save();
+            const qreal mTex = rx * 1.25 * 1.2; // mound radius + wobble
+            QPainterPath clip;
+            clip.addPolygon(stableMudBlob(seed, 0.12, rx * 1.25));
+            p.setClipPath(clip);
+            p.setOpacity(0.8);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            // 5% source inset: crops the texture's dark edge ring (the
+            // generated "dirty streaks at the edges") out of the mound.
+            const QRectF texSrc = QRectF(snowTex.rect()).adjusted(
+                snowTex.width() * 0.05, snowTex.height() * 0.05,
+                -snowTex.width() * 0.05, -snowTex.height() * 0.05);
+            p.drawPixmap(QRectF(-mTex, -mTex, mTex * 2, mTex * 2),
+                         snowTex, texSrc);
+            p.restore();
+        }
         // Cool shadowed rim -> bright belly (3 layers, same outline).
         for (int li = 0; li < 3; ++li) {
             const qreal t = qreal(li) / 2.0;
@@ -719,25 +854,29 @@ void FieldView::drawSnowPatches(QPainter &p, const QRectF &f) const
 
 void FieldView::drawPrecipitation(QPainter &p) const
 {
-    // TOP-DOWN precipitation over the WHOLE SCENE (widget space — the
-    // weather covers the stadium + surround, not just the pitch). Rain:
-    // short bright streaks that GROW as they descend (top-down
-    // pseudo-depth) with a wind slant, + splash ripples where they land
-    // (field-local: only when the field effects are on). Snow: soft white
-    // dots that flutter (no ripples).
+    // TOP-DOWN precipitation over the WHOLE SCENE. The SIM runs in WORLD
+    // (scene) space — the drops are anchored to the stadium, so a
+    // right-drag pan moves the field UNDER the rain (the drops keep
+    // falling where they are in the world). Every drop/splash is
+    // transformed to widget space at draw time (m_pan + pos * m_zoom);
+    // streak lengths and splash radii scale with the zoom. Rain: short
+    // bright streaks that GROW as they descend (top-down pseudo-depth)
+    // with a wind slant, + splash ripples ONLY on the pitch (the sim
+    // filters them — the weather falls over the stadium + surround, only
+    // the field gets wet). Snow: soft white dots that flutter (no
+    // ripples).
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
+    const float z = float(m_zoom);
     const bool snow = m_rain.mode() == RainSim::Mode::Snow;
     if (!snow) {
-        p.setPen(QPen(QColor(226, 238, 252, 190), 1.4, Qt::SolidLine,
-                      Qt::RoundCap));
         for (const RainSim::Drop &d : m_rain.drops()) {
             const float t = qMax(0.0f, qMin(1.0f, d.lifeMs / d.maxLifeMs));
             const float grow = 0.35f + 0.65f * t;      // descends = grows
-            const float len = d.len * grow;
-            const QPointF head(d.x, d.y);
-            const QPointF tail(d.x - std::cos(d.angle) * len,
-                               d.y - std::sin(d.angle) * len);
+            const float len = d.len * grow * z;
+            const QPointF head(m_pan + QPointF(d.x, d.y) * m_zoom);
+            const QPointF tail(head.x() - std::cos(d.angle) * len,
+                               head.y() - std::sin(d.angle) * len);
             p.setPen(QPen(QColor(226, 238, 252, int(120 + 90 * t)), 1.4,
                           Qt::SolidLine, Qt::RoundCap));
             p.drawLine(tail, head);
@@ -746,9 +885,10 @@ void FieldView::drawPrecipitation(QPainter &p) const
         p.setPen(Qt::NoPen);
         for (const RainSim::Drop &d : m_rain.drops()) {
             const float t = qMax(0.0f, qMin(1.0f, d.lifeMs / d.maxLifeMs));
-            const float r = (d.len - 1.0f) * (0.8f + 0.5f * t); // 1..4 px
+            const float r = (d.len - 1.0f) * (0.8f + 0.5f * t) * z; // 1..4 px
+            const QPointF c(m_pan + QPointF(d.x, d.y) * m_zoom);
             p.setBrush(QColor(250, 252, 255, int(130 + 70 * t)));
-            p.drawEllipse(QPointF(d.x, d.y), r, r);
+            p.drawEllipse(c, r, r);
         }
     }
 
@@ -760,17 +900,18 @@ void FieldView::drawPrecipitation(QPainter &p) const
         for (const RainSim::Splash &s : m_rain.splashes()) {
             const float maxAge = s.onPuddle ? 700.0f : 420.0f;
             const float t = qMin(1.0f, s.ageMs / maxAge);
-            const float r = (s.onPuddle ? 2.5f : 1.8f) +
-                            t * (s.onPuddle ? 8.0f : 4.0f);
+            const float r = ((s.onPuddle ? 2.5f : 1.8f) +
+                             t * (s.onPuddle ? 8.0f : 4.0f)) * z;
             const int a = int((1.0 - t) * (s.onPuddle ? 200 : 150));
+            const QPointF c(m_pan + QPointF(s.x, s.y) * m_zoom);
             // Mud ripples: light tan splashing on the muddy puddles; water
             // ripples stay pale on the grass.
             p.setPen(QPen(s.onPuddle ? QColor(196, 178, 140, a)
                                      : QColor(228, 240, 252, a), 1.3));
-            p.drawEllipse(QPointF(s.x, s.y), r, r);
+            p.drawEllipse(c, r, r);
             if (s.onPuddle) {
                 p.setPen(QPen(QColor(196, 178, 140, a / 2), 1.0));
-                p.drawEllipse(QPointF(s.x, s.y), r * 0.55, r * 0.55);
+                p.drawEllipse(c, r * 0.55, r * 0.55);
             }
         }
     }
@@ -779,40 +920,43 @@ void FieldView::drawPrecipitation(QPainter &p) const
 
 void FieldView::drawHeatShimmer(QPainter &p) const
 {
-    // SWELTERING HEAT: an animated WAVE of translucent heat rising over
-    // the whole scene — horizontal sine bands drifting UP (time-based
-    // phase, no per-frame state) + a faint warm tint. Subtle by design
-    // (alpha 8..16/255): the pitch stays perfectly readable.
+    // SWELTERING HEAT: a UNIFORM soft heat-haze over the FIELD ONLY — a
+    // faint warm tint + three large radial gradients that drift slowly
+    // (time-based phase, no per-frame state). No discrete waves/bands
+    // (the old horizontal sine bands read as artifacts): the haze
+    // breathes as a slow, even shimmer and never touches the stadium
+    // surround. Subtle by design (alpha 8..10/255): the pitch stays
+    // perfectly readable.
     if (!m_fxAll)
         return;
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
+    // FIELD-only: clip the haze to the pitch (the stadium stays clean).
+    const QRectF f = fieldRectPx();
+    if (f.isEmpty()) {
+        p.restore();
+        return;
+    }
+    p.setClipRect(f);
     // Faint warm tint (static).
-    p.fillRect(rect(), QColor(255, 222, 176, 10));
-    // Rising waves: 6 bands, each a sine path sampled across the width.
-    // m_fxWallClock is a MONOTONIC wall timer (m_rainClock restarts on
-    // every tick — it only measures the dt).
+    p.fillRect(f, QColor(255, 222, 176, 10));
+    // Slow-breathing radial softness. m_fxWallClock is a MONOTONIC wall
+    // timer (m_rainClock restarts on every tick — it only measures the
+    // dt).
     const double t0 = m_fxWallClock.isValid() ? m_fxWallClock.elapsed() : 0.0;
     const double phase = t0 / 420.0; // ~1.4 rad/s
-    for (int band = 0; band < 6; ++band) {
-        const double wrap = height() * 0.16;
-        const double yBase =
-            height() * (0.15 + 0.15 * band) -
-            std::fmod(phase * (26.0 + 9.0 * band), wrap);
-        const double y = yBase < 0 ? yBase + height() : yBase;
-        QPolygonF wave;
-        wave.reserve(48);
-        for (int i = 0; i <= 44; ++i) {
-            const double x = width() * i / 44.0;
-            const double yy = y + 7.0 * std::sin(x / 46.0 + phase * 2.1
-                                                + band * 1.7);
-            wave << QPointF(x, yy);
-        }
-        wave << QPointF(width(), y + 26.0);
-        wave << QPointF(0.0, y + 26.0);
-        p.setBrush(QColor(255, 238, 205, 9 + 7 * (band % 2)));
-        p.drawPolygon(wave);
+    for (int k = 0; k < 3; ++k) {
+        const double cx = f.center().x()
+                          + f.width() * 0.30 * std::sin(phase * 0.9 + k * 2.1);
+        const double cy = f.center().y()
+                          + f.height() * 0.30 * std::cos(phase * 0.7 + k * 1.3);
+        const double r = f.width() * 0.35;
+        QRadialGradient g(QPointF(cx, cy), r);
+        g.setColorAt(0.0, QColor(255, 244, 220, 8));
+        g.setColorAt(1.0, QColor(255, 244, 220, 0));
+        p.setBrush(g);
+        p.drawEllipse(QPointF(cx, cy), r, r);
     }
     p.restore();
 }
@@ -1332,7 +1476,8 @@ void FieldView::drawMoveTrail(QPainter &p)
             QVector<CornerBadge> v;
             v.append({QPointF(0.276, 0.294), 0.15}); // jersey number
             if (t.hasBall)
-                v.append({QPointF(-0.313, -0.350), 0.16}); // ball-in-hand
+                v.append({QPointF(-0.313, -0.350), 0.17}); // ball-in-hand
+            // (0.16 x 1.07 — the +7% carrier ball keeps the number clear)
             if (m_actedPlayers.contains(t.playerId))
                 v.append({QPointF(0.239, -0.258), 0.15}); // green check
             if (t.playerId == m_blitzingPlayer)
@@ -2858,7 +3003,9 @@ void FieldView::paintEvent(QPaintEvent *)
                 // The carrier ball GLOWS GOLD on the token too, ANIMATED —
                 // it breathes with the pulse timer.
                 const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
-                const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
+                // The ball-in-hand token is +7% over the resting ball
+                // (0.30/0.20 base) — the carrier reads as the bigger ball.
+                const qreal bw2 = cellW * 0.30 * 1.07, bh2 = cellH * 0.20 * 1.07;
                 const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
                 drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25, breath);
                 drawFootball(p, bc2, bw2, bh2, -18);

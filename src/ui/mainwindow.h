@@ -42,6 +42,7 @@ class QCloseEvent;
 class QNetworkAccessManager;
 class ReportCardDialog;
 class ToastOverlay;
+class TeamFetch;
 class QNetworkReply;
 class QPlainTextEdit;
 class QToolBar;
@@ -136,6 +137,14 @@ public:
                                       LoginDialog *dialog);
     // The connection status line exactly as the user reads it.
     QString connectionStatusForTest() const;
+    // Test-only: pin the pre-match SPP map (and seed the model) without
+    // touching the network.
+    void setPreMatchSppForTest(const QHash<QString, int> &spp);
+    // Test-only: switch the live fumbbl.com fetch on/off.
+    void setPreMatchFetchForTest(bool enabled)
+    {
+        m_preMatchFetchEnabled = enabled;
+    }
 
     // Controller entry points for incoming match data. In production these are
     // driven by the SpectatorSession signals; they are public so the core->UI
@@ -224,12 +233,24 @@ private:
     TouchdownBanner *m_tdBanner = nullptr;
     QJsonArray m_pendingTdField;
     QSet<QString> m_pendingTdIds;
+    // BASELINE = the state captured at join (onGameState): the milestone
+    // diff diffs against it, so a match joined MID-GAME (score already 2:1,
+    // half 2, a carrier already on the ball) fires no phantom TD banner /
+    // 2ND HALF / TURNOVER / FULL TIME. Zeroing these instead treated "join"
+    // as "a goal just happened".
     int m_toastScoreH = 0;
     int m_toastScoreA = 0;
     int m_toastHalf = 0;
     QString m_toastTurnMode;
     QString m_toastCarrier;
     QHash<QString, int> m_toastSpp; // playerId -> current SPP (prev batch)
+    // PRE-MATCH SPP (fumbbl.com /api/team/get, per match): playerId ->
+    // record.spp + record.extra_spp. Seeds GameModel::seedSpp (stream is
+    // authoritative) and feeds the player card / report card. Empty = the
+    // fetch is pending or failed (the UI degrades to stream-only SPP).
+    TeamFetch *m_teamFetch = nullptr;
+    QHash<QString, int> m_preMatchSpp;
+    bool m_preMatchFetchEnabled = true; // off in the offline tests
     // Join waiting board (HOME VS AWAY + status) — visible from the
     // connect request until the game state initializes the model.
     QLabel *m_waitBoard = nullptr;

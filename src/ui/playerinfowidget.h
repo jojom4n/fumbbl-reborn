@@ -46,8 +46,11 @@ struct PlayerInfoData {
     QString stateText;       // "Standing", "Prone", "in the box (KO)", ...
     QStringList stateFlags;  // "Confused", "Rooted", "Chomped", ...
     int ma = 0, st = 0, ag = 0, pa = 0, av = 0;
-    int sppBase = 0; // the player's own SPP (first model sight)
+    int sppBase = 0; // the player's own SPP (pre-match fetch / first sight)
     int sppGain = 0; // SPP earned in-match (current - base)
+    // False = SPP still unknown (no pre-match fetch, no stream value):
+    // the cell shows "—" instead of a fake zero.
+    bool sppKnown = false;
 
     struct Skill {
         QString name;
