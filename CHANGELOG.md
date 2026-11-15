@@ -4,6 +4,38 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.3.1 — 2026-11-15
+- **False touchdown banner fixed**: joining a match mid-game no longer
+  fires the TD banner, a phantom FULL TIME or the report card — the
+  milestone diff now starts from the joined state (score, half, turn
+  mode and carrier are baselined on connect).
+- **Sweltering Heat**: a uniform, soft heat haze clipped to the pitch —
+  the horizontal heat bands are gone.
+- **Rain/snow anchored to the stadium**: precipitation is simulated in
+  world space, so it follows the right-button pan; splashes and ripples
+  appear on the field only (drops landing on the stadium vanish).
+- **Variable precipitation intensity**: heavy rain and blizzard thicken
+  and thin by one step every 3-5 game minutes.
+- **SPP from fumbbl.com**: both rosters' pre-match SPP is fetched before
+  the match. The player card shows the base value with the in-match gain
+  in red ("+N") — "—" while unknown — and the match report card's SPP
+  column is live (post-match SPP awards update it in place).
+- **Toasts**: long toast text now word-wraps (max two lines, no
+  elision) and edge toasts stack cumulatively.
+- **Blitz target**: the white pass-target glow is suppressed while a
+  blitz is active — only the red block glow marks the target.
+- **Inducement badges**: crisp edges (1px alpha feather after background
+  keying) and 20% larger; the match header strip is 76px and relaid out
+  to fit (badges that would collide with the score in narrow windows are
+  omitted, never overlapping).
+- **Puddles and snow mounds textured**: Qwen-Image textures (wet muddy
+  ground, clumped wet snow) clipped into each patch and drawn
+  translucent — the field grid lines always stay visible underneath.
+- **New app icon**: a painterly horned helmet icon on all platforms
+  (512 desktop PNG, multi-size .ico) and as the runtime window icon in
+  dev / AppImage / zip builds.
+- **Carrier ball token**: slightly bigger (+7%).
+
 ## 0.3.0 — 2026-11-14
 - **Touchdown celebration**: a transparent golden TOUCHDOWN banner (4K,
   chroma-keyed — the field shows through) sweeps over the field with
