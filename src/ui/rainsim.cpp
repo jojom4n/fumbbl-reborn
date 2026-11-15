@@ -9,12 +9,13 @@
 #include <cmath>
 
 void RainSim::configure(float width, float height, const QVector<QRectF> &puddles,
-                        Mode mode)
+                        Mode mode, const QRectF &fieldRect)
 {
     m_w = width;
     m_h = height;
     m_puddles = puddles;
     m_mode = mode;
+    m_fieldRect = fieldRect;
     m_landingsGrass = 0;
     m_landingsPuddle = 0;
     m_splashes.clear();
@@ -36,6 +37,25 @@ void RainSim::setPuddles(const QVector<QRectF> &puddles)
 void RainSim::setIntensity(int level)
 {
     m_intensity = qBound(0, level, 100);
+}
+
+void RainSim::applyIntensity(int level)
+{
+    // Same drop-count formula as configure(): rain 24 + 2*level, snow
+    // 90 + 2*level. Only the COUNT changes — no reseed (the running rain
+    // keeps flowing), splashes are kept.
+    m_intensity = qBound(0, level, 100);
+    const int n = m_mode == Mode::Snow ? 90 + m_intensity * 2
+                                       : 24 + m_intensity * 2;
+    if (n > m_drops.size()) {
+        for (int i = m_drops.size(); i < n; ++i) {
+            Drop d;
+            spawnDrop(d, /*anywhere=*/true); // staggered start
+            m_drops.append(d);
+        }
+    } else if (n < m_drops.size()) {
+        m_drops.resize(n); // chop the excess (drops are POD)
+    }
 }
 
 void RainSim::seed(qint64 s)
@@ -105,19 +125,29 @@ void RainSim::step(float dtMs)
         if (d.lifeMs >= d.maxLifeMs) {
             // LANDING: a splash ripple at the drop's spot (rain only —
             // snowflakes land silently; the drift keeps moving the flake).
+            // ONLY on the PITCH: a drop that lands on the stadium surround
+            // vanishes (m_fieldRect empty = the whole world is the field,
+            // the direct-sim tests).
             if (m_mode == Mode::Rain) {
-                Splash s;
-                s.x = qBound(0.0f, d.x, float(m_w));
-                s.y = qBound(0.0f, d.y, float(m_h));
-                s.ageMs = 0.0f;
-                s.onPuddle = inPuddle(QPointF(s.x, s.y));
-                m_splashes.append(s);
-                if (s.onPuddle)
-                    ++m_landingsPuddle;
-                else
-                    ++m_landingsGrass;
+                const float sx = qBound(0.0f, d.x, float(m_w));
+                const float sy = qBound(0.0f, d.y, float(m_h));
+                const bool onField =
+                    m_fieldRect.isEmpty()
+                    || m_fieldRect.contains(QPointF(sx, sy));
+                if (onField) {
+                    Splash s;
+                    s.x = sx;
+                    s.y = sy;
+                    s.ageMs = 0.0f;
+                    s.onPuddle = inPuddle(QPointF(sx, sy));
+                    m_splashes.append(s);
+                    if (s.onPuddle)
+                        ++m_landingsPuddle;
+                    else
+                        ++m_landingsGrass;
+                }
             }
-            // Respawn immediately at a NEW random spot of the whole field
+            // Respawn immediately at a NEW random spot of the whole scene
             // (the rain is continuous everywhere).
             spawnDrop(d, /*anywhere=*/false);
         }

@@ -26,6 +26,7 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QKeySequence>
+#include <QWheelEvent>
 #include <QLineEdit>
 #include <QScrollBar>
 #include <QScrollArea>
@@ -185,6 +186,10 @@ private slots:
     void sunnyBrightensScene();
     void lightningFlashEnvelope(); // soft, capped, RARE (5-8 min gaps)
     void settingsWeatherFxSwitches(); // the 3 Settings-menu toggles
+    void heatHazeIsFieldOnly(); // Sweltering Heat: uniform haze, FIELD only
+    void rainFollowsPan(); // the rain is anchored to the scene (world space)
+    void splashesOnlyOnField(); // drops off the pitch leave no ripples
+    void weatherIntensityVaries(); // +/-15 per cycle, clamped to the band
     void actionLogNameHoverOpensCard(); // log-name hover opens the player card
     void movementAnimationGlidesThroughGrid(); // per-square movement glide
     void dugoutHoverSurvivesModelSync(); // UAF regression: hover + model sync
@@ -3433,6 +3438,128 @@ void UiWiringTest::ballGlowRepaintsOnItsOwn()
                  "ball glow did not repaint on its own (paints=%1 in 400ms) — "
                  "static glow, not animated")
                             .arg(paints)));
+}
+
+// SWELTERING HEAT: the haze is FIELD-ONLY (the pixels outside the pitch
+// are bit-identical to the no-weather frame — the stadium stays clean)
+// and it lifts the field's luminance (the warm tint + soft radials).
+// The old horizontal sine bands are gone (uniform breathing haze).
+void UiWiringTest::heatHazeIsFieldOnly()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Nice Weather"));
+    QApplication::processEvents();
+    const QPixmap base = field.grab();
+    field.setWeather(QStringLiteral("Sweltering Heat"));
+    QApplication::processEvents();
+    const QPixmap heat = field.grab();
+
+    const QImage a = base.toImage(), b = heat.toImage();
+    const QRect inside = field.fieldRectPx().toAlignedRect();
+    int outsideDiff = 0, insideDiff = 0;
+    for (int y = 0; y < a.height(); y += 2)
+        for (int x = 0; x < a.width(); x += 2) {
+            const int sa =
+                qRed(a.pixel(x, y)) + qGreen(a.pixel(x, y)) + qBlue(a.pixel(x, y));
+            const int sb =
+                qRed(b.pixel(x, y)) + qGreen(b.pixel(x, y)) + qBlue(b.pixel(x, y));
+            const int d = qAbs(sa - sb);
+            if (inside.contains(x, y))
+                insideDiff += d;
+            else
+                outsideDiff += d;
+        }
+    QCOMPARE(outsideDiff, 0); // the haze never leaves the pitch
+    QVERIFY2(insideDiff > 2000,
+             qPrintable(QStringLiteral("haze did not lift the field luma (diff=%1)")
+                            .arg(insideDiff)));
+}
+
+// RIGHT-DRAG PAN: the rain is simulated in WORLD (scene) space — the
+// drops are anchored to the stadium, so panning moves the field UNDER
+// the rain and every drop follows the drag exactly. (The old widget-space
+// sim sat stationary while the field moved.)
+void UiWiringTest::rainFollowsPan()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    field.pumpWeatherForTest(600.0); // live drops
+    QApplication::processEvents();
+
+    // Zoom in at the center (5 wheel notches -> ~2.0x): the wide stadium
+    // (2.34:1) overflows the 800x500 widget on BOTH axes, with enough
+    // pan range on each side that the (80, 40) drag is never clamped.
+    const QPoint c = field.rect().center();
+    for (int i = 0; i < 5; ++i) {
+        // (pos, globalPos, pixelDelta, angleDelta, ...) — the zoom reads
+        // ANGLE delta, so the 120 goes in the 4th arg.
+        QWheelEvent zoomIn(c, c, QPoint(0, 0), QPoint(0, 120), Qt::NoButton,
+                           Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&field, &zoomIn);
+    }
+
+    const QPointF before = field.dropWidgetPosForTest(0);
+    QVERIFY2(!before.isNull(), "a live drop exists to track");
+
+    // Right-drag (80, 40) — well inside the clamped pan range. Manual
+    // events (like the hover tests): the MOVE carries buttons=RightButton,
+    // which mouseMoveEvent's pan branch requires.
+    const QPoint start(c.x() - 40, c.y() - 20);
+    QMouseEvent press(QMouseEvent::MouseButtonPress, start, Qt::RightButton,
+                      Qt::RightButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &press);
+    QMouseEvent move(QMouseEvent::MouseMove, start + QPoint(80, 40),
+                     Qt::NoButton, Qt::RightButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &move);
+    QMouseEvent release(QMouseEvent::MouseButtonRelease, start + QPoint(80, 40),
+                        Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&field, &release);
+    // NO processEvents between before/after: the sim has not stepped, so
+    // drop 0 is the SAME drop — only the pan changed.
+    const QPointF after = field.dropWidgetPosForTest(0);
+    QCOMPARE(after - before, QPointF(80, 40)); // the drop moved with the drag
+}
+
+// SPLASHES ONLY ON THE PITCH: with the field-rect filter, drops that land
+// on the stadium surround (off the pitch) vanish without a ripple; every
+// splash in the sim sits on the field (seeded sim = deterministic).
+void UiWiringTest::splashesOnlyOnField()
+{
+    RainSim sim;
+    sim.seed(7);
+    const QRectF field(300, 150, 200, 100); // the pitch, world space
+    sim.configure(800, 500, {}, RainSim::Mode::Rain, field);
+    for (int i = 0; i < 400; ++i) // ~13 s of rain
+        sim.step(33.0f);
+    QVERIFY2(sim.landingsOnGrass() > 0, "drops landed on the pitch");
+    QVERIFY2(sim.landingsOnGrass() < 400 * 164,
+             "most landings fall OFF the pitch (no splash for them)");
+    for (const RainSim::Splash &s : sim.splashes())
+        QVERIFY2(field.contains(QPointF(s.x, s.y)),
+                 "every splash is on the pitch");
+}
+
+// VARIABLE INTENSITY: a Pouring Rain thickens by one step (+15) per
+// pinned cycle, clamped to the strong-weather band (55..100) — the
+// deterministic seam (interval 120 s, step +15) makes the first change
+// land exactly on the band ceiling.
+void UiWiringTest::weatherIntensityVaries()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    field.setIntensityCycleForTest(120000, 15);
+    QCOMPARE(field.currentIntensityForTest(), 85); // strong base
+    field.pumpWeatherForTest(120001.0);
+    QCOMPARE(field.currentIntensityForTest(), 100); // 85+15, clamped at 100
 }
 
 // Explicit main for the GUI-subsystem test binary (no console attached):

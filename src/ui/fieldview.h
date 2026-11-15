@@ -104,6 +104,16 @@ public:
     // Test-only: the radius (field fraction) of the first rain puddle or
     // snow patch (0 when there are none) — the patch EXPANSION check.
     qreal firstPatchRadiusForTest() const;
+    // Test-only: the WIDGET-space position of drop `i` under the current
+    // zoom/pan (the PAN-FOLLOWS-RAIN check: the drop is anchored to the
+    // scene, so it moves with a right-drag). Invalid point when out of range.
+    QPointF dropWidgetPosForTest(int i) const;
+    // Test-only: the current precipitation intensity (0..100).
+    int currentIntensityForTest() const { return m_currentIntensity; }
+    // Test-only: pin the intensity cycle (intervalMs <= 0 = random 3-5
+    // game-minutes, step <= 0 = random +/-15) and reschedule the next
+    // change deterministically.
+    void setIntensityCycleForTest(double intervalMs, int step);
     // The lightning flash envelope (pure, for the tests): 0 at the ends,
     // a soft sin^2 rise-and-fall, capped at kFlashMaxAlpha/255. The gaps
     // between flashes are RARE: 5..8 minutes (anti-epilepsy).
@@ -357,6 +367,14 @@ private:
     QVector<Puddle> m_snowPatches;  // blizzard: snow mounds (1.5-3 min cadence)
     double m_snowClockMs = 0.0;
     double m_nextSnowAt = 0.0;
+    // VARIABLE precipitation intensity: every 3-5 game-minutes the
+    // rain/snow thickens or thins by one step (+/-15, clamped to the
+    // weather's band — light 25..65, strong 55..100). The cycle seam
+    // (m_intensityCycleMs/m_intensityStep) pins it for the tests.
+    int m_currentIntensity = 85;
+    double m_nextIntensityAt = 0.0;
+    double m_intensityCycleMs = 0.0;
+    int m_intensityStep = 0;
     void weatherConfigure();
     void stepFieldPatches(float dtMs);
     QRectF patchRect(const Puddle &pd, const QRectF &f) const;

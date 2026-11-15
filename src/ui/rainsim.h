@@ -46,17 +46,26 @@ public:
         bool onPuddle = false; // ripple on a puddle (bigger + longer)
     };
 
-    // Puddle rectangles (field space). Drops landing inside make a
-    // puddle ripple. `mode` defaults to Rain (the snow mode is the
-    // blizzard: slower flakes, no splashes).
+    // Puddle rectangles (WORLD space — the same space as the configure
+    // bounds). Drops landing inside make a puddle ripple. `fieldRect` =
+    // the PITCH in world space: splash ripples appear ONLY on the pitch
+    // (drops landing on the stadium surround vanish silently — the weather
+    // falls over the whole scene, only the field gets wet). Empty = the
+    // whole world is the field (direct-sim tests). `mode` defaults to Rain
+    // (the snow mode is the blizzard: slower flakes, no splashes).
     void configure(float width, float height, const QVector<QRectF> &puddles,
-                   Mode mode = Mode::Rain);
+                   Mode mode = Mode::Rain,
+                   const QRectF &fieldRect = QRectF());
     Mode mode() const { return m_mode; }
     // Update the puddles WITHOUT resetting the drops (the puddles are
     // dynamic — they grow over match time). configure() reseeds; this only
     // swaps the water patches so the running rain keeps flowing.
     void setPuddles(const QVector<QRectF> &puddles);
     void setIntensity(int level); // 0..100 (more drops at higher levels)
+    // Rescale the drop count to `level` WITHOUT reseeding: the running
+    // rain keeps flowing (no visible jump) and the splashes are kept.
+    // A full configure() would reseed = a visible pop.
+    void applyIntensity(int level);
     void seed(qint64 s);          // deterministic simulation (tests)
 
     // Advance the simulation: drops age and land (-> splash), splashes
@@ -78,6 +87,7 @@ private:
 
     float m_w = 0.0f;
     float m_h = 0.0f;
+    QRectF m_fieldRect; // the pitch (world space); empty = whole world
     int m_intensity = 70;
     Mode m_mode = Mode::Rain;
     qint64 m_seed = 0;
