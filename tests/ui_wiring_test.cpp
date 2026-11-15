@@ -521,7 +521,7 @@ void UiWiringTest::inducementBadgesInHeader()
     // The badge hit rects are built during paint — fix the header geometry
     // (offscreen sizeHint math is unreliable), paint, then scan the header
     // for tooltip hits (robust against exact badge positions).
-    hv->setFixedSize(900, 62);
+    hv->setFixedSize(900, 76);
     QApplication::processEvents();
     const auto collectTips = [hv]() {
         QStringList tips;
@@ -541,12 +541,12 @@ void UiWiringTest::inducementBadgesInHeader()
     // Mouse tracking is ON: without it mouseMoveEvent never fires, so the
     // hover tooltips can never appear (user-observed: no tooltips).
     QVERIFY(hv->hasMouseTracking());
-    // The badges track the team-name font: 85% of its height (the user
-    // wants them nearly team-name sized, not 16px dots).
+    // The badges track the team-name font: 163% of its height (the user
+    // wants them +20% over the previous 136%).
     QFont nameF = hv->font();
     nameF.setPointSizeF(17);
     nameF.setBold(true);
-    const qreal expectedBadge = 1.36 * QFontMetricsF(nameF).height();
+    const qreal expectedBadge = 1.632 * QFontMetricsF(nameF).height();
     QVERIFY2(qAbs(hv->inducementBadgeSize() - expectedBadge) < 1.0,
              qPrintable(QStringLiteral("badge %1, expected %2")
                             .arg(hv->inducementBadgeSize())
@@ -616,6 +616,52 @@ void UiWiringTest::inducementBadgesInHeader()
                                     QStringLiteral("home"), QJsonValue(remove)));
     w.onModelSync(removeChanges, {});
     QCOMPARE(hv->inducementCountHome(), 1);
+
+    // 800px (narrow window): the enlarged badges must not reach the
+    // center score zone. The badges occupy y ~4..44 — the chip row is
+    // below them — so the only possible collision is with the score text
+    // centered at the top.
+    hv->setFixedSize(800, 76);
+    QJsonArray moreChanges;
+    QJsonObject keg2;
+    keg2.insert(QStringLiteral("inducementType"),
+                QStringLiteral("bloodweiserBabes"));
+    keg2.insert(QStringLiteral("value"), QJsonValue(2));
+    keg2.insert(QStringLiteral("uses"), QJsonValue(0));
+    moreChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                  QStringLiteral("home"), QJsonValue(keg2)));
+    w.onModelSync(moreChanges, {}); // home: bribes + kegs = 2 badges
+    QCOMPARE(hv->inducementCountHome(), 2);
+    hv->repaint();
+    const int cx = hv->width() / 2;
+    int homeMaxX = -1, awayMinX = hv->width();
+    for (int x = 0; x < hv->width(); ++x)
+        for (int y = 0; y < hv->height(); y += 2)
+            if (!hv->inducementTipAt(QPoint(x, y)).isEmpty()) {
+                if (x < cx)
+                    homeMaxX = x;
+                else
+                    awayMinX = qMin(awayMinX, x);
+            }
+    QVERIFY2(homeMaxX >= 0 && awayMinX < hv->width(),
+             "badges present at 800px width");
+    // The paint rule: a badge is drawn only while it stays clear of the
+    // score text (8px margin). Compute the same score zone the header
+    // uses ("0 : 0", 20pt black, centered) and assert the badges respect
+    // it.
+    QFont sf = hv->font();
+    sf.setPointSizeF(20);
+    sf.setWeight(QFont::Black);
+    const qreal adv = QFontMetricsF(sf).horizontalAdvance(QStringLiteral("0 : 0"));
+    const qreal sL = cx - adv / 2.0, sR = cx + adv / 2.0;
+    QVERIFY2(homeMaxX < sL - 8,
+             qPrintable(QStringLiteral("home badges reach the score (x=%1, scoreL=%2)")
+                            .arg(homeMaxX)
+                            .arg(sL)));
+    QVERIFY2(awayMinX > sR + 8,
+             qPrintable(QStringLiteral("away badges reach the score (x=%1, scoreR=%2)")
+                            .arg(awayMinX)
+                            .arg(sR)));
 }
 
 void UiWiringTest::talkAndJoinPopulateChatAndSpectators()

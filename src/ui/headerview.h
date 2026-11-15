@@ -1,5 +1,5 @@
 // =============================================================================
-// HeaderView — Mockup F match header (custom-painted strip, 62px tall)
+// HeaderView — Mockup F match header (custom-painted strip, 76px tall)
 //
 //   [crest]  HOME NAME (gold, embossed when on turn)  o o o
 //            coach · race
@@ -86,7 +86,7 @@ public:
     // the hover tooltips.
     QString inducementTipAt(const QPoint &pos) const;
 
-    QSize sizeHint() const override { return QSize(800, 62); }
+    QSize sizeHint() const override { return QSize(800, 76); }
 
 protected:
     void paintEvent(QPaintEvent *event) override;

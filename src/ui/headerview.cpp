@@ -214,7 +214,7 @@ void heatIcon(QPainter &p, qreal x, qreal y, qreal s)
 HeaderView::HeaderView(QWidget *parent)
     : QWidget(parent)
 {
-    setFixedHeight(62);
+    setFixedHeight(76);
     setAutoFillBackground(true);
     // Hover tooltips on the inducement badges need mouse-move events even
     // without a pressed button: without mouse tracking, mouseMoveEvent is
@@ -381,10 +381,10 @@ void HeaderView::paintEvent(QPaintEvent *)
 
     const QString homeName = m_home.toUpper();
     const QString awayName = m_away.toUpper();
-    // Team-name lines: name top 5, subline top 36 in the 62px strip (a
-    // real gap between the two).
-    const int nameY = 5 + int(fmName.ascent());
-    const int subY = 36 + int(fmSub.ascent());
+    // Team-name lines: name top 13, subline top 44 in the 76px strip (the
+    // top row shifted down for the larger inducement badges).
+    const int nameY = 13 + int(fmName.ascent());
+    const int subY = 44 + int(fmSub.ascent());
     // The inactive name must be drawn with the NAME font: in the
     // !m_homePlaying branch the home name was once drawn before nameF was
     // set, with the widget's default font (10pt, not bold) instead of the
@@ -392,7 +392,7 @@ void HeaderView::paintEvent(QPaintEvent *)
     // every branch.
     const qreal breath = 0.5 - 0.5 * std::cos(m_glowPhase);
     if (m_homePlaying) {
-        greenEmboss(p, 64, 5, homeName, nameF, breath);
+        greenEmboss(p, 64, 13, homeName, nameF, breath);
         p.setFont(nameF);
         p.setPen(INK);
         p.drawText(W - 64 - fmName.horizontalAdvance(awayName), nameY, awayName);
@@ -400,7 +400,8 @@ void HeaderView::paintEvent(QPaintEvent *)
         p.setFont(nameF);
         p.setPen(INK);
         p.drawText(64, nameY, homeName);
-        greenEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 5, awayName, nameF, breath);
+        greenEmboss(p, W - 64 - fmName.horizontalAdvance(awayName), 13, awayName,
+                    nameF, breath);
     }
     p.setPen(INK2);
     p.setFont(subF);
@@ -414,29 +415,46 @@ void HeaderView::paintEvent(QPaintEvent *)
     const int dotGap = 19;
     const qreal xh = 64 + fmName.horizontalAdvance(homeName) + 16;
     for (int i = 0; i < m_rerollsTotalHome; ++i)
-        coin(p, xh + i * dotGap, 16, 7, i < m_rerollsHome);
+        coin(p, xh + i * dotGap, 24, 7, i < m_rerollsHome);
     const qreal xa = W - 64 - m_rerollsTotalAway * dotGap - 16
                      - fmName.horizontalAdvance(awayName);
     for (int i = 0; i < m_rerollsTotalAway; ++i)
-        coin(p, xa + i * dotGap, 16, 7, i < m_rerollsAway);
+        coin(p, xa + i * dotGap, 24, 7, i < m_rerollsAway);
 
-    // --- inducement badges (85% of the team-name size, same line as the
+    // --- inducement badges (163% of the team-name size, same line as the
     //     reroll dots) ------------------------------------------------------
     // Home: right of the last home dot; away mirrored, left of the first
     // away dot. Hit rects are rebuilt here (positional truth for the
     // hover tooltips).
     m_indRectsHome.clear();
     m_indRectsAway.clear();
-    const qreal badgeS = 1.36 * fmName.height(); // 136% of the team name (user: 60% bigger)
+    const qreal badgeS = 1.632 * fmName.height(); // 163% of the team name (user: +20%)
     m_lastBadgeSize = badgeS;
-    const qreal badgeY = 16.0 - badgeS / 2.0;    // centered on the dot line (cy 16)
+    const qreal badgeY = 24.0 - badgeS / 2.0;    // centered on the dot line (cy 24)
     const qreal badgeGap = 6.0;
-    const auto drawBadge = [this, &p, badgeY, badgeGap, badgeS](
+    // The badges share the top row with the centered score: in narrow
+    // windows a long name + many badges can reach it, so a badge is
+    // drawn only while it stays clear of the score text (8px margin) —
+    // the extras are omitted rather than overlapping. The score is
+    // computed here (before the badges) so both use the same string.
+    QFont scoreF = font();
+    scoreF.setPointSizeF(20);
+    scoreF.setWeight(QFont::Black);
+    const QString score =
+        QString::number(m_scoreHome) + QStringLiteral(" : ") + QString::number(m_scoreAway);
+    const QFontMetricsF fmScore(scoreF);
+    const qreal scoreL = W / 2.0 - fmScore.horizontalAdvance(score) / 2.0;
+    const qreal scoreR = W / 2.0 + fmScore.horizontalAdvance(score) / 2.0;
+    const auto drawBadge = [this, &p, badgeY, badgeGap, badgeS, scoreL, scoreR](
                                 const QVector<InducementBadge> &badges,
                                 qreal startX, qreal step,
                                 QVector<QRectF> &rects) {
         for (int i = 0; i < badges.size(); ++i) {
             const QRectF r(startX + i * step, badgeY, badgeS, badgeS);
+            // Narrow header: stop before the badge crosses into the
+            // score zone (home grows right, away grows left).
+            if (step > 0 ? r.right() > scoreL - 8 : r.left() < scoreR + 8)
+                break;
             // Spent (no units left, e.g. a used bribe) → grayscale.
             const bool spent = badges[i].count <= 0;
             const QPixmap pm = assets::inducementPixmap(badges[i].typeId, spent);
@@ -453,9 +471,12 @@ void HeaderView::paintEvent(QPaintEvent *)
                            badges[i].typeId.left(1).toUpper());
             }
             if (badges[i].count > 1) {
-                // Count disc bottom-right.
+                // Count disc bottom-right, fully inside the badge: the old
+                // corner-overhang style leaked ~17px past the badge bottom
+                // into the center chip row (TURN/HALF pills) — visible
+                // collision in narrow layouts.
                 const qreal cS = qMax(10.0, badgeS * 0.5);
-                const QRectF c(r.right() - 4, r.bottom() - 4, cS, cS);
+                const QRectF c(r.right() - cS - 2, r.bottom() - cS - 2, cS, cS);
                 p.setPen(QPen(QColor(250, 250, 253), 1));
                 p.setBrush(GREEN_DARK);
                 p.drawEllipse(c);
@@ -473,17 +494,13 @@ void HeaderView::paintEvent(QPaintEvent *)
     drawBadge(m_inducementAway, awayStart, -(badgeS + badgeGap), m_indRectsAway);
 
     // --- center: score ---------------------------------------------------------
-    // Score up (font 20, top 3), center row down (y 38) in the 62px strip:
-    // a real gap between the two.
-    QFont scoreF = font();
-    scoreF.setPointSizeF(20);
-    scoreF.setWeight(QFont::Black);
-    const QString score =
-        QString::number(m_scoreHome) + QStringLiteral(" : ") + QString::number(m_scoreAway);
-    const QFontMetricsF fmScore(scoreF);
+    // Score up (font 20, top 11), center row down (y 46) in the 76px strip:
+    // a real gap between the two. (scoreF/score/fmScore are computed
+    // before the badges: they also set the zone the badges must avoid.)
     p.setPen(INK);
     p.setFont(scoreF);
-    p.drawText(W / 2 - fmScore.horizontalAdvance(score) / 2, 3 + int(fmScore.ascent()), score);
+    p.drawText(W / 2 - fmScore.horizontalAdvance(score) / 2, 11 + int(fmScore.ascent()),
+               score);
 
     // --- center row: [TURN n][HALF]  time  weather ------------------------------
     // The turn timer counts UP (FUMBBL semantics) — no decreasing bar.
@@ -513,7 +530,7 @@ void HeaderView::paintEvent(QPaintEvent *)
     const qreal w3 = fmTime.horizontalAdvance(timeT);
     const qreal w4 = 26 + fmLab.horizontalAdvance(weatherT);
     const qreal total = w1 + 8 + w2 + 16 + w3 + 16 + w4;
-    const qreal y = 38; // below the score with a real gap
+    const qreal y = 46; // below the score with a real gap
     // The TURN / HALF pills are 20px tall with the text vertically
     // centered: at 16px the glyph's descent touched the bottom border.
     const qreal chipH = 20.0;
