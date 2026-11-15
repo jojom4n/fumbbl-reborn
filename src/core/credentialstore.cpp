@@ -18,6 +18,7 @@
 #endif
 #endif
 
+#include "core/apppaths.h"
 #include "core/credentialstore.h"
 
 // QDBus is a Unix-only Qt module (Qt for Windows does not ship it): the
@@ -75,7 +76,7 @@ bool CredentialStore::hasBackend()
 
 QString CredentialStore::credentialsPath()
 {
-    return QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/creds");
+    return appSaveRoot() + QStringLiteral("/creds");
 }
 
 void CredentialStore::get(const QString &coach)
