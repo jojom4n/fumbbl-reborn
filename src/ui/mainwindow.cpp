@@ -18,13 +18,16 @@
 #include "ui/chatwidget.h"
 #include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
-#include "ui/actionlog.h"
+#include "ui/matchlog.h"
 #include "ui/fieldview.h"
 
 #include <algorithm>
 #include "ui/headerview.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "ui/reportcard.h"
+#include "ui/touchdownbanner.h"
+#include "ui/toastoverlay.h"
 
 #include <QAction>
 #include <QApplication>
@@ -51,6 +54,7 @@
 #include <iterator>
 #include <QSettings>
 #include <QStatusBar>
+#include <QTimer>
 
 
 namespace {
@@ -97,7 +101,7 @@ MainWindow::MainWindow(QWidget *parent, bool gateLogin)
 
     // QElapsedTimer::elapsed() on a timer that was NEVER started returns a
     // huge NEGATIVE value in Qt 6 — the report-dedup window test (now -
-    // last < window) was then true for every report and the action log
+    // last < window) was then true for every report and the match log
     // stayed empty. Start the clock up front.
     m_clock.start();
 
@@ -134,9 +138,9 @@ MainWindow::MainWindow(QWidget *parent, bool gateLogin)
     // Hover card: the player info follows the mouse over the field / bench
     // and sits on the opposite side of the field.
     connect(m_field, &FieldView::playerHovered, this, &MainWindow::onPlayerHovered);
-    // Hover a player NAME in the action log -> show that player's card
+    // Hover a player NAME in the match log -> show that player's card
     // (like the field hover/click). Empty id = the mouse left the name.
-    connect(m_actionLog, &ActionLogWidget::playerHoveredId, this,
+    connect(m_matchLog, &MatchLogWidget::playerHoveredId, this,
             [this](const QString &playerId) {
                 if (playerId.isEmpty()) {
                     hidePlayerCard();
@@ -198,13 +202,71 @@ void MainWindow::createMenus()
 
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
     // Rosters are not in the menu (the field box strips cover box/KO/
-    // reserve); action log and chat are pinned overlays (always visible,
+    // reserve); match log and chat are pinned overlays (always visible,
     // not toggleable). "Player Info" is NOT in the menu either: the card
     // works (and must work) on HOVER over a player, and only the hover
     // drives it.
     viewMenu->addAction(m_panelViewActions.value(QStringLiteral("protocol")));
     viewMenu->addSeparator();
     viewMenu->addAction(m_resetLayoutAction);
+
+    // --- Settings: the weather FX switches (QSettings-persisted, applied
+    //     live). The three levels: (1) off = NO weather visuals at all;
+    //     (2) "on the field" off = the top-down rain/snow keeps falling
+    //     over the whole scene, but nothing hits the pitch (no puddles,
+    //     no snow accumulations, no splash ripples); (3) lightning off =
+    //     the rare flash is skipped (photo-sensitive users).
+    QMenu *settingsMenu = menuBar()->addMenu(tr("&Settings"));
+    QSettings settings;
+    m_weatherFxAllAction = new QAction(tr("Weather &Effects"), this);
+    m_weatherFxAllAction->setObjectName(QStringLiteral("weatherFxAll"));
+    m_weatherFxAllAction->setCheckable(true);
+    m_weatherFxAllAction->setChecked(
+        settings.value(QStringLiteral("settings/weatherFxAll"), true).toBool());
+    m_weatherFxAllAction->setStatusTip(tr("Master switch for all weather "
+                                          "visuals (rain, snow, sunny, heat)"));
+    settingsMenu->addAction(m_weatherFxAllAction);
+
+    m_weatherFxFieldAction = new QAction(tr("Weather Effects &on the Field"), this);
+    m_weatherFxFieldAction->setObjectName(QStringLiteral("weatherFxField"));
+    m_weatherFxFieldAction->setCheckable(true);
+    m_weatherFxFieldAction->setChecked(settings.value(
+        QStringLiteral("settings/weatherFxField"), true).toBool());
+    m_weatherFxFieldAction->setStatusTip(tr(
+        "Uncheck to keep the rain/snow falling over the scene but remove "
+        "the field effects (puddles, snow accumulations, splash ripples)"));
+    settingsMenu->addAction(m_weatherFxFieldAction);
+
+    m_weatherFxLightningAction =
+        new QAction(tr("Lightning &Flashes"), this);
+    m_weatherFxLightningAction->setObjectName(QStringLiteral("lightningFlashes"));
+    m_weatherFxLightningAction->setCheckable(true);
+    m_weatherFxLightningAction->setChecked(settings.value(
+        QStringLiteral("settings/lightningFlashes"), true).toBool());
+    m_weatherFxLightningAction->setStatusTip(tr(
+        "The rare lightning flash during rain (every 5-8 minutes). "
+        "Uncheck if you are photo-sensitive"));
+    settingsMenu->addAction(m_weatherFxLightningAction);
+
+    const auto applyWeatherFx = [this]() {
+        const bool all = m_weatherFxAllAction->isChecked();
+        const bool field = m_weatherFxFieldAction->isChecked();
+        const bool lightning = m_weatherFxLightningAction->isChecked();
+        QSettings s;
+        s.setValue(QStringLiteral("settings/weatherFxAll"), all);
+        s.setValue(QStringLiteral("settings/weatherFxField"), field);
+        s.setValue(QStringLiteral("settings/lightningFlashes"), lightning);
+        if (m_field)
+            m_field->setWeatherFx(all, field, lightning);
+    };
+    connect(m_weatherFxAllAction, &QAction::toggled, this, [applyWeatherFx](bool) {
+        applyWeatherFx();
+    });
+    connect(m_weatherFxFieldAction, &QAction::toggled, this,
+            [applyWeatherFx](bool) { applyWeatherFx(); });
+    connect(m_weatherFxLightningAction, &QAction::toggled, this,
+            [applyWeatherFx](bool) { applyWeatherFx(); });
+    applyWeatherFx();
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     auto *aboutAction = new QAction(tr("&About FUMBBL Reborn"), this);
@@ -256,6 +318,30 @@ void MainWindow::createCentralWidget()
 
     m_field = new FieldView(m_stage);
     m_field->setObjectName(QStringLiteral("field"));
+    // The live toast overlay sits above the field (below the floating
+    // panels): center ribbons + edge pills, transparent to the mouse.
+    m_toasts = new ToastOverlay(m_stage);
+    m_toasts->setGeometry(m_stage->rect());
+    // The overlay is a child widget (hidden by default) — without this
+    // show() its toasts render into nothing: the labels are created
+    // visible, but a label with a hidden parent never appears on screen.
+    m_toasts->show();
+    // The TOUCHDOWN celebration: a big banner + animated streamers above
+    // the toasts, transparent to the mouse (the field stays interactive).
+    m_tdBanner = new TouchdownBanner(m_stage);
+    m_tdBanner->setGeometry(m_stage->rect());
+    // The join waiting board: a big "HOME VS AWAY + status" card, centered
+    // on the stage while the session is being established.
+    m_waitBoard = new QLabel(m_stage);
+    m_waitBoard->setObjectName(QStringLiteral("waitBoard"));
+    m_waitBoard->setAlignment(Qt::AlignCenter);
+    m_waitBoard->setWordWrap(true);
+    m_waitBoard->setTextFormat(Qt::RichText);
+    m_waitBoard->setFixedWidth(680);
+    m_waitBoard->setStyleSheet(
+        QStringLiteral("#waitBoard { background: rgba(24, 24, 30, 225); "
+                       "border-radius: 12px; padding: 24px; }"));
+    m_waitBoard->hide();
     setCentralWidget(m_stage);
 }
 
@@ -299,14 +385,14 @@ void MainWindow::createPanels()
         makePanel(QStringLiteral("player_info"), tr("Player Info"), m_playerInfo, neutral);
     playerInfoPanel->setChromeless(true);
 
-    // Action log (bottom-left) and chat (bottom-right): Mockup F pinned
+    // Match log (bottom-left) and chat (bottom-right): Mockup F pinned
     // overlays with their own translucent chrome — NOT draggable panels.
-    m_actionLog = new ActionLogWidget(m_stage);
-    m_actionLog->setFixedWidth(560);
-    // The action log EXPANDS UPWARD — it stays pinned to the bottom, so
+    m_matchLog = new MatchLogWidget(m_stage);
+    m_matchLog->setFixedWidth(560);
+    // The match log EXPANDS UPWARD — it stays pinned to the bottom, so
     // when the chevron grows it taller, re-pin it: the top edge lifts
     // (growing downwards would run off the visible bottom of the screen).
-    connect(m_actionLog, &ActionLogWidget::expandedChanged, this,
+    connect(m_matchLog, &MatchLogWidget::expandedChanged, this,
             [this](bool) { pinOverlays(); });
 
     m_chat = new ChatWidget(m_stage);
@@ -468,6 +554,13 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj == m_stage && event->type() == QEvent::Resize) {
         m_field->setGeometry(m_stage->rect());
+        if (m_toasts)
+            m_toasts->setGeometry(m_stage->rect());
+        if (m_tdBanner)
+            m_tdBanner->setGeometry(m_stage->rect());
+        if (m_waitBoard && m_waitBoard->isVisible())
+            m_waitBoard->move((m_stage->width() - m_waitBoard->width()) / 2,
+                              (m_stage->height() - m_waitBoard->height()) / 2);
         onStageFirstSized();
         clampPanelsToStage();
         pinOverlays();
@@ -558,7 +651,7 @@ void MainWindow::appendDiceLog(const DiceLogLine &line)
             return PlayerInfoWidget::teamColor(m_model->teamAwayName(), false);
         return QColor(); // not a player nor a team: neutral ink
     };
-    m_actionLog->appendLine(l, resolveId(line.actorId),
+    m_matchLog->appendLine(l, resolveId(line.actorId),
                             resolveId(line.defenderId),
                             line.actorId, line.defenderId,
                             teamColorOf(line.actorId),
@@ -582,8 +675,20 @@ void MainWindow::onGameState(const QJsonObject &game)
 {
     if (m_loginSuppressMatchUi)
         return; // verification join: its game state never reaches the UI
-    if (m_model->initialize(game))
+    if (m_model->initialize(game)) {
+        // New match: the toast milestone snapshot restarts from scratch
+        // (otherwise the previous match's carrier/score would diff against
+        // the new one and fire phantom toasts).
+        m_toastScoreH = m_toastScoreA = 0;
+        m_toastHalf = 0;
+        m_toastTurnMode.clear();
+        m_toastCarrier.clear();
+        m_toastSpp.clear();
+        hideWaitBoard(); // the stadium (with the real state) replaces it
+        if (m_reportCard) // a new match ends the previous report card
+            m_reportCard->close();
         setConnectionStatus(tr("Game state received"), true);
+    }
 }
 
 void MainWindow::applyModelToUi()
@@ -601,6 +706,28 @@ void MainWindow::applyModelToUi()
     // white once used (turnData.reRolls).
     m_headerView->setRerolls(m_model->reRollsHome(), m_model->reRollsAway(),
                              m_model->turnReRollsHome(), m_model->turnReRollsAway());
+    // Inducement badges: remaining units = value − uses (server LIVE data;
+    // a fully consumed inducement paints gray, and a server recharge brings
+    // it back). The apothecary is a ROSTER flag — appended as its own badge.
+    const auto buildBadges = [this](const QVector<InducementInfo> &list, bool apoth) {
+        QVector<HeaderView::InducementBadge> badges;
+        for (const InducementInfo &info : list) {
+            HeaderView::InducementBadge b;
+            b.typeId = info.typeId;
+            b.count = qMax(0, info.value - info.uses);
+            badges.append(b);
+        }
+        if (apoth) {
+            HeaderView::InducementBadge b;
+            b.typeId = QStringLiteral("apothecary");
+            b.count = 1;
+            badges.append(b);
+        }
+        return badges;
+    };
+    m_headerView->setInducements(
+        buildBadges(m_model->inducementsHome(), m_model->apothecaryHome()),
+        buildBadges(m_model->inducementsAway(), m_model->apothecaryAway()));
     // The header strip exists only once a game state has loaded — this
     // function is only reached after initialize(), so make it visible now.
     m_headerToolbar->setVisible(true);
@@ -766,14 +893,260 @@ static QString reportFingerprint(const QJsonObject &report)
     return QString::fromLatin1(md5.constData(), 8);
 }
 
+// R0 toasts — report side: the structured events of one ACCEPTED report ->
+// edge pills (the log keeps its own text). Returns true when the report was
+// a SUCCEEDED catch (the batch's carrier change is a completion, not a
+// turnover).
+bool MainWindow::toastFromReport(const QJsonObject &report)
+{
+    if (!m_toasts)
+        return false;
+    bool sawCatch = false;
+    for (const ToastEvent &e : parseToastEvents(report)) {
+        if (e.kind == QLatin1String("completion")) {
+            sawCatch = true;
+            const QString name = resolveId(e.playerId);
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("COMPLETION — %1").arg(name),
+                                   QColor(46, 158, 91));
+        } else if (e.kind == QLatin1String("regeneration")) {
+            const QString name = resolveId(e.playerId);
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("REGENERATION — %1").arg(name),
+                                   QColor(142, 92, 246));
+        } else if (e.kind == QLatin1String("raiseDead")) {
+            const FFBPlayer *p =
+                m_model ? m_model->findPlayerById(e.playerId) : nullptr;
+            const QString team = p
+                                     ? (p->sideHome ? m_model->teamHomeName()
+                                                    : m_model->teamAwayName())
+                                     : QString();
+            if (!team.isEmpty())
+                m_toasts->showEdge(
+                    QStringLiteral("RAISE THE DEAD — %1 adds a Lineman").arg(team),
+                    QColor(142, 92, 246));
+        } else if (e.kind == QLatin1String("timeout")) {
+            m_toasts->showEdge(QStringLiteral("TIMEOUT — %1").arg(e.text),
+                               QColor(70, 81, 95));
+        } else if (e.kind == QLatin1String("injury")) {
+            const QString name = resolveId(e.playerId);
+            if (name.isEmpty())
+                continue;
+            const QString text =
+                e.result == QLatin1String("knockedOut")
+                    ? QStringLiteral("OUT — %1").arg(name)
+                    : e.result == QLatin1String("seriousInjury")
+                          ? QStringLiteral("Serious Injury — %1").arg(name)
+                          : e.result == QLatin1String("badlyHurt")
+                                ? QStringLiteral("Badly Hurt — %1").arg(name)
+                                : e.result == QLatin1String("rip")
+                                      ? QStringLiteral("Dead — %1").arg(name)
+                                      : e.result == QLatin1String("missNextGame")
+                                            ? QStringLiteral("Miss next game — %1").arg(name)
+                                            : QStringLiteral("ARMOUR BREAK — %1").arg(name);
+            m_toasts->showEdge(text, QColor(192, 57, 43));
+        }
+    }
+    return sawCatch;
+}
+
+// R0 toasts — milestone side: the POST-batch snapshot diff. Score up ->
+// CENTER TOUCHDOWN ribbon; half 1->2 / 2->3 -> 2ND HALF / EXTRA TIME;
+// turnMode endGame -> FULL TIME; SPP up -> "+N SPP" pill; carrier changed
+// without a completion and the old carrier still standing -> TURNOVER.
+void MainWindow::toastMilestones(bool sawCatchRoll)
+{
+    if (!m_model || !m_model->isInitialized() || !m_toasts)
+        return;
+    const int sh = m_model->scoreHome();
+    const int sa = m_model->scoreAway();
+    const int half = m_model->half();
+    const QString mode = m_model->turnMode();
+    const QString carrier = m_model->carrierId();
+    const QHash<QString, SppInfo> spp = m_model->sppTable();
+
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it) {
+        // First sight of a player's SPP = their baseline (no toast); only
+        // gains AFTER it fire (a re-join re-sends the values: delta 0).
+        const bool firstSight = !m_toastSpp.contains(it.key());
+        const int delta = it.value().current - m_toastSpp.value(it.key(), 0);
+        if (!firstSight && delta > 0) {
+            const QString name = resolveId(it.key());
+            if (!name.isEmpty())
+                m_toasts->showEdge(QStringLiteral("+%1 SPP — %2").arg(delta).arg(name),
+                                   QColor(217, 165, 20));
+        }
+    }
+    if (!m_toastCarrier.isEmpty() && !carrier.isEmpty()
+        && carrier != m_toastCarrier && !sawCatchRoll) {
+        if (const FFBPlayer *prev = m_model->findPlayerById(m_toastCarrier))
+            if (prev->hasCoords && GameModel::isOnField(prev->fieldX, prev->fieldY)
+                && GameModel::baseState(prev->state) == 1) // STANDING
+                m_toasts->showEdge(QStringLiteral("TURNOVER"), QColor(230, 81, 60));
+    }
+    if (sh > m_toastScoreH || sa > m_toastScoreA) {
+        // A touchdown is an EVENT: the big banner with the animated
+        // streamers (replaces the old center ribbon).
+        if (m_tdBanner)
+            m_tdBanner->celebrate();
+    }
+    if (m_toastHalf == 1 && half == 2)
+        m_toasts->showCenter(QStringLiteral("2ND HALF"));
+    else if (m_toastHalf == 2 && half == 3)
+        m_toasts->showCenter(QStringLiteral("EXTRA TIME"));
+    if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame")) {
+        m_toasts->showCenter(QStringLiteral("FULL TIME"));
+        showReportCard();
+    }
+
+    // Advance the snapshot to this batch's state.
+    m_toastScoreH = sh;
+    m_toastScoreA = sa;
+    m_toastHalf = half;
+    m_toastTurnMode = mode;
+    m_toastCarrier = carrier;
+    m_toastSpp.clear();
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it)
+        m_toastSpp.insert(it.key(), it.value().current);
+}
+
+void MainWindow::showWaitBoard(const QString &home, const QString &away,
+                               const QString &status)
+{
+    if (!m_waitBoard || !m_stage)
+        return;
+    m_waitHome = home;
+    m_waitAway = away;
+    m_waitStatus = status;
+    QString title;
+    if (!home.isEmpty() && !away.isEmpty())
+        title = QStringLiteral("%1<span style=\"color:#c0392b;\">&nbsp; VS &nbsp;</span>%2")
+                    .arg(home, away);
+    else if (!home.isEmpty() || !away.isEmpty())
+        title = home.isEmpty() ? away : home;
+    else
+        title = tr("JOINING");
+    m_waitBoard->setText(QStringLiteral(
+                             "<div style=\"text-align:center;\">"
+                             "<div style=\"font-size:24px;font-weight:800;"
+                             "color:#ffffff;\">%1</div>"
+                             "<div style=\"font-size:13px;color:#9aa0aa;"
+                             "margin-top:12px;\">%2</div>"
+                             "</div>")
+                             .arg(title)
+                             .arg(status));
+    m_waitBoard->adjustSize();
+    m_waitBoard->move((m_stage->width() - m_waitBoard->width()) / 2,
+                      (m_stage->height() - m_waitBoard->height()) / 2);
+    m_waitBoard->show();
+    m_waitBoard->raise();
+}
+
+void MainWindow::hideWaitBoard()
+{
+    if (m_waitBoard)
+        m_waitBoard->hide();
+}
+
+void MainWindow::showReportCard()
+{
+    if (m_reportCard || !m_model || !m_model->isInitialized())
+        return;
+    m_reportCard = new ReportCardDialog(m_model, this);
+    m_reportCard->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_reportCard, &QObject::destroyed, this, [this]() {
+        m_reportCard = nullptr;
+    });
+    // Non-modal: the ended match stays live (chat/review) behind the card.
+    m_reportCard->show();
+    m_reportCard->raise();
+}
+
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
 {
     if (m_loginSuppressMatchUi)
         return; // verification join: its model sync never reaches the UI
     if (changes.isEmpty() && reports.isEmpty())
         return;
-    if (!changes.isEmpty())
+
+    // TD CELEBRATION: on a touchdown the server wipes the field
+    // (fieldModelRemovePlayer) and re-places the teams for the next drive.
+    // Applied immediately, the field empties the instant the banner
+    // celebrates — so the wipe/re-placement changes of a TD batch are
+    // DEFERRED by the celebration duration (the players stay to celebrate).
+    // A fuller re-sync (many changes) is never deferred; a newer field
+    // change for a pending player CANCELS the stale deferral (the server
+    // already moved on — the old wipe would clear a freshly placed drive).
+    const auto changeId = [](const QJsonObject &c) {
+        return c.value("modelChangeId").toString();
+    };
+    const auto changeKey = [](const QJsonObject &c) {
+        return c.value("modelChangeKey").toString();
+    };
+    const auto changeValue = [](const QJsonObject &c) {
+        return c.value("modelChangeValue").toVariant();
+    };
+    bool tdBatch = false;
+    for (const QJsonValue &cv : changes) {
+        const QJsonObject c = cv.toObject();
+        if (changeId(c) == QLatin1String("teamResultSetScore"))
+            tdBatch = changeKey(c) == QLatin1String("home")
+                        ? changeValue(c).toInt() > m_toastScoreH
+                        : changeValue(c).toInt() > m_toastScoreA;
+    }
+    if (tdBatch && changes.size() <= 60) { // a real TD batch, not a re-sync
+        QJsonArray field, other;
+        bool sawRemove = false;
+        for (const QJsonValue &cv : changes) {
+            const QJsonObject c = cv.toObject();
+            const QString id = changeId(c);
+            if (id == QLatin1String("fieldModelRemovePlayer")
+                || id == QLatin1String("fieldModelSetPlayerCoordinate")) {
+                field.append(c);
+                if (id == QLatin1String("fieldModelRemovePlayer"))
+                    sawRemove = true;
+                m_pendingTdIds.insert(changeKey(c));
+            } else {
+                other.append(c);
+            }
+        }
+        if (sawRemove && !field.isEmpty()) {
+            m_pendingTdField = field;
+            QTimer::singleShot(qint64(TouchdownBanner::durationMs()), this,
+                               [this] {
+                                   if (m_model && m_model->isInitialized())
+                                       m_model->applyModelChanges(m_pendingTdField);
+                                   m_pendingTdField = QJsonArray();
+                                   m_pendingTdIds.clear();
+                               });
+        } else {
+            // A score-up without a field wipe: nothing to defer, apply the
+            // field changes (if any) with the rest.
+            m_pendingTdField = QJsonArray();
+            m_pendingTdIds.clear();
+            if (!field.isEmpty())
+                m_model->applyModelChanges(field);
+        }
+        if (!other.isEmpty())
+            m_model->applyModelChanges(other); // emits stateUpdated -> applyModelToUi
+    } else {
+        bool superseded = false;
+        for (const QJsonValue &cv : changes) {
+            const QJsonObject c = cv.toObject();
+            const QString id = changeId(c);
+            if ((id == QLatin1String("fieldModelRemovePlayer")
+                 || id == QLatin1String("fieldModelSetPlayerCoordinate"))
+                && m_pendingTdIds.contains(changeKey(c))) {
+                superseded = true;
+                break;
+            }
+        }
+        if (superseded) {
+            m_pendingTdField = QJsonArray();
+            m_pendingTdIds.clear();
+        }
         m_model->applyModelChanges(changes); // emits stateUpdated -> applyModelToUi
+    }
 
     // The FUMBBL server re-sends reports (a failed step is retried and its
     // reports flow again; re-joins re-sync). The official client does not
@@ -787,11 +1160,12 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
     //  3. (UI-level) a line identical to the previous one is skipped by the
     //     widget (last resort, catches whatever the above let through).
     if (reports.size() >= kResyncBatch && m_loggedReportCount > 0) {
-        m_actionLog->clearLog();
+        m_matchLog->clearLog();
         m_reportFpTimes.clear();
         m_loggedReportCount = 0;
     }
     const qint64 now = m_clock.elapsed();
+    bool sawCatchRoll = false; // a SUCCEEDED catch in this batch
     for (const QJsonValue &rv : reports) {
         const QJsonObject report = rv.toObject();
         if (report.isEmpty())
@@ -802,6 +1176,8 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
             continue; // the server re-sent this exact report: drop it
         m_reportFpTimes.insert(fp, now);
         ++m_loggedReportCount;
+        if (toastFromReport(report))
+            sawCatchRoll = true; // a completion is not a turnover
 
         // The RED GLOW on the DEFENDER (the player being blocked) must be
         // on for the whole block action and die when the ATTACKER's blue
@@ -855,6 +1231,22 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
                 target = m_model->blockTargetId();
             if (!target.isEmpty()) {
                 m_model->setBlockTargetId(target);
+                // WATCH-OUT: the block lands on the BALL CARRIER (pre-batch
+                // snapshot) — the drama of a ball-lost attempt.
+                if (!victim.isEmpty() && victim == m_toastCarrier) {
+                    const QString who = resolveId(victim);
+                    if (!who.isEmpty() && m_toasts) {
+                        const bool blitz =
+                            !m_model->blitzingPlayerId().isEmpty()
+                            && m_model->blitzingPlayerId() == m_model->activePlayerId();
+                        m_toasts->showEdge(
+                            QStringLiteral("WATCH-OUT: %1 on %2")
+                                .arg(blitz ? QStringLiteral("Blitz")
+                                           : QStringLiteral("Block"))
+                                .arg(who),
+                            QColor(217, 119, 6));
+                    }
+                }
                 // The blockChoice carries the CHOSEN die: blockRoll[] +
                 // diceIndex (capture-verified). The marker between
                 // attacker/defender switches helmet -> die symbol.
@@ -880,7 +1272,7 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
             m_model->setGoForItPending(
                 report.value(QStringLiteral("playerId")).toString());
 
-        // Structured dice: the action log renders the die faces (never bare
+        // Structured dice: the match log renders the die faces (never bare
         // numbers) and resolved names. Official BlockMessage: "X blocks Y:" —
         // the `block` report carries only the defender; the attacker is the
         // current actor (the block reports arrive while the attacker is the
@@ -914,10 +1306,13 @@ void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &report
         for (auto it = m_reportFpTimes.begin(); it != m_reportFpTimes.end(); )
             it = (it.value() < cutoff) ? m_reportFpTimes.erase(it) : std::next(it);
     }
+    // Milestone toasts: the POST-batch snapshot diff (score/half/turnMode/
+    // carrier/SPP) fires the center ribbons and the SPP/turnover pills.
+    toastMilestones(sawCatchRoll);
 }
 
 // Resolves a raw server id to a display name (no numeric ids in the
-// action log). Player ids become "Name (number)"; TEAM ids (prayers,
+// match log). Player ids become "Name (number)"; TEAM ids (prayers,
 // bribes, throw-ins, team captain) become the team name. A PURELY NUMERIC
 // id the model cannot resolve is DROPPED (empty string) instead of being
 // printed raw. Plain name strings (e.g. the coach in timeoutEnforced, or
@@ -1135,6 +1530,9 @@ void MainWindow::onSessionProgress(const QString &message)
 {
     setConnectionStatus(message, true);
     appendProtocol(QStringLiteral("progress "), message);
+    // The join waiting board tracks the session progress live.
+    if (m_waitBoard && m_waitBoard->isVisible())
+        showWaitBoard(m_waitHome, m_waitAway, message);
 }
 
 void MainWindow::onSessionFatal(const QString &message)
@@ -1149,6 +1547,7 @@ void MainWindow::onSessionFatal(const QString &message)
         return;
     }
     setConnectionStatus(message, false);
+    hideWaitBoard(); // the board dies with the failed join
     appendProtocol(QStringLiteral("FATAL "), message);
 }
 
@@ -1231,7 +1630,8 @@ void MainWindow::openSpectateDialog()
     // The dialog emits connectRequested() right before accept(); hook it up
     // to the session so the flow starts as the dialog closes.
     connect(&dialog, &SpectateDialog::connectRequested, this,
-            [this, &dialog](int gameId)
+            [this, &dialog](int gameId, const QString &homeName,
+                            const QString &awayName)
             {
                 // This match's session is starting: Log out becomes live
                 // (the active coach is the logged-in one).
@@ -1250,6 +1650,10 @@ void MainWindow::openSpectateDialog()
                 m_loginSuppressMatchUi = false;
                 clearMatchUi();
                 setConnectionStatus(tr("Connecting to game %1…").arg(gameId), false);
+                // The waiting board: HOME VS AWAY (match-list names) until
+                // the game state arrives (onGameState hides it).
+                showWaitBoard(homeName, awayName,
+                              tr("Connecting to game %1…").arg(gameId));
                 m_session->connectAsSpectator(m_loginCoach, m_loginMd5, gameId);
             });
     dialog.exec();
@@ -1384,7 +1788,7 @@ void MainWindow::clearMatchUi()
     m_field->setPlayers({}, {});
     m_field->setBoxes({}, {});
     m_field->setBall(-1, -1, false);
-    m_actionLog->clearLog();
+    m_matchLog->clearLog();
     m_chat->clearChat();
     // A new match = a fresh dedup universe (report fingerprints from the
     // old game must not suppress this game's reports).
@@ -1396,6 +1800,7 @@ void MainWindow::clearMatchUi()
     setTurn(1);
     m_headerView->setTurnElapsedSeconds(0);
     m_headerView->setRerolls(0, 0, 0, 0);
+    m_headerView->setInducements({}, {});
     // The header goes back to hidden until a new game loads.
     m_headerToolbar->setVisible(false);
     m_headerView->setWeather(QString());
@@ -1496,11 +1901,18 @@ void MainWindow::showPlayerCard(const FFBPlayer *p, int fieldX)
     d.ag = p->ag;
     d.pa = p->pa;
     d.av = p->av;
+    // SPP: base (first sight) + in-match gain (red "+x" on the card).
+    d.sppBase = m_model->sppBase(p->playerId);
+    d.sppGain = qMax(0, m_model->sppCurrent(p->playerId) - d.sppBase);
     d.isActing = !m_model->activePlayerId().isEmpty() && p->playerId == m_model->activePlayerId();
 
     if (p->hasCoords) {
+        // Bench: NO "in the box" line — the player is visibly in the
+        // dugout; show ONLY the reason in full words (Reserve / Knocked
+        // Out / Badly Hurt / Serious Injury / Dead / Miss next game /
+        // Sent off — no Injured prefix, no abbreviations).
         if (GameModel::isBoxX(p->fieldX))
-            d.stateText = tr("in the box (%1)").arg(GameModel::stateLabel(p->state));
+            d.stateText = GameModel::stateText(p->state);
         else if (GameModel::isOnField(p->fieldX, p->fieldY))
             d.stateText = GameModel::stateText(p->state);
     }
@@ -1566,7 +1978,7 @@ FloatingPanel *MainWindow::panelFor(QWidget *content)
     return nullptr;
 }
 
-// Pin the Mockup F corner overlays to the stage (bottom-left action log,
+// Pin the Mockup F corner overlays to the stage (bottom-left match log,
 // bottom-right chat).
 void MainWindow::pinOverlays()
 {
@@ -1576,8 +1988,8 @@ void MainWindow::pinOverlays()
     const int sh = m_stage->height();
     if (sw < 400 || sh < 300)
         return;
-    if (m_actionLog)
-        m_actionLog->move(20, sh - m_actionLog->height() - 20);
+    if (m_matchLog)
+        m_matchLog->move(20, sh - m_matchLog->height() - 20);
     if (m_chat)
         m_chat->move(sw - m_chat->width() - 20, sh - m_chat->height() - 20);
 }

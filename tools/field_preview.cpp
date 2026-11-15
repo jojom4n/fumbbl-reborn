@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QPixmap>
+#include <QElapsedTimer>
 
 #include "ui/fieldview.h"
 
@@ -140,13 +141,29 @@ int main(int argc, char **argv)
     if (ball.size() == 2)
         field.setBall(ball.at(0).toInt(), ball.at(1).toInt(),
                       fm.value(QStringLiteral("ballInPlay")).toBool(true));
-    field.setWeather(fm.value(QStringLiteral("weather")).toString());
-    if (argc > 3)
-        field.setWeather(QString::fromLocal8Bit(argv[3]));
+    QString weather = fm.value(QStringLiteral("weather")).toString();
+    field.setWeather(weather);
+    if (argc > 3) {
+        weather = QString::fromLocal8Bit(argv[3]);
+        field.setWeather(weather);
+    }
 
     field.resize(1344, 734); // 26:15
     field.show();
     QApplication::processEvents();
+    // Animated weather: let the ~30fps timer run so the particles (rain
+    // streaks / snowflakes) and the seeded field patches are visible
+    // before the grab. (Accumulation is on a MINUTES scale — the grab
+    // shows the pre-existing patches, which is what the proof needs.)
+    const QString wl = weather.toLower();
+    if (wl.contains(QLatin1String("rain"))
+        || wl.contains(QLatin1String("blizzard"))
+        || wl.contains(QLatin1String("heat"))) {
+        QElapsedTimer wait;
+        wait.start();
+        while (wait.elapsed() < 9000)
+            QApplication::processEvents();
+    }
 
     const QString out = argc > 2 ? QString::fromLocal8Bit(argv[2])
                                  : QStringLiteral("field_preview.png");
@@ -155,10 +172,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "save failed: %s\n", out.toUtf8().constData());
         return 1;
     }
-    printf("saved %s (%dx%d) home=%d away=%d ball=%d weather=%s\n",
+    printf("saved %s (%dx%d) players=%d ball=%d weather=%s\n",
            out.toUtf8().constData(), pm.width(), pm.height(),
            field.playerCount(),
            (int)(ball.size() == 2 ? 1 : 0),
-           fm.value(QStringLiteral("weather")).toString().toUtf8().constData());
+           weather.toUtf8().constData());
     return 0;
 }

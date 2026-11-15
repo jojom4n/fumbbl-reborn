@@ -4,6 +4,144 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
+## 0.3.0 — 2026-11-14
+- **Touchdown celebration**: a transparent golden TOUCHDOWN banner (4K,
+  chroma-keyed — the field shows through) sweeps over the field with
+  animated vector confetti (thin wavy + spiral streamers), and the
+  post-touchdown field wipe is deferred ~4.5 s so the celebration plays
+  before the next play (a newer field change supersedes the pending
+  wipe).
+- **Live weather — the rulebook's WEATHER TABLE, animated over the
+  whole scene**: Pouring Rain (top-down streaks with splash ripples and
+  worn-turf puddles that accumulate and expand over match time),
+  Blizzard (soft snowflakes over the whole scene + snow mounds that
+  build up on the pitch, with a settled-snow wash by match end — field
+  lines stay visible), Very Sunny (warm brightening over the scene),
+  Sweltering Heat (animated heat shimmer + faint warm tint), and a rare,
+  soft lightning flash during rain (every 5-8 minutes, 500 ms sin²
+  envelope, capped at 70/255 — photo-epilepsy safe: never continuous,
+  never bright). The header shows the rulebook names (Perfect
+  Conditions, Sweltering Heat, Very Sunny, Pouring Rain, Blizzard) with
+  a per-weather icon, never the server string.
+- **Settings menu**: three persisted switches — weather effects master
+  (off = no weather visuals at all), weather effects on the field (off
+  = the rain/snow keeps falling over the scene but nothing hits the
+  pitch: no puddles, snow or splashes), and lightning flashes (off =
+  the flash is skipped for photo-sensitive spectators). Applied live.
+- **Stadium**: the dark arena ships with a new 4K surround; the medieval
+  arena is removed (dark_arena is the installed default).
+- **Match log**: the action log is now the MATCH LOG (panel, code and
+  tooling renamed).
+- **README + screenshot gallery**: refreshed for the new UI (hero,
+  field, match log, touchdown celebration, rain, blizzard, live match
+  list); the `hud_preview` tool gains `--weather <name>`, `--td` and
+  `--spectate` captures.
+- **Tests**: new weather suites (rulebook mapping, whole-scene snow
+  coverage, sunny brightness, lightning envelope, Settings wiring) on
+  top of the existing rain sim tests.
+
+## 0.2.22 — 2026-11-11
+- **Third-party licensing (Qt 6 LGPLv3 compliance)**: added
+  `LICENSE-THIRD-PARTY.md` documenting the third-party components —
+  Qt 6 under LGPLv3 (linked dynamically against unmodified shared
+  libraries; source access statement per LGPL §4) and lz-string under
+  WTFPL (the ported UTF-16 codec in `src/core/lzstring.cpp`). The
+  README links to it, and both license files now ship at the root of
+  every release artifact.
+
+## 0.2.23 — 2026-11-11
+- **Inducement badges in the match header**: every inducement a team
+  fields is now drawn as a small badge next to its re-roll dots
+  (home right of the dots, away mirrored). 21 artwork icons generated
+  (Qwen-Image, 1024px — crisp at 4K) covering the full BB2025 FFB
+  inducement set: mascots, prayers, coaches, cheerleaders, weather
+  mage, wizard (Fireball / Zap!), kegs, bribes, mortuary assistant,
+  plague doctor, riotous rookies, throw a rock, master chef, biased
+  referee, coaching staff, Bugman, star players, mercenaries, plus a
+  distinct wandering-apothecary badge and a roster apothecary badge.
+  Hover shows the inducement name, effect and units still available.
+- **Consumed inducements go gray**: the badge turns grayscale when its
+  charges are exhausted (`value − uses ≤ 0`, live server data — a bribe
+  burns a charge on every use, the mascot per half, the wizard once
+  per game); passive inducements never consume and stay in color, and
+  a server recharge brings the badge back. Multi-unit inducements show
+  a small count disc with the units still available.
+
+## 0.2.21 — 2026-11-11
+- **Stadium surround**: the space outside the stadium (letterbox and
+  zoomed-out view) is no longer a flat gray band. Each stadium's
+  manifest now carries a `surround` color matching its mood (the night
+  arenas get a deep near-black; a day stadium can declare a light
+  neutral), and the stadium's edges feather into it with a soft
+  gradient — the arena reads as lit and deliberate instead of pasted
+  on a backdrop.
+
+## 0.2.20 — 2026-11-10
+- **Live matches now show the real score.** Live `serverGameState`
+  payloads carry the score ONLY in `gameResult.teamResultX.score` (no
+  top-level or per-team `score`), which the model ignored — every live
+  match rendered 0:0 until the next score update. The parser now reads
+  `gameResult` as a third score source, pinned by a new test on a real
+  live capture (game 1962007, saved as `tests/liveGameState_hero.json`).
+- **README + screenshot set refreshed**: real live-match screenshots
+  (hero, field, player card, dice log with a real captured report
+  stream, live match list), roadmap now links the five milestone issue
+  boards, first-run text updated for the startup sign-in gate.
+- **Tools**: the live report capturer now reads the `password_md5=`
+  credentials line (it only accepted plaintext `password=`, so after the
+  app's keychain migration it hung waiting on the OS keychain — which
+  offscreen processes never reach).
+
+## 0.2.19 — 2026-11-09
+- **Report card v1 at full time**: when the turn mode hits `endGame`,
+  a non-modal card shows the final score (names, coaches, races) and
+  both rosters — number, player, position, SPP (base with red
+  in-match gain) and final state. It stays open over the ended match
+  and closes when the next one starts. Test covers lifecycle, rosters,
+  SPP gain and no double card.
+
+## 0.2.18 — 2026-11-09
+- **Waiting board**: while a match is being joined, a centered
+  "HOME VS AWAY" card (names from the live match list) with the live
+  session status appears on the stage; it disappears on game state or
+  fatal session error.
+
+## 0.2.17 — 2026-11-09
+- **Match list: division tabs + auto-refresh**: the Spectate dialog
+  now has All/Competitive/League (plus per-division) tabs and polls
+  the live list every 20 s (skipped while a fetch is in flight); the
+  selected match survives reloads and the status line shows the match
+  count + update time.
+
+## 0.2.16 — 2026-11-09
+- **Player card: SPP column and injury states**: the card shows SPP
+  base with a red `+gain` for in-match growth, and the state line is
+  colored by severity (red for Prone/KO/Badly Hurt/Seriously
+  Hurt/Killed, amber for Stunned, gray for box/reserve/missing).
+
+## 0.2.15 — 2026-11-09
+- **Carrier/turnover fix**: the ball carrier is the STANDING
+  baseState==1 player (0 is UNKNOWN, not a state) — the previous
+  check misidentified the carrier on many turns.
+
+## 0.2.14 — 2026-11-09
+- **Toast system v1**: broadcast ribbons (CENTER TOUCHDOWN, 2ND HALF,
+  EXTRA TIME, FULL TIME) in the center and edge pills (+SPP,
+  COMPLETION, REGENERATION, RAISE THE DEAD, TIMEOUT, injury, TURNOVER,
+  WATCH-OUT) on the left, both self-fading and mouse-transparent.
+  Header half display: PRE-GAME / 1ST HALF / 2ND HALF / EXTRA TIME.
+
+## 0.2.13 — 2026-11-09
+- **Model: the toast/SPP data layer** — catch and regeneration roll
+  reports, per-player SPP tracking (base/current, first-sight
+  baseline), derived ball carrier, inducement sets from team sync
+  ( Keg/Bribes/Prayer add-remove), and a toast-event classifier for
+  completions, regeneration, raise the dead, timeouts and injuries.
+
+## 0.2.12 — 2026-11-09
+- **Tools**: the live smoke/capture tools accept the `password=`
+  (plaintext) credentials variant next to `password_md5=`.
+
 ## 0.2.11 — 2026-11-08
 - **Codebase hygiene**: every comment now cites only our own ground
   truth (the ffb Java sources, the official Java client, live

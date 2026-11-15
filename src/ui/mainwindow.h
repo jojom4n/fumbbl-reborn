@@ -8,7 +8,7 @@
 //   - Player info is a HOVER card: it appears when the mouse is over a
 //     player (field or bench) and sits on the OPPOSITE side of the field
 //     from the player, far away from him.
-//   - Action log (bottom-left) and chat (bottom-right) are very translucent
+//   - Match log (bottom-left) and chat (bottom-right) are very translucent
 //     pinned overlays, like the mockup; the protocol log stays a draggable
 //     FloatingPanel (dev tool). Layout persistence still applies to the
 //     remaining panels.
@@ -24,20 +24,24 @@
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QRect>
+#include <QSet>
 
 #include "core/matchlist.h"
 #include "core/reportparser.h"
 #include "ui/fieldview.h"
 
-class ActionLogWidget;
+class MatchLogWidget;
 class ChatWidget;
 class FloatingPanel;
 class LoginDialog;
 class MatchListClient;
+class TouchdownBanner;
 class GameModel;
 class HeaderView;
 class QCloseEvent;
 class QNetworkAccessManager;
+class ReportCardDialog;
+class ToastOverlay;
 class QNetworkReply;
 class QPlainTextEdit;
 class QToolBar;
@@ -100,6 +104,15 @@ public:
     // --- Core (spectator) -----------------------------------------------------
     // The game model (exposed for tests / tooling; the UI reads from it).
     GameModel *model() const { return m_model; }
+    // The live toast overlay (test seam).
+    ToastOverlay *toastOverlay() const { return m_toasts; }
+    TouchdownBanner *tdBanner() const { return m_tdBanner; }
+    // The join waiting board (big HOME VS AWAY + status, centered on the
+    // stage while the session is being established; dies when the game
+    // state arrives). Public so tests can drive it without a network.
+    void showWaitBoard(const QString &home, const QString &away,
+                       const QString &status);
+    void hideWaitBoard();
     // Show the info card for a player (no selection: the spectator does not
     // select players — the field rim glow is the REMOTE coach's selection,
     // driven by the model's actingPlayer).
@@ -200,6 +213,29 @@ private:
     int m_lastKickoffSeq = 0; // kickoff flights already started
     QElapsedTimer m_clock;
     int m_loggedReportCount = 0;
+    // Toast overlay + the milestone snapshot diffed in onModelSync (the
+    // PRE-batch values: score/half/turnMode/carrier/SPP).
+    ToastOverlay *m_toasts = nullptr;
+    // The TOUCHDOWN celebration: the banner + streamers overlay, and the
+    // TD batch's field wipe/re-placement DEFERRED by the celebration
+    // duration (the players stay on the field to celebrate before the
+    // wipe). A newer field change for a pending player cancels the stale
+    // deferral (the server already moved on).
+    TouchdownBanner *m_tdBanner = nullptr;
+    QJsonArray m_pendingTdField;
+    QSet<QString> m_pendingTdIds;
+    int m_toastScoreH = 0;
+    int m_toastScoreA = 0;
+    int m_toastHalf = 0;
+    QString m_toastTurnMode;
+    QString m_toastCarrier;
+    QHash<QString, int> m_toastSpp; // playerId -> current SPP (prev batch)
+    // Join waiting board (HOME VS AWAY + status) — visible from the
+    // connect request until the game state initializes the model.
+    QLabel *m_waitBoard = nullptr;
+    QString m_waitHome;
+    QString m_waitAway;
+    QString m_waitStatus;
     // Field click: empty id = deselect.
     void onFieldPlayerClicked(const QString &playerId);
     // Hover card: show/hide the player info on the opposite side
@@ -207,8 +243,17 @@ private:
     void onPlayerHovered(const FieldView::PlayerToken &token);
     void showPlayerCard(const FFBPlayer *p, int fieldX);
     void hidePlayerCard();
-    // Pin the corner overlays (action log / chat) to the stage.
+    // Pin the corner overlays (match log / chat) to the stage.
     void pinOverlays();
+    // R0 toasts: one report's structured events -> edge pills.
+    // Returns true on a succeeded catch (not a turnover).
+    bool toastFromReport(const QJsonObject &report);
+    // R0 toasts: post-batch milestone diff (score/half/turnMode/carrier/
+    // SPP) -> center ribbons + pills. Sets m_toast* to the new snapshot.
+    void toastMilestones(bool sawCatchRoll);
+    // R0 report card v1: full-time summary (shown once per match end).
+    void showReportCard();
+    ReportCardDialog *m_reportCard = nullptr;
     // The FloatingPanel wrapping a content widget (nullptr if none).
     FloatingPanel *panelFor(QWidget *content);
     // Per-match team logos (field watermarks + header crests): fetched from
@@ -280,7 +325,7 @@ private:
     HeaderView *m_headerView = nullptr; // Mockup F header (custom-painted)
     FieldView *m_field = nullptr;
     PlayerInfoWidget *m_playerInfo = nullptr;
-    ActionLogWidget *m_actionLog = nullptr; // bottom-left overlay
+    MatchLogWidget *m_matchLog = nullptr; // bottom-left overlay
     ChatWidget *m_chat = nullptr;           // bottom-right overlay
 
     // Overlay panels (child of m_stage, floating over the field)
@@ -293,6 +338,10 @@ private:
     QAction *m_quitAction = nullptr;
     QAction *m_resetLayoutAction = nullptr;
     QHash<QString, QAction *> m_panelViewActions; // name -> View-menu action
+    // Settings menu: the weather FX switches (persisted in QSettings).
+    QAction *m_weatherFxAllAction = nullptr;      // off = NO weather visuals
+    QAction *m_weatherFxFieldAction = nullptr;    // off = no field puddles/snow
+    QAction *m_weatherFxLightningAction = nullptr; // off = no flash (epilepsy)
 
     QLabel *m_statusLabel = nullptr;
     QLabel *m_connectionLabel = nullptr;

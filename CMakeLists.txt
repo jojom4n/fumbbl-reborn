@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(fumbbl-qt
-    VERSION 0.2.11
+    VERSION 0.3.0
     DESCRIPTION "FUMBBL Reborn — native Qt6 client"
     LANGUAGES CXX
 )
@@ -147,8 +147,8 @@ add_executable(fumbbl-qt
     src/ui/fieldview.h
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.h
-    src/ui/actionlog.cpp
+    src/ui/matchlog.h
+    src/ui/matchlog.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
     src/ui/headerview.h
@@ -157,6 +157,12 @@ add_executable(fumbbl-qt
     src/ui/playerinfowidget.cpp
     src/ui/panel.h
     src/ui/panel.cpp
+    src/ui/toastoverlay.h
+    src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.h
+    src/ui/touchdownbanner.cpp
+    src/ui/reportcard.h
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )
@@ -202,6 +208,11 @@ endif()
 # Install rules (release bundles via tools/make_bundle.sh, AppDir for
 # linuxdeploy via cmake --install build --prefix <appdir>/usr).
 install(TARGETS fumbbl-qt RUNTIME DESTINATION .)
+# License files ship at the bundle root (LGPLv3 Qt obligations; every
+# release artifact must carry them).
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+              ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE-THIRD-PARTY.md
+        DESTINATION .)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/ DESTINATION assets)
 install(FILES share/FUMBBL-Reborn.desktop DESTINATION share/applications)
 # hicolor icon: the .desktop's Icon= name resolves through this path
@@ -256,7 +267,7 @@ fumbbl_add_credential_store(reports_capturer)
 
 # Offscreen HUD verification: drives a real MainWindow offscreen (live game
 # fixture + synthetic reports/changes) and saves PNG crops — window, field,
-# dugouts, header, action log, block glows/markers, move trail, ball flight,
+# dugouts, header, match log, block glows/markers, move trail, ball flight,
 # kickoff, rain.
 add_executable(hud_preview
     tools/hud_preview.cpp
@@ -273,11 +284,14 @@ add_executable(hud_preview
     src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.cpp
+    src/ui/matchlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
+    src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.cpp
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )
@@ -312,11 +326,14 @@ add_executable(move_numbers_preview
     src/ui/logindialog.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
-    src/ui/actionlog.cpp
+    src/ui/matchlog.cpp
     src/ui/chatwidget.cpp
     src/ui/headerview.cpp
     src/ui/playerinfowidget.cpp
     src/ui/panel.cpp
+    src/ui/toastoverlay.cpp
+    src/ui/touchdownbanner.cpp
+    src/ui/reportcard.cpp
 
     ${DICE_RCC}
 )
@@ -337,6 +354,7 @@ fumbbl_add_credential_store(move_numbers_preview)
 add_executable(field_preview
     tools/field_preview.cpp
     src/core/assets.cpp
+    src/core/gamemodel.cpp
     src/ui/fieldview.cpp
     src/ui/rainsim.cpp
 )

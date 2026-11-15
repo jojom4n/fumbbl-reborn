@@ -80,6 +80,23 @@ struct FieldToken {
     QString positionName;  // "Zombie Lineman", "Ogre", ... — face lookup key
 };
 
+// A team's active inducement (teamX.inducementSet.inducementArray; FFB
+// ground truth: Inducement.toJsonValue — keys inducementType/value/uses).
+struct InducementInfo {
+    QString typeId; // "briberyAndCorruption", "bloodweiserBabes", ...
+    int value = 0;  // current count (purchases; 1 for a team special rule)
+    int uses = 0;   // uses so far this game (the server increments it LIVE
+                    // on every consumption event and notifies the client)
+};
+
+// Star Player Points tracked per player (model change
+// playerResultSetCurrentSpps): base = the value at first sight (the
+// player's "own" SPP), current = the latest server value.
+struct SppInfo {
+    int base = 0;
+    int current = 0;
+};
+
 class GameModel : public QObject
 {
     Q_OBJECT
@@ -159,6 +176,31 @@ public:
     // Ball position (false = ball has no field coordinate, e.g. in a hand).
     bool ballAt(int &x, int &y) const;
     QString activePlayerId() const { return m_activePlayerId; }
+
+    // --- Inducements (header icons; FFB: InducementSet.toJsonValue) --------
+    // teamX.inducementSet: inducementArray[{inducementType,value,uses}],
+    // prayers[], cardsActive[]. Updated live by the
+    // inducementSetAddInducement / RemoveInducement / AddPrayer changes.
+    QVector<InducementInfo> inducementsHome() const { return m_inducementsHome; }
+    QVector<InducementInfo> inducementsAway() const { return m_inducementsAway; }
+    // Roster apothecary flag (teamX.roster.apothecary) — the apothecary is
+    // a ROSTER entry, not an inducement: its badge is derived from this.
+    bool apothecaryHome() const { return m_apothecaryHome; }
+    bool apothecaryAway() const { return m_apothecaryAway; }
+    QStringList prayersHome() const { return m_prayersHome; }
+    QStringList prayersAway() const { return m_prayersAway; }
+
+    // --- Star Player Points (R0 toasts + player tab) ------------------------
+    // The server is the authority on WHO gains HOW MUCH (prayers, special
+    // rules, niche cases included) — we only mirror the values.
+    int sppBase(const QString &playerId) const;
+    int sppCurrent(const QString &playerId) const;
+    // The whole SPP table (playerId -> {base, current}) — UI snapshot diff.
+    QHash<QString, SppInfo> sppTable() const { return m_spp; }
+
+    // The ball carrier: the standing player on the ball's square (empty =
+    // none — ball in the air, on an empty square, or no ball coordinate).
+    QString carrierId() const;
 
     // --- Block target: the player being BLOCKED gets a RED glow (the actor
     // gets the blue one). -------------------------------------------------------------------
@@ -292,6 +334,16 @@ public:
     // Box column: x in {-1..-7} (home) or {30..36} (away).
     static bool isBoxX(int x);
 
+    // --- Weather (BB2025 WEATHER TABLE + ffb Weather.java) -------------------
+    // The server sends the ffb Weather names ("Sweltering Heat", "Very
+    // Sunny", "Nice Weather", "Pouring Rain", "Blizzard", "Intro"). The
+    // KIND drives the scene effects; the DISPLAY NAME is the RULEBOOK
+    // wording (the header never shows the server string: "Nice Weather"
+    // is "Perfect Conditions" in the rulebook).
+    enum class WeatherKind { None, Rain, Blizzard, Sunny, Heat };
+    static WeatherKind weatherKind(const QString &serverName);
+    static QString weatherDisplayName(const QString &serverName);
+
     // --- Player state helpers (port of ffb-common PlayerState) ---------------
     // State ids carry bit flags (0x100 ACTIVE, 0x200 CONFUSED, ...); the base
     // state (UNKNOWN..IN_THE_AIR, 0..19) is id & 0xFF.
@@ -317,6 +369,11 @@ private:
     void clearState();
     void parseRosterPositions(const QJsonObject &team, bool homeSide);
     void applyFieldModel(const QJsonObject &fieldModel);
+    // Parses teamX.inducementSet into the per-team inducement lists.
+    void parseInducementSet(const QJsonObject &team, bool homeSide);
+    // One inducementSet* model change (key = "home"/"away").
+    void handleInducementChange(const QString &id, const QString &key,
+                                const QJsonValue &value);
     void handleModelChange(const QString &id, const QString &key, const QJsonValue &value);
     FFBPlayer *findPlayer(const QString &playerId);
     // Updates fieldX/fieldY/hasCoords for a player (value = [x, y]).
@@ -401,4 +458,13 @@ private:
     bool m_ballOnField = false;
     int m_ballX = -1;
     int m_ballY = -1;
+
+    // Inducements (teamX.inducementSet) + SPP per player.
+    QVector<InducementInfo> m_inducementsHome;
+    QVector<InducementInfo> m_inducementsAway;
+    bool m_apothecaryHome = false;
+    bool m_apothecaryAway = false;
+    QStringList m_prayersHome;
+    QStringList m_prayersAway;
+    QHash<QString, SppInfo> m_spp; // playerId -> {base, current}
 };

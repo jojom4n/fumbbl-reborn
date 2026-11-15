@@ -3,6 +3,7 @@
 // =============================================================================
 #include "core/gamemodel.h"
 
+#include <algorithm>
 #include <QJsonDocument>
 
 namespace {
@@ -126,6 +127,11 @@ void GameModel::clearState()
     m_ballOnField = false;
     m_ballX = -1;
     m_ballY = -1;
+    m_inducementsHome.clear();
+    m_inducementsAway.clear();
+    m_prayersHome.clear();
+    m_prayersAway.clear();
+    m_spp.clear();
     m_weather.clear();
     m_traceActor.clear();
     clearMoveTrace();
@@ -244,6 +250,8 @@ bool GameModel::initialize(const QJsonObject &game)
     m_teamAwayRace = away.value(QStringLiteral("race")).toString();
     m_teamHomeCoach = home.value(QStringLiteral("coach")).toString();
     m_teamAwayCoach = away.value(QStringLiteral("coach")).toString();
+    parseInducementSet(home, true);
+    parseInducementSet(away, false);
     // Logo: relative path ("i/<id>") against the team's icon CDN base.
     m_teamHomeLogoUrl = teamLogoUrl(home);
     m_teamAwayLogoUrl = teamLogoUrl(away);
@@ -298,6 +306,12 @@ bool GameModel::initialize(const QJsonObject &game)
         m_scoreHome = readInt(home.value(QStringLiteral("score")));
     if (away.contains(QStringLiteral("score")))
         m_scoreAway = readInt(away.value(QStringLiteral("score")));
+    // Live captures carry the score in gameResult (per team result object).
+    const QJsonObject result = game.value(QStringLiteral("gameResult")).toObject();
+    if (result.value(QStringLiteral("teamResultHome")).toObject().contains(QStringLiteral("score")))
+        m_scoreHome = readInt(result.value(QStringLiteral("teamResultHome")).toObject().value(QStringLiteral("score")));
+    if (result.value(QStringLiteral("teamResultAway")).toObject().contains(QStringLiteral("score")))
+        m_scoreAway = readInt(result.value(QStringLiteral("teamResultAway")).toObject().value(QStringLiteral("score")));
 
     m_initialized = true;
     emit stateUpdated();
@@ -313,8 +327,11 @@ void GameModel::parseRosterPositions(const QJsonObject &team, bool homeSide)
     QHash<QString, QString> &shorts = homeSide ? m_positionShortHome : m_positionShortAway;
     QHash<QString, QString> &kwds = homeSide ? m_positionKeywordsHome : m_positionKeywordsAway;
 
-    const QJsonArray positions =
-        team.value(QStringLiteral("roster")).toObject().value(QStringLiteral("positionArray")).toArray();
+    const QJsonObject roster = team.value(QStringLiteral("roster")).toObject();
+    bool &apothecary = homeSide ? m_apothecaryHome : m_apothecaryAway;
+    apothecary = roster.value(QStringLiteral("apothecary")).toBool();
+
+    const QJsonArray positions = roster.value(QStringLiteral("positionArray")).toArray();
     for (const QJsonValue &pv : positions) {
         const QJsonObject pos = pv.toObject();
         const QString id = playerIdKey(pos.value(QStringLiteral("positionId")));
@@ -441,6 +458,90 @@ void GameModel::applyFieldModel(const QJsonObject &fieldModel)
 
     // Weather display name ("Nice Weather", "Light Rain", ...).
     m_weather = fieldModel.value(QStringLiteral("weather")).toString(m_weather);
+}
+
+// -----------------------------------------------------------------------------
+// Inducements + SPP (FFB ground truth: InducementSet.toJsonValue /
+// Inducement.toJsonValue — keys inducementType/value/uses; live updates via
+// the inducementSet* model changes, key = "home"/"away")
+// -----------------------------------------------------------------------------
+void GameModel::parseInducementSet(const QJsonObject &team, bool homeSide)
+{
+    const QJsonObject is = team.value(QStringLiteral("inducementSet")).toObject();
+    QVector<InducementInfo> &list = homeSide ? m_inducementsHome : m_inducementsAway;
+    QStringList &prayers = homeSide ? m_prayersHome : m_prayersAway;
+    for (const QJsonValue &iv : is.value(QStringLiteral("inducementArray")).toArray()) {
+        const QJsonObject o = iv.toObject();
+        InducementInfo info;
+        info.typeId = o.value(QStringLiteral("inducementType")).toString();
+        info.value = readInt(o.value(QStringLiteral("value")));
+        info.uses = readInt(o.value(QStringLiteral("uses")));
+        if (!info.typeId.isEmpty())
+            list.append(info);
+    }
+    for (const QJsonValue &pv : is.value(QStringLiteral("prayers")).toArray()) {
+        const QString name = pv.toString();
+        if (!name.isEmpty())
+            prayers.append(name);
+    }
+}
+
+void GameModel::handleInducementChange(const QString &id, const QString &key,
+                                       const QJsonValue &value)
+{
+    bool home = (key == QLatin1String("home"));
+    QVector<InducementInfo> &list = home ? m_inducementsHome : m_inducementsAway;
+    QStringList &prayers = home ? m_prayersHome : m_prayersAway;
+    if (id == QLatin1String("inducementSetAddInducement")) {
+        const QJsonObject o = value.toObject();
+        InducementInfo info;
+        info.typeId = o.value(QStringLiteral("inducementType")).toString();
+        info.value = readInt(o.value(QStringLiteral("value")));
+        info.uses = readInt(o.value(QStringLiteral("uses")));
+        for (InducementInfo &it : list)
+            if (it.typeId == info.typeId) {
+                it = info;
+                return;
+            }
+        list.append(info);
+        return;
+    }
+    if (id == QLatin1String("inducementSetRemoveInducement")) {
+        const QJsonObject o = value.toObject();
+        const QString typeId = o.value(QStringLiteral("inducementType")).toString();
+        list.erase(std::remove_if(list.begin(), list.end(),
+                                  [&typeId](const InducementInfo &it) {
+                                      return it.typeId == typeId;
+                                  }),
+                   list.end());
+        return;
+    }
+    if (id == QLatin1String("inducementSetAddPrayer"))
+        prayers.append(value.toString());
+}
+
+int GameModel::sppBase(const QString &playerId) const
+{
+    return m_spp.value(playerId, SppInfo{}).base;
+}
+
+int GameModel::sppCurrent(const QString &playerId) const
+{
+    return m_spp.value(playerId, SppInfo{}).current;
+}
+
+QString GameModel::carrierId() const
+{
+    if (!m_ballOnField)
+        return QString();
+    for (const FFBPlayer &p : m_players) {
+        if (!p.hasCoords || !isOnField(p.fieldX, p.fieldY))
+            continue;
+        if (p.fieldX == m_ballX && p.fieldY == m_ballY
+            && baseState(p.state) == 1) // STANDING
+            return p.playerId;
+    }
+    return QString();
 }
 
 // -----------------------------------------------------------------------------
@@ -705,6 +806,25 @@ void GameModel::handleModelChange(const QString &id, const QString &key, const Q
         m_blitzingPlayerId.clear();
         m_trackNumbers.clear();
         m_passTargetId.clear();
+        return;
+    }
+
+    if (id == QLatin1String("playerResultSetCurrentSpps")) {
+        // key = playerId, value = the player's CURRENT total SPP. The server
+        // is the authority on who earns what (prayers, special rules and
+        // niche cases included) — we mirror the value; base = first sight.
+        const int v = readInt(value);
+        SppInfo &info = m_spp[key];
+        if (info.current == 0 && info.base == 0)
+            info.base = v;
+        info.current = v;
+        return;
+    }
+
+    if (id == QLatin1String("inducementSetAddInducement")
+        || id == QLatin1String("inducementSetRemoveInducement")
+        || id == QLatin1String("inducementSetAddPrayer")) {
+        handleInducementChange(id, key, value);
         return;
     }
 
@@ -1020,6 +1140,44 @@ bool GameModel::isBoxX(int x)
     return (x >= -7 && x <= -1) || (x >= 30 && x <= 36);
 }
 
+GameModel::WeatherKind GameModel::weatherKind(const QString &serverName)
+{
+    const QString s = serverName.toLower();
+    if (s.contains(QLatin1String("blizzard")))
+        return WeatherKind::Blizzard;
+    if (s.contains(QLatin1String("rain")))
+        return WeatherKind::Rain;
+    if (s.contains(QLatin1String("sunny")))
+        return WeatherKind::Sunny;
+    if (s.contains(QLatin1String("heat")))
+        return WeatherKind::Heat;
+    return WeatherKind::None;
+}
+
+QString GameModel::weatherDisplayName(const QString &serverName)
+{
+    switch (weatherKind(serverName)) {
+    case WeatherKind::Rain:
+        return QStringLiteral("Pouring Rain");
+    case WeatherKind::Blizzard:
+        return QStringLiteral("Blizzard");
+    case WeatherKind::Sunny:
+        return QStringLiteral("Very Sunny");
+    case WeatherKind::Heat:
+        return QStringLiteral("Sweltering Heat");
+    case WeatherKind::None:
+        break;
+    }
+    const QString s = serverName.toLower();
+    if (s.contains(QLatin1String("nice"))
+        || s.contains(QLatin1String("perfect")))
+        return QStringLiteral("Perfect Conditions");
+    // "Intro" (pre-weather) / empty / unknown: no rulebook name.
+    if (s.isEmpty() || s.contains(QLatin1String("intro")))
+        return QStringLiteral("\u2014");
+    return serverName;
+}
+
 QString GameModel::stateLabel(int state)
 {
     switch (baseState(state)) {
@@ -1047,12 +1205,12 @@ QString GameModel::stateText(int state)
     case 5: return QStringLiteral("Knocked Out");   // KNOCKED_OUT
     case 6: return QStringLiteral("Badly Hurt");    // BADLY_HURT
     case 7: return QStringLiteral("Serious Injury"); // SERIOUS_INJURY
-    case 8: return QStringLiteral("Killed");        // RIP
+    case 8: return QStringLiteral("Dead");         // RIP
     case 9: return QStringLiteral("Reserve");       // RESERVE
-    case 10: return QStringLiteral("Missing");      // MISSING
+    case 10: return QStringLiteral("Miss next game"); // MISSING
     case 11: return QStringLiteral("Falling Down"); // FALLING
     case 12: return QStringLiteral("Blocked");      // BLOCKED
-    case 13: return QStringLiteral("Banned");       // BANNED
+    case 13: return QStringLiteral("Sent off");     // BANNED
     case 14: return QStringLiteral("Exhausted");    // EXHAUSTED
     case 15: return QStringLiteral("Being Dragged"); // BEING_DRAGGED
     case 16: return QStringLiteral("Picked Up");    // PICKED_UP

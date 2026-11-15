@@ -11,6 +11,8 @@
 //
 // Pure simulation (no painting, no widget): FieldView drives step() from a
 // QTimer and draws the state; the unit tests drive it deterministically.
+// Mode::Snow reuses the same sim for BLIZZARD: slower, softer flakes, no
+// splash ripples (FieldView draws snow dots, not streaks).
 // =============================================================================
 #pragma once
 
@@ -24,6 +26,9 @@ class QRandomGenerator;
 class RainSim
 {
 public:
+    // The precipitation flavor (snow = slower flakes, no splash ripples).
+    enum class Mode { Rain, Snow };
+
     struct Drop {
         float x = 0.0f;       // position (px in field space)
         float y = 0.0f;
@@ -42,8 +47,11 @@ public:
     };
 
     // Puddle rectangles (field space). Drops landing inside make a
-    // puddle ripple.
-    void configure(float width, float height, const QVector<QRectF> &puddles);
+    // puddle ripple. `mode` defaults to Rain (the snow mode is the
+    // blizzard: slower flakes, no splashes).
+    void configure(float width, float height, const QVector<QRectF> &puddles,
+                   Mode mode = Mode::Rain);
+    Mode mode() const { return m_mode; }
     // Update the puddles WITHOUT resetting the drops (the puddles are
     // dynamic — they grow over match time). configure() reseeds; this only
     // swaps the water patches so the running rain keeps flowing.
@@ -71,6 +79,7 @@ private:
     float m_w = 0.0f;
     float m_h = 0.0f;
     int m_intensity = 70;
+    Mode m_mode = Mode::Rain;
     qint64 m_seed = 0;
     bool m_hasRng = false;
     QRandomGenerator *m_rng = nullptr; // owned

@@ -36,6 +36,7 @@
 #include <QResource>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QTableWidget>
 #include <QToolButton>
 #include <QThread>
 
@@ -44,16 +45,19 @@
 #include "core/matchlist.h"
 #include "core/passwordchallenge.h"
 #include "core/reportparser.h"
-#include "ui/actionlog.h"
+#include "ui/matchlog.h"
 #include "ui/chatwidget.h"
 #include "ui/fieldview.h"
 #include "ui/headerview.h"
 #include "ui/mainwindow.h"
 #include "ui/panel.h"
 #include "ui/playerinfowidget.h"
+#include "ui/reportcard.h"
 #include "core/credentialstore.h"
 #include "ui/logindialog.h"
 #include "ui/spectatedialog.h"
+#include "ui/toastoverlay.h"
+#include "ui/touchdownbanner.h"
 
 namespace {
 
@@ -83,6 +87,33 @@ bool labelContains(QWidget *root, const QString &needle)
     return false;
 }
 
+// The ids of the players currently ON the field (the ones a TD batch
+// wipes with fieldModelRemovePlayer).
+QStringList onFieldIds(const GameModel *m)
+{
+    QStringList ids;
+    const auto add = [&ids](const QVector<FFBPlayer> &r) {
+        for (const FFBPlayer &pl : r)
+            if (pl.hasCoords && GameModel::isOnField(pl.fieldX, pl.fieldY))
+                ids << pl.playerId;
+    };
+    add(m->rosterHome());
+    add(m->rosterAway());
+    return ids;
+}
+
+// Pump events until the touchdown banner celebration ends (its 4.5 s
+// timer) — bounded so a stuck celebration fails the test, not hangs it.
+void waitTdCelebrationDone(MainWindow &w)
+{
+    for (int i = 0; i < 120 && w.tdBanner() && w.tdBanner()->celebrating(); ++i) {
+        QThread::msleep(100);
+        QApplication::processEvents();
+    }
+    QThread::msleep(200); // margin: the deferred wipe fired just before the banner ended
+    QApplication::processEvents();
+}
+
 } // namespace
 
 class UiWiringTest : public QObject
@@ -97,6 +128,7 @@ private slots:
     void glowFollowsRemoteSelection();
     void cardFollowsModelSync();
     void gameTimeDrivesTimer();
+    void inducementBadgesInHeader();
     void talkAndJoinPopulateChatAndSpectators();
     void assetsLoad();
     void panelLayoutPersistAndReset();
@@ -116,12 +148,19 @@ private slots:
     void rejectionCloseFollowedByRetryKeepsWarning();
     void loginVerificationDoesNotSpectateMatch();
     void loginTeardownCloseIsSilent();
+    void tdCelebrationDefersFieldWipe();
+    void tdWipeSupersededByRePlacement();
     void logoutEndsSessionForNextPlayer();
     // ---- live-report alignment + UI fixes ----
     void playerActionReportShowsSubject();
     void blockReportsShowDiceAndNames();
     void unresolvedNumericIdNeverShown();
     void capturedLiveReportsParse();
+    void parseToastEvents();
+    void toastMilestonesAndReportEvents();
+    void matchListDivisionTabsAndPolling();
+    void joinWaitingBoardShowsVsAndDiesOnGameState();
+    void reportCardShowsAtFullTime();
     void chatCollapsesToPillWithUnreadBadge();
     void actionLogChevronPointsToNextState();
     void selectionDoesNotOpenActionWheel();
@@ -141,6 +180,11 @@ private slots:
     // ---- remote glow, animated rain ----
     void rainSimulationDropsAndSplashes();
     void fieldRainAnimationActive();
+    void weatherRulebookMapping(); // server name -> rulebook kind + display
+    void blizzardSceneCoverage(); // snow over the whole scene + accumulation
+    void sunnyBrightensScene();
+    void lightningFlashEnvelope(); // soft, capped, RARE (5-8 min gaps)
+    void settingsWeatherFxSwitches(); // the 3 Settings-menu toggles
     void actionLogNameHoverOpensCard(); // log-name hover opens the player card
     void movementAnimationGlidesThroughGrid(); // per-square movement glide
     void dugoutHoverSurvivesModelSync(); // UAF regression: hover + model sync
@@ -177,7 +221,7 @@ void UiWiringTest::gameStatePopulatesUi()
     w.show();
     GameModel *model = w.model();
     FieldView *field = w.findChild<FieldView *>();
-    ActionLogWidget *actionLog = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *actionLog = w.findChild<MatchLogWidget *>();
     // Rosters are gone (field box strips cover box/KO/reserve).
     QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_home")));
     QVERIFY(!w.findChild<QWidget *>(QStringLiteral("roster_away")));
@@ -409,7 +453,9 @@ void UiWiringTest::cardFollowsModelSync()
     w.onModelSync(changes, QJsonArray());
 
     QCOMPARE(info->shownPlayerId(), id);
-    QVERIFY(labelContains(info, QStringLiteral("KO")));
+    // Bench row shows ONLY the reason in full words (no "In the box"
+    // line, no KO/SI/BH abbreviations) — user decision 13/nov.
+    QVERIFY(labelContains(info, QStringLiteral("KNOCKED OUT")));
 
     // fieldModelRemovePlayer clears the player's
     // FIELD DATA but does NOT remove the player from the game — the server
@@ -448,12 +494,126 @@ void UiWiringTest::gameTimeDrivesTimer()
     QCOMPARE(hv->elapsedSeconds(), 99);
 }
 
+void UiWiringTest::inducementBadgesInHeader()
+{
+    MainWindow w;
+    w.show();
+    HeaderView *hv = w.findChild<HeaderView *>();
+    QVERIFY(hv);
+
+    w.onGameState(fixtureGame());
+
+    // The fixture's AWAY roster has an apothecary (a ROSTER flag, not an
+    // inducement) — it gets its own badge. Home has none.
+    QCOMPARE(hv->inducementCountHome(), 0);
+    QCOMPARE(hv->inducementCountAway(), 1);
+
+    // The badge hit rects are built during paint — fix the header geometry
+    // (offscreen sizeHint math is unreliable), paint, then scan the header
+    // for tooltip hits (robust against exact badge positions).
+    hv->setFixedSize(900, 62);
+    QApplication::processEvents();
+    const auto collectTips = [hv]() {
+        QStringList tips;
+        for (int x = 0; x < hv->width(); x += 2)
+            for (int y = 0; y < hv->height(); y += 2) {
+                const QString tip = hv->inducementTipAt(QPoint(x, y));
+                if (!tip.isEmpty() && !tips.contains(tip))
+                    tips << tip;
+            }
+        return tips;
+    };
+    hv->repaint();
+    QStringList tips = collectTips();
+    QVERIFY(tips.contains(
+        QStringLiteral("Apothecary — heals players"))); // away roster flag
+
+    // Mouse tracking is ON: without it mouseMoveEvent never fires, so the
+    // hover tooltips can never appear (user-observed: no tooltips).
+    QVERIFY(hv->hasMouseTracking());
+    // The badges track the team-name font: 85% of its height (the user
+    // wants them nearly team-name sized, not 16px dots).
+    QFont nameF = hv->font();
+    nameF.setPointSizeF(17);
+    nameF.setBold(true);
+    const qreal expectedBadge = 1.36 * QFontMetricsF(nameF).height();
+    QVERIFY2(qAbs(hv->inducementBadgeSize() - expectedBadge) < 1.0,
+             qPrintable(QStringLiteral("badge %1, expected %2")
+                            .arg(hv->inducementBadgeSize())
+                            .arg(expectedBadge)));
+
+    // LIVE sync: home buys 3 bribes and 2 kegs (inducementSetAddInducement,
+    // the server also re-sends it on every use with updated `uses`).
+    QJsonArray changes;
+    QJsonObject bribes;
+    bribes.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    bribes.insert(QStringLiteral("value"), QJsonValue(3));
+    bribes.insert(QStringLiteral("uses"), QJsonValue(0));
+    changes.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                              QStringLiteral("home"), QJsonValue(bribes)));
+    QJsonObject kegs;
+    kegs.insert(QStringLiteral("inducementType"),
+                QStringLiteral("bloodweiserBabes"));
+    kegs.insert(QStringLiteral("value"), QJsonValue(2));
+    kegs.insert(QStringLiteral("uses"), QJsonValue(0));
+    changes.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                              QStringLiteral("home"), QJsonValue(kegs)));
+    w.onModelSync(changes, {});
+    QCOMPARE(hv->inducementCountHome(), 2);
+
+    hv->repaint();
+    tips = collectTips();
+    // Tip format: "<name> — <effect> (N available)".
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box (3)")));
+    QVERIFY(tips.contains(
+        QStringLiteral("Blitzer's Best Kegs — recover knocked-out players (2)")));
+
+    // One bribe used (server increments `uses` live) → one unit less.
+    QJsonArray useChanges;
+    QJsonObject used;
+    used.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    used.insert(QStringLiteral("value"), QJsonValue(3));
+    used.insert(QStringLiteral("uses"), QJsonValue(1));
+    useChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                 QStringLiteral("home"), QJsonValue(used)));
+    w.onModelSync(useChanges, {});
+    hv->repaint();
+    tips = collectTips();
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box (2)")));
+    QVERIFY(!tips.contains(QStringLiteral("Bribes — avoid the box (3)")));
+
+    // All 3 bribes spent → no unit suffix (the badge itself goes gray via
+    // value − uses <= 0 in the paint path).
+    QJsonArray spentChanges;
+    QJsonObject spent;
+    spent.insert(QStringLiteral("inducementType"), QStringLiteral("bribes"));
+    spent.insert(QStringLiteral("value"), QJsonValue(3));
+    spent.insert(QStringLiteral("uses"), QJsonValue(3));
+    spentChanges.append(makeChange(QStringLiteral("inducementSetAddInducement"),
+                                   QStringLiteral("home"), QJsonValue(spent)));
+    w.onModelSync(spentChanges, {});
+    hv->repaint();
+    tips = collectTips();
+    QVERIFY(tips.contains(QStringLiteral("Bribes — avoid the box")));
+    QVERIFY(!tips.contains(QStringLiteral("Bribes — avoid the box (2)")));
+
+    // A removed inducement leaves the header.
+    QJsonArray removeChanges;
+    QJsonObject remove;
+    remove.insert(QStringLiteral("inducementType"),
+                  QStringLiteral("bloodweiserBabes"));
+    removeChanges.append(makeChange(QStringLiteral("inducementSetRemoveInducement"),
+                                    QStringLiteral("home"), QJsonValue(remove)));
+    w.onModelSync(removeChanges, {});
+    QCOMPARE(hv->inducementCountHome(), 1);
+}
+
 void UiWiringTest::talkAndJoinPopulateChatAndSpectators()
 {
     MainWindow w;
     w.show();
     ChatWidget *chat = w.findChild<ChatWidget *>();
-    ActionLogWidget *dice = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *dice = w.findChild<MatchLogWidget *>();
     QVERIFY(chat && dice);
 
     // serverTalk: coach + talks[]
@@ -739,13 +899,13 @@ void UiWiringTest::faceBareNameLookup()
              faceBytes(QStringLiteral("Skaven Clanrat")));
 }
 
-// The action log must show the player's NAME, not the raw numeric id from
+// The match log must show the player's NAME, not the raw numeric id from
 // the report payload (a raw id like "18234934 dodged…" must never show).
 void UiWiringTest::diceLogShowsPlayerName()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *dice = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *dice = w.findChild<MatchLogWidget *>();
     QVERIFY(dice);
     w.onGameState(fixtureGame());
 
@@ -1265,7 +1425,7 @@ void UiWiringTest::playerActionReportShowsSubject()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     QVERIFY(log);
     w.onGameState(fixtureGame());
     const QVector<FFBPlayer> home = w.model()->rosterHome();
@@ -1304,7 +1464,7 @@ void UiWiringTest::blockReportsShowDiceAndNames()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     QVERIFY(log);
     w.onGameState(fixtureGame());
     const QVector<FFBPlayer> away = w.model()->rosterAway();
@@ -1365,7 +1525,7 @@ void UiWiringTest::unresolvedNumericIdNeverShown()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     QVERIFY(log);
     w.onGameState(fixtureGame());
 
@@ -1464,13 +1624,429 @@ void UiWiringTest::capturedLiveReportsParse()
     QVERIFY2(sawPlayerActionSubject, "playerAction lost its subject (actingPlayerId?)");
 }
 
-// The action log chevron points where the click takes the log — compact
+// parseToastEvents: the structured twin of parseReport. Synthetic reports
+// with the EXACT field names from the FFB ground truth (ReportSkillRoll:
+// playerId/successful; ReportTimeoutEnforced: coach; the mixed injury
+// report: defenderId/armorBroken/injury).
+void UiWiringTest::parseToastEvents()
+{
+    auto report = [](const QString &id, const QJsonObject &extra = QJsonObject()) {
+        QJsonObject r;
+        r.insert(QStringLiteral("reportId"), id);
+        for (auto it = extra.constBegin(); it != extra.constEnd(); ++it)
+            r.insert(it.key(), it.value());
+        return r;
+    };
+
+    // A SUCCEEDED catch: the CATCHER carries the playerId.
+    QJsonObject e;
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p1"));
+    e.insert(QStringLiteral("successful"), true);
+    const QVector<ToastEvent> completion = ::parseToastEvents(report(QStringLiteral("catchRoll"), e));
+    QCOMPARE(completion.size(), 1);
+    QCOMPARE(completion.first().kind, QStringLiteral("completion"));
+    QCOMPARE(completion.first().playerId, QStringLiteral("p1"));
+    QVERIFY(completion.first().success);
+
+    // A FAILED catch: no toast.
+    e.insert(QStringLiteral("successful"), false);
+    QVERIFY(::parseToastEvents(report(QStringLiteral("catchRoll"), e)).isEmpty());
+
+    // A succeeded regeneration roll.
+    e = QJsonObject();
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p2"));
+    e.insert(QStringLiteral("successful"), true);
+    const QVector<ToastEvent> regen = ::parseToastEvents(report(QStringLiteral("regenerationRoll"), e));
+    QCOMPARE(regen.size(), 1);
+    QCOMPARE(regen.first().kind, QStringLiteral("regeneration"));
+    QCOMPARE(regen.first().playerId, QStringLiteral("p2"));
+
+    // Raise the Dead.
+    e = QJsonObject();
+    e.insert(QStringLiteral("playerId"), QStringLiteral("p3"));
+    const QVector<ToastEvent> raised = ::parseToastEvents(report(QStringLiteral("raiseDead"), e));
+    QCOMPARE(raised.size(), 1);
+    QCOMPARE(raised.first().kind, QStringLiteral("raiseDead"));
+
+    // A timeout carries the COACH name (free text, not a player id).
+    e = QJsonObject();
+    e.insert(QStringLiteral("coach"), QStringLiteral("Coach McDowell"));
+    const QVector<ToastEvent> timeout = ::parseToastEvents(report(QStringLiteral("timeoutEnforced"), e));
+    QCOMPARE(timeout.size(), 1);
+    QCOMPARE(timeout.first().kind, QStringLiteral("timeout"));
+    QCOMPARE(timeout.first().text, QStringLiteral("Coach McDowell"));
+
+    // Injury: the armor breaks, no outcome enum yet (stunned) -> the ARMOUR
+    // BREAK event.
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p4"));
+    e.insert(QStringLiteral("armorBroken"), true);
+    const QVector<ToastEvent> armour = ::parseToastEvents(report(QStringLiteral("injury"), e));
+    QCOMPARE(armour.size(), 1);
+    QCOMPARE(armour.first().kind, QStringLiteral("injury"));
+    QCOMPARE(armour.first().playerId, QStringLiteral("p4"));
+    QVERIFY(armour.first().armorBroken);
+    QVERIFY(armour.first().result.isEmpty());
+
+    // Injury: a KO outcome -> the event carries the result.
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p5"));
+    e.insert(QStringLiteral("armorBroken"), false);
+    e.insert(QStringLiteral("injury"), QStringLiteral("knockedOut"));
+    const QVector<ToastEvent> ko = ::parseToastEvents(report(QStringLiteral("injury"), e));
+    QCOMPARE(ko.size(), 1);
+    QCOMPARE(ko.first().result, QStringLiteral("knockedOut"));
+
+    // Injury: the armor holds, nothing else -> no toast (it stays in the log).
+    e = QJsonObject();
+    e.insert(QStringLiteral("defenderId"), QStringLiteral("p6"));
+    e.insert(QStringLiteral("armorBroken"), false);
+    QVERIFY(::parseToastEvents(report(QStringLiteral("injury"), e)).isEmpty());
+
+    // An unrelated report: nothing.
+    QVERIFY(::parseToastEvents(report(QStringLiteral("move"))).isEmpty());
+}
+
+// R0 toasts end-to-end (offline): the overlay receives the milestone diff
+// (score/half/SPP via onModelSync) and the report events (completion /
+// injury), and the toasts fade away on their own.
+void UiWiringTest::toastMilestonesAndReportEvents()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    ToastOverlay *toasts = w.toastOverlay();
+    QVERIFY(toasts);
+    // Regression: the overlay is a child widget and must be SHOWN — with a
+    // hidden parent every toast label rendered into nothing (user-observed:
+    // no toast ever appeared in a live match).
+    QVERIFY(!toasts->isHidden());
+    w.onGameState(fixtureGame());
+    QVERIFY(w.model()->isInitialized());
+    // The overlay is transparent to the mouse (never blocks field input).
+    QVERIFY(toasts->testAttribute(Qt::WA_TransparentForMouseEvents));
+
+    // 1. Score up -> TOUCHDOWN banner: a touchdown is an EVENT, so the
+    // celebration is the big Qwen-Image banner with the animated
+    // streamers (it replaces the old "CENTER TOUCHDOWN" center ribbon).
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("teamResultSetScore"),
+                         QStringLiteral("home"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(w.tdBanner());
+    QVERIFY(w.tdBanner()->celebrating());
+    // The old ribbon is gone: no center toast for the TD.
+    QVERIFY(!labelContains(toasts, QStringLiteral("CENTER TOUCHDOWN")));
+
+    // 2. SPP: first sight (base, NO toast), then a +3 gain -> pill.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(!labelContains(toasts, QStringLiteral("SPP —")));
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(5)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(labelContains(toasts, QStringLiteral("+3 SPP —")));
+
+    // 3. Half 1 -> 2 -> 2ND HALF ribbon (deterministic: force half 1 first).
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetHalf"), QString(), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetHalf"), QString(), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(labelContains(toasts, QStringLiteral("2ND HALF")));
+
+    // 4. Report event: a SUCCEEDED catch -> COMPLETION pill with the name.
+    QJsonObject catchR;
+    catchR.insert(QStringLiteral("reportId"), QStringLiteral("catchRoll"));
+    catchR.insert(QStringLiteral("playerId"), QStringLiteral("18109690"));
+    catchR.insert(QStringLiteral("successful"), true);
+    QJsonArray rep;
+    rep.append(catchR);
+    w.onModelSync(QJsonArray(), rep);
+    QVERIFY(labelContains(toasts, QStringLiteral("COMPLETION —")));
+
+    // 5. Report event: armor broken + KO -> OUT pill.
+    QJsonObject inj;
+    inj.insert(QStringLiteral("reportId"), QStringLiteral("injury"));
+    inj.insert(QStringLiteral("defenderId"), QStringLiteral("18109690"));
+    inj.insert(QStringLiteral("armorBroken"), true);
+    inj.insert(QStringLiteral("injury"), QStringLiteral("knockedOut"));
+    rep = QJsonArray();
+    rep.append(inj);
+    w.onModelSync(QJsonArray(), rep);
+    QVERIFY(labelContains(toasts, QStringLiteral("OUT —")));
+
+    // 6. A toast fades away and is deleted (no leak of pills/ribbons).
+    const int before = toasts->findChildren<QLabel *>().size();
+    toasts->showCenter(QStringLiteral("FADETEST"), 30);
+    QCOMPARE(toasts->findChildren<QLabel *>().size(), before + 1);
+    QTest::qWait(700);
+    QCOMPARE(toasts->findChildren<QLabel *>().size(), before);
+}
+
+// TOUCHDOWN celebration, part 1: the field wipe of a TD batch is DEFERRED
+// by the celebration duration — the players stay on the field while the
+// banner celebrates (user-observed: the field used to empty instantly,
+// killing the moment). The deferred batch is applied when the
+// celebration ends.
+void UiWiringTest::tdCelebrationDefersFieldWipe()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.onGameState(fixtureGame());
+    QVERIFY(w.model()->isInitialized());
+    const QStringList onField = onFieldIds(w.model());
+    QVERIFY(onField.size() >= 10); // a real drive on the field
+
+    // The TD batch: score up + the server wiping the field.
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("teamResultSetScore"),
+                         QStringLiteral("home"), QJsonValue(1)));
+    for (const QString &id : onField)
+        ch.append(makeChange(QStringLiteral("fieldModelRemovePlayer"), id,
+                             QJsonValue()));
+    w.onModelSync(ch, QJsonArray());
+
+    // The score applied, the banner celebrates, the players STAY.
+    QCOMPARE(w.model()->scoreHome(), 1);
+    QVERIFY(w.tdBanner() && w.tdBanner()->celebrating());
+    for (const QString &id : onField) {
+        const FFBPlayer *pl = w.model()->findPlayerById(id);
+        QVERIFY(pl && pl->hasCoords);
+    }
+    // The celebration ends -> the deferred wipe is applied.
+    waitTdCelebrationDone(w);
+    for (const QString &id : onField) {
+        const FFBPlayer *pl = w.model()->findPlayerById(id);
+        QVERIFY(pl && !pl->hasCoords);
+    }
+}
+
+// TOUCHDOWN celebration, part 2: if the server RE-PLACES the teams before
+// the celebration ends (a fast kickoff), the deferred wipe is stale and
+// must be DROPPED — applying it would clear the freshly placed drive.
+void UiWiringTest::tdWipeSupersededByRePlacement()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.onGameState(fixtureGame());
+    QVERIFY(w.model()->isInitialized());
+    const QStringList onField = onFieldIds(w.model());
+    QVERIFY(onField.size() >= 10);
+
+    // The TD batch: score up + the wipe.
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("teamResultSetScore"),
+                         QStringLiteral("home"), QJsonValue(1)));
+    for (const QString &id : onField)
+        ch.append(makeChange(QStringLiteral("fieldModelRemovePlayer"), id,
+                             QJsonValue()));
+    w.onModelSync(ch, QJsonArray());
+    QVERIFY(w.tdBanner() && w.tdBanner()->celebrating());
+    for (const QString &id : onField) {
+        const FFBPlayer *pl = w.model()->findPlayerById(id);
+        QVERIFY(pl && pl->hasCoords); // deferred
+    }
+
+    // During the celebration: the next drive's placement arrives.
+    QJsonArray place;
+    int i = 0;
+    for (const QString &id : onField) {
+        place.append(makeChange(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                                id, QJsonValue(QJsonArray{QJsonValue(1 + i % 5),
+                                                          QJsonValue(1 + (i++) % 9)})));
+    }
+    w.onModelSync(place, QJsonArray());
+    for (const QString &id : onField) {
+        const FFBPlayer *pl = w.model()->findPlayerById(id);
+        QVERIFY(pl && pl->hasCoords && GameModel::isOnField(pl->fieldX, pl->fieldY));
+    }
+
+    // After the celebration ends, the NEW placement survived (the stale
+    // wipe was dropped, not re-applied).
+    waitTdCelebrationDone(w);
+    for (const QString &id : onField) {
+        const FFBPlayer *pl = w.model()->findPlayerById(id);
+        QVERIFY(pl && pl->hasCoords && GameModel::isOnField(pl->fieldX, pl->fieldY));
+    }
+}
+
+// R0 match list: division tabs filter the table, the polling interval is
+// the fixed 20 s, and a reloaded list (as polling does) keeps the user's
+// selected row.
+void UiWiringTest::matchListDivisionTabsAndPolling()
+{
+    SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+    dialog.show();
+
+    // R0 fixed polling interval.
+    QCOMPARE(dialog.pollIntervalMsForTest(), 20000);
+
+    auto makeMatch = [](int id, const QString &division, const QString &home) {
+        FFBLiveMatch m;
+        m.id = id;
+        m.half = 1;
+        m.division = division;
+        m.home = FFBMatchTeam{home, QStringLiteral("coachA"),
+                              QStringLiteral("Orcs"), QString(), 0};
+        m.away = FFBMatchTeam{QStringLiteral("Away Team"), QStringLiteral("coachB"),
+                              QStringLiteral("Gnomes"), QString(), 0};
+        return m;
+    };
+    QVector<FFBLiveMatch> matches;
+    matches << makeMatch(101, QStringLiteral("Competitive"), QStringLiteral("Team A"))
+            << makeMatch(102, QStringLiteral("Competitive"), QStringLiteral("Team B"))
+            << makeMatch(103, QStringLiteral("League"), QStringLiteral("Team C"));
+    dialog.loadMatchesForTest(matches);
+    QCOMPARE(dialog.tableRowCount(), 3);
+    // Tabs: "All" + the two divisions present.
+    QCOMPARE(dialog.divisionTabCountForTest(), 3);
+
+    // Selecting a tab filters the table.
+    QVERIFY(dialog.selectDivisionTabForTest(QStringLiteral("League")));
+    QCOMPARE(dialog.tableRowCount(), 1);
+    QVERIFY(dialog.selectFirstGame());
+    QCOMPARE(dialog.selectedGameId(), 103);
+
+    // Back to All, select a row; a RELOAD (as polling does) keeps it.
+    QVERIFY(dialog.selectDivisionTabForTest(QStringLiteral("All")));
+    QCOMPARE(dialog.tableRowCount(), 3);
+    QVERIFY(dialog.selectGame(102));
+    QVector<FFBLiveMatch> reloaded = matches;
+    reloaded[0].home.score = 1; // a score changed between polls
+    dialog.loadMatchesForTest(reloaded);
+    QCOMPARE(dialog.tableRowCount(), 3);
+    QCOMPARE(dialog.selectedGameId(), 102);
+}
+
+// R0 waiting board: while a join is in flight the stage shows a big
+// "HOME VS AWAY + status" board (fed by the session progress), and it
+// dies as soon as the game state initializes the model. The dialog's
+// connectRequested signal carries the match-list team names.
+void UiWiringTest::joinWaitingBoardShowsVsAndDiesOnGameState()
+{
+    // Signal contract: the names come from the match list row.
+    {
+        SpectateDialog dialog(nullptr, /*autoLoadList=*/false);
+        FFBLiveMatch m;
+        m.id = 777;
+        m.division = QStringLiteral("Competitive");
+        m.home = FFBMatchTeam{QStringLiteral("We Human"), QStringLiteral("c1"),
+                              QStringLiteral("Orc"), QString(), 0};
+        m.away = FFBMatchTeam{QStringLiteral("Kozlingo!"), QStringLiteral("c2"),
+                              QStringLiteral("Chaos Chosen"), QString(), 0};
+        QVector<FFBLiveMatch> matches;
+        matches.push_back(m);
+        dialog.loadMatchesForTest(matches);
+        QVERIFY(dialog.selectGame(777));
+        QSignalSpy spy(&dialog, &SpectateDialog::connectRequested);
+        dialog.spectate();
+        QCOMPARE(spy.count(), 1);
+        const QList<QVariant> args = spy.takeFirst();
+        QCOMPARE(args.at(0).toInt(), 777);
+        QCOMPARE(args.at(1).toString(), QStringLiteral("We Human"));
+        QCOMPARE(args.at(2).toString(), QStringLiteral("Kozlingo!"));
+    }
+
+    // Board lifecycle on the main window.
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    QLabel *board = w.findChild<QLabel *>(QStringLiteral("waitBoard"));
+    QVERIFY2(board, "waiting board label missing");
+    QVERIFY(!board->isVisible());
+
+    w.showWaitBoard(QStringLiteral("Orcs United"), QStringLiteral("Dwarves FC"),
+                    QStringLiteral("Connecting to game 42…"));
+    QVERIFY(board->isVisible());
+    QVERIFY(board->text().contains(QStringLiteral("Orcs United")));
+    QVERIFY(board->text().contains(QStringLiteral("VS")));
+    QVERIFY(board->text().contains(QStringLiteral("Dwarves FC")));
+    QVERIFY(board->text().contains(QStringLiteral("Connecting to game 42")));
+
+    // Session progress feeds the board while it is visible.
+    w.onSessionProgress(QStringLiteral("Syncing state…"));
+    QVERIFY(board->isVisible());
+    QVERIFY(board->text().contains(QStringLiteral("Syncing state")));
+
+    // The game state arrives: the board dies (the stadium takes over).
+    w.onGameState(fixtureGame());
+    QVERIFY(!board->isVisible());
+}
+
+// R0 report card v1: full time (turnMode endGame) shows the summary once
+// (score + both rosters); a second endGame batch must not stack a card.
+void UiWiringTest::reportCardShowsAtFullTime()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.onGameState(fixtureGame());
+    QVERIFY2(w.findChild<ReportCardDialog *>() == nullptr, "card before full time");
+
+    // Give a home player SPP (first sight = base 2, then +2 in-match).
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
+    w.onModelSync(ch, QJsonArray());
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         QStringLiteral("18109690"), QJsonValue(4)));
+    w.onModelSync(ch, QJsonArray());
+
+    QJsonArray ch2;
+    QJsonObject mode;
+    mode.insert(QStringLiteral("name"), QStringLiteral("endGame"));
+    ch2.append(makeChange(QStringLiteral("gameSetTurnMode"), QString(),
+                          QJsonValue(mode)));
+    w.onModelSync(ch2, QJsonArray());
+
+    ReportCardDialog *card = w.findChild<ReportCardDialog *>();
+    QVERIFY2(card, "report card not shown at full time");
+    QVERIFY(card->isVisible());
+    // Score line: both team names + the final score.
+    bool sawScore = false;
+    for (QLabel *l : card->findChildren<QLabel *>())
+        if (l->text().contains(QStringLiteral("Orcs United"))
+            && l->text().contains(QStringLiteral("Dwarves FC")))
+            sawScore = true;
+    QVERIFY2(sawScore, "score line missing the team names");
+    // Both rosters rendered (11 players each in the fixture).
+    const auto tables = card->findChildren<QTableWidget *>();
+    QCOMPARE(tables.size(), 2);
+    QCOMPARE(tables[0]->rowCount(), 11);
+    QCOMPARE(tables[1]->rowCount(), 11);
+    // The in-match SPP gain is shown ("base (+gain)").
+    bool sawSpp = false;
+    for (QTableWidget *t : tables)
+        for (int r = 0; r < t->rowCount(); ++r)
+            if (t->item(r, 3) && t->item(r, 3)->text().contains(QStringLiteral("(+2)")))
+                sawSpp = true;
+    QVERIFY2(sawSpp, "SPP gain missing from the roster tables");
+
+    card->close();
+    // A second endGame batch: no second card (m_toastTurnMode already
+    // endGame AND the card exists until deleted).
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("gameSetTurnMode"), QString(),
+                         QJsonValue(mode)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.findChildren<ReportCardDialog *>().size(), 1);
+}
+
+// The match log chevron points where the click takes the log — compact
 // shows ▴ ("click to expand"), expanded shows ▾ ("click to collapse").
 void UiWiringTest::actionLogChevronPointsToNextState()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     QVERIFY(log);
     const auto chevron = [log]() -> QLabel * {
         for (QLabel *l : log->findChildren<QLabel *>())
@@ -1492,17 +2068,17 @@ void UiWiringTest::actionLogChevronPointsToNextState()
     QLabel *c = chevron();
     QVERIFY(c);
     QCOMPARE(c->text(), QString::fromUtf8("\u25b4"));
-    QCOMPARE(log->height(), ActionLogWidget::compactHeight());
+    QCOMPARE(log->height(), MatchLogWidget::compactHeight());
 
     // Click -> expanded, chevron becomes ▾.
     clickChevron();
-    QCOMPARE(log->height(), ActionLogWidget::expandedHeight());
+    QCOMPARE(log->height(), MatchLogWidget::expandedHeight());
     c = chevron();
     QCOMPARE(c->text(), QString::fromUtf8("\u25be"));
 
     // Click -> compact again, chevron back to ▴.
     clickChevron();
-    QCOMPARE(log->height(), ActionLogWidget::compactHeight());
+    QCOMPARE(log->height(), MatchLogWidget::compactHeight());
     c = chevron();
     QCOMPARE(c->text(), QString::fromUtf8("\u25b4"));
 }
@@ -1614,7 +2190,7 @@ void UiWiringTest::chatStartsCollapsedByDefault()
     QCOMPARE(chat->size(), ChatWidget::pillSize());
 }
 
-// The action log EXPANDS UPWARD — pinned to the bottom of the stage.
+// The match log EXPANDS UPWARD — pinned to the bottom of the stage.
 // Expanding grows the height and lifts the top edge; the bottom edge stays
 // put (an earlier version grew it downwards, off the visible bottom).
 void UiWiringTest::actionLogExpandsUpward()
@@ -1625,11 +2201,11 @@ void UiWiringTest::actionLogExpandsUpward()
     w.showNormal();
     w.resize(1200, 750);
     QApplication::processEvents();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     QVERIFY(log);
 
-    const int compactH = ActionLogWidget::compactHeight();
-    const int expandedH = ActionLogWidget::expandedHeight();
+    const int compactH = MatchLogWidget::compactHeight();
+    const int expandedH = MatchLogWidget::expandedHeight();
     QVERIFY(expandedH > compactH);
     QCOMPARE(log->height(), compactH);
     // Regression: expanding must grow the log UPWARD (top edge lifts)
@@ -1949,7 +2525,7 @@ void UiWiringTest::diceAssetsPreScaled()
     }
 }
 
-// Hovering a player's NAME in the action log opens that
+// Hovering a player's NAME in the match log opens that
 // player's card (like the field hover). The name label is a hoverable
 // widget; entering it emits playerHoveredId(id) -> MainWindow opens the
 // card, leaving it hides it. (Regression: the log used to pass empty ids,
@@ -1958,7 +2534,7 @@ void UiWiringTest::actionLogNameHoverOpensCard()
 {
     MainWindow w;
     w.show();
-    ActionLogWidget *log = w.findChild<ActionLogWidget *>();
+    MatchLogWidget *log = w.findChild<MatchLogWidget *>();
     PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
     QVERIFY(log && info);
     w.onGameState(fixtureGame());
@@ -1988,7 +2564,7 @@ void UiWiringTest::actionLogNameHoverOpensCard()
             nameLbl = l;
             break;
         }
-    QVERIFY2(nameLbl, "actor name label not found in the action log");
+    QVERIFY2(nameLbl, "actor name label not found in the match log");
 
     // Hover the name (real enter path) -> the card opens on that player.
     QEnterEvent enter(QPointF(0, 0), QPointF(0, 0), QPointF(0, 0));
@@ -2179,6 +2755,188 @@ void UiWiringTest::fieldRainAnimationActive()
     QVERIFY(field.isRaining());
 }
 
+// The weather MAPPING (rulebook WEATHER TABLE + ffb Weather.java): the
+// server name drives the EFFECT kind, the header shows the RULEBOOK name —
+// never the server string ("Nice Weather" is "Perfect Conditions" in the
+// rulebook; "Intro"/empty has no rulebook name).
+void UiWiringTest::weatherRulebookMapping()
+{
+    using K = GameModel::WeatherKind;
+    struct Case { const char *server; K kind; const char *display; };
+    static const Case cases[] = {
+        { "Sweltering Heat", K::Heat, "Sweltering Heat" },
+        { "heat", K::Heat, "Sweltering Heat" }, // ffb short form
+        { "Very Sunny", K::Sunny, "Very Sunny" },
+        { "sunny", K::Sunny, "Very Sunny" },
+        { "Nice Weather", K::None, "Perfect Conditions" },
+        { "Perfect Conditions", K::None, "Perfect Conditions" },
+        { "Pouring Rain", K::Rain, "Pouring Rain" },
+        { "Light Rain", K::Rain, "Pouring Rain" },
+        { "Blizzard", K::Blizzard, "Blizzard" },
+        { "Intro", K::None, "\u2014" },
+        { "", K::None, "\u2014" },
+    };
+    for (const Case &c : cases) {
+        QCOMPARE(GameModel::weatherKind(QString::fromLatin1(c.server)), c.kind);
+        QCOMPARE(GameModel::weatherDisplayName(QString::fromLatin1(c.server)),
+                 QString::fromUtf8(c.display));
+    }
+}
+
+namespace {
+// Mean luma of a whole pixmap (the scene-brightness probe).
+double sceneMeanLuma(const QPixmap &pm)
+{
+    const QImage img = pm.toImage();
+    long sum = 0;
+    int n = 0;
+    for (int y = 0; y < img.height(); y += 2)
+        for (int x = 0; x < img.width(); x += 2) {
+            const QRgb c = img.pixel(x, y);
+            sum += 0.2126 * qRed(c) + 0.7152 * qGreen(c) + 0.0722 * qBlue(c);
+            ++n;
+        }
+    return n > 0 ? double(sum) / n : 0.0;
+}
+
+// Near-white neutral pixels OUTSIDE the field rect — the snowflake probe
+// (the flakes are the only white things over the dark stadium art).
+int whitePixelsOutside(const QPixmap &pm, const QRect &fieldRect)
+{
+    const QImage img = pm.toImage();
+    int n = 0;
+    for (int y = 0; y < img.height(); y += 2)
+        for (int x = 0; x < img.width(); x += 2) {
+            if (fieldRect.contains(x, y))
+                continue;
+            const QRgb c = img.pixel(x, y);
+            const int r = qRed(c), g = qGreen(c), b = qBlue(c);
+            if (r > 120 && g > 120 && b > 120 && qAbs(r - b) < 40
+                && qAbs(r - g) < 30)
+                ++n;
+        }
+    return n;
+}
+} // namespace
+
+// BLIZZARD: the snow covers the WHOLE SCENE (the flakes are also OUTSIDE
+// the field rect — the weather is outside the stadium), the field starts
+// with the pre-existing patches, and the patches ACCUMULATE + EXPAND on a
+// minutes scale (pumped deterministically, no real-time waiting).
+void UiWiringTest::blizzardSceneCoverage()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Blizzard"));
+    QVERIFY(field.isSnowing());
+    QVERIFY(!field.isRaining());
+    // The field starts with the pre-existing snow patches (faded in).
+    QVERIFY2(field.snowPatchCountForTest() >= 3,
+             "pre-existing snow patches seeded");
+
+    // A few frames so the flakes land all over the scene.
+    field.pumpWeatherForTest(600.0);
+    const QRect f = field.fieldRect().toAlignedRect();
+    const int withSnow = whitePixelsOutside(field.grab(), f);
+    // CONTROL: the same scene without the weather (same art, no flakes).
+    field.setWeather(QStringLiteral("Nice Weather"));
+    QApplication::processEvents();
+    const int withoutSnow = whitePixelsOutside(field.grab(), f);
+    QVERIFY2(withSnow - withoutSnow > 25,
+             qPrintable(QStringLiteral(
+                            "snowflakes over the whole scene: %1 with vs %2 without")
+                            .arg(withSnow)
+                            .arg(withoutSnow)));
+
+    // ACCUMULATION: pump past the max new-patch gap (1.5-3 min) — a new
+    // patch appears and the seeded one EXPANDS (its fr grew past the cap
+    // of the initial size).
+    field.setWeather(QStringLiteral("Blizzard"));
+    const qreal r0 = field.firstPatchRadiusForTest();
+    field.pumpWeatherForTest(190.0 * 1000.0);
+    QVERIFY2(field.snowPatchCountForTest() >= 4,
+             "a new snow patch appeared within 190 s");
+    QVERIFY2(field.firstPatchRadiusForTest() > r0,
+             "the seeded snow patch expanded");
+}
+
+// VERY SUNNY: a warm white lift over the WHOLE scene (the mean luma goes
+// up, deterministic — the overlay is static).
+void UiWiringTest::sunnyBrightensScene()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Nice Weather"));
+    QApplication::processEvents();
+    const double base = sceneMeanLuma(field.grab());
+    field.setWeather(QStringLiteral("Very Sunny"));
+    QApplication::processEvents();
+    const double sunny = sceneMeanLuma(field.grab());
+    QVERIFY2(sunny - base > 3.0,
+             qPrintable(QStringLiteral(
+                            "sunny brightens the whole scene (base %1, sunny %2)")
+                            .arg(QString::number(base, 'f', 1))
+                            .arg(QString::number(sunny, 'f', 1))));
+}
+
+// The lightning flash is a SOFT, CAPPED brightness pulse and RARE (every
+// 5-8 minutes, never 8-20 s) — anti-epilepsy by design.
+void UiWiringTest::lightningFlashEnvelope()
+{
+    // Zero at the ends and in the gap; a soft sin^2 rise-and-fall.
+    QCOMPARE(FieldView::flashAlphaAtMs(0.0), 0.0);
+    QCOMPARE(FieldView::flashAlphaAtMs(FieldView::kFlashDurationMs()), 0.0);
+    QCOMPARE(FieldView::flashAlphaAtMs(-10.0), 0.0);
+    const double mid = FieldView::flashAlphaAtMs(250.0);
+    QVERIFY2(mid > 0.0 && mid <= FieldView::kFlashMaxAlpha(),
+             qPrintable(QStringLiteral("mid-flash is on and capped: %1")
+                            .arg(QString::number(mid, 'f', 1))));
+    // The whole envelope never exceeds the cap.
+    for (double t = 0.0; t <= FieldView::kFlashDurationMs(); t += 5.0)
+        QVERIFY(FieldView::flashAlphaAtMs(t) <= FieldView::kFlashMaxAlpha());
+    // RARE: the gaps between flashes are 5..8 minutes.
+    QCOMPARE(FieldView::flashGapMinMs(), 300000.0);
+    QCOMPARE(FieldView::flashGapMaxMs(), 480000.0);
+}
+
+// The Settings menu: the three weather FX switches (persisted, applied
+// live). 1) off = no weather visuals; 2) "on the field" off = the rain
+// keeps falling but nothing hits the pitch; 3) lightning off = no flash.
+void UiWiringTest::settingsWeatherFxSwitches()
+{
+    MainWindow w;
+    w.show();
+    w.onGameState(fixtureGame());
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(field);
+    field->setWeather(QStringLiteral("Pouring Rain"));
+    QApplication::processEvents();
+
+    QAction *all = w.findChild<QAction *>(QStringLiteral("weatherFxAll"));
+    QAction *onField = w.findChild<QAction *>(QStringLiteral("weatherFxField"));
+    QAction *lightning = w.findChild<QAction *>(QStringLiteral("lightningFlashes"));
+    QVERIFY(all && onField && lightning);
+    QVERIFY(all->isChecked() && onField->isChecked() && lightning->isChecked());
+
+    all->setChecked(false);
+    QVERIFY(!field->weatherFxAllForTest());
+    onField->setChecked(false);
+    QVERIFY(!field->weatherFxFieldForTest());
+    lightning->setChecked(false);
+    QVERIFY(!field->weatherFxLightningForTest());
+
+    // All back on (restores the QSettings for the real client too).
+    all->setChecked(true);
+    onField->setChecked(true);
+    lightning->setChecked(true);
+    QVERIFY(field->weatherFxAllForTest() && field->weatherFxFieldForTest()
+            && field->weatherFxLightningForTest());
+}
+
 // CRASH REGRESSION (hover, especially on dugout faces): the bench hover
 // path resolved the player by name into a LOCAL roster copy and kept a
 // pointer into it — the copy died at the end of the else-if block and the
@@ -2312,7 +3070,7 @@ void UiWiringTest::dugoutHoverSurvivesModelSync()
 // choice. Two adjacent tokens, marker at the shared-edge midpoint: the
 // midpoint pixel must NOT be plain grass, and it must differ between the
 // helmet and a die face.
-// The action log autoscrolls when the user is (or comes back) at the
+// The match log autoscrolls when the user is (or comes back) at the
 // bottom; scrolling up pauses it; the 'auto' checkbox in the title bar
 // reflects the state.
 // The dice IMAGES must actually render in the log rows — not empty
@@ -2320,7 +3078,7 @@ void UiWiringTest::dugoutHoverSurvivesModelSync()
 // renderMiddle's dieImg).
 void UiWiringTest::actionLogDiceImagesRender()
 {
-    ActionLogWidget log;
+    MatchLogWidget log;
     log.resize(420, 300);
     log.show();
     QApplication::processEvents();
@@ -2392,7 +3150,7 @@ void UiWiringTest::actionLogDiceImagesRender()
 
 void UiWiringTest::actionLogAutoscrollStickToBottom()
 {
-    ActionLogWidget log;
+    MatchLogWidget log;
     log.resize(360, 320);
     log.show();
     QApplication::processEvents();
@@ -2533,8 +3291,13 @@ void UiWiringTest::blockMarkerDrawsBetweenPair()
                 }
             }
         // The marker is a dense grey-helmet / gold-symbol cluster; stray AA
-        // pixels (token rim, badge edge) stay well below this.
-        f.any = hits >= 25;
+        // pixels (token rim, badge edge) stay well below this. The
+        // threshold scales with the CELL AREA: stadiums have different pits,
+        // so the marker (and its pixel count) scale with the fitted cell —
+        // 25 at the historic 27 px cell, floored at 12 (stray AA stays
+        // below the floor on every installed stadium).
+        const int need = qMax(12, int(25.0 * (cell / 27.0) * (cell / 27.0)));
+        f.any = hits >= need;
         return f;
     };
 

@@ -34,3 +34,6 @@ AGENTS.md
 
 # test runtime output (GUI exe redirection)
 test_output.txt
+
+# project scratch (agent work: screenshots, throwaway tools, captures)
+tmp/

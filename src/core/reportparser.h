@@ -1,5 +1,5 @@
 // =============================================================================
-// ReportParser — FUMBBL server reports -> action log lines
+// ReportParser — FUMBBL server reports -> match log lines
 //
 // FIELD-BY-FIELD ALIGNED with the authoritative ffb-common Java sources:
 //   /home/saruman/Projects/ffb/ffb-common/src/main/java/com/fumbbl/ffb/
@@ -72,3 +72,19 @@ struct DiceLogLine {
 
 // Parses one report object into zero or more dice log lines.
 QVector<DiceLogLine> parseReport(const QJsonObject &report);
+
+// A structured toast event for the live overlay (R0), extracted from the
+// SAME report JSON as the log lines (the log stays human text; the overlay
+// needs structure). kind == "" (empty vector) = the report carries no toast.
+struct ToastEvent {
+    QString kind; // "completion" | "regeneration" | "raiseDead" | "timeout" | "injury"
+    QString playerId; // subject (catcher / rolled player / injured defender)
+    QString text; // free text (timeout: the coach's name)
+    QString result; // injury: the outcome enum (knockedOut/badlyHurt/seriousInjury/rip;
+                    // empty = stunned or no injury)
+    bool armorBroken = false; // injury: the armor roll broke the armor
+    bool success = false;     // skill rolls: the roll succeeded
+};
+
+// Extracts the toast events from one report (empty = no toast for it).
+QVector<ToastEvent> parseToastEvents(const QJsonObject &report);

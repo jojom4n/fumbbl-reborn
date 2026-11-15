@@ -1,0 +1,4128 @@
+{
+    "commandNr": 0,
+    "game": {
+        "actingPlayer": {
+            "currentMove": 0,
+            "fellFromRush": false,
+            "fumblerooskiePending": false,
+            "goingForIt": false,
+            "hasBlocked": false,
+            "hasFed": false,
+            "hasFouled": false,
+            "hasMoved": false,
+            "hasPassed": false,
+            "hasTriggeredEffect": false,
+            "heldInPlace": false,
+            "initialAdjacentPartnerIds": [
+            ],
+            "jumpsWithoutModifiers": false,
+            "mustCompleteAction": false,
+            "playerAction": null,
+            "playerId": null,
+            "playerStateOld": null,
+            "skillsGrantedBy": {
+            },
+            "standingUp": false,
+            "sufferingAnimosity": false,
+            "sufferingBloodlust": false,
+            "usedSkills": [
+            ]
+        },
+        "concededLegally": false,
+        "concessionPossible": false,
+        "defenderAction": null,
+        "defenderId": null,
+        "fieldModel": {
+            "ballCoordinate": [
+                11,
+                3
+            ],
+            "ballInPlay": true,
+            "ballMoving": false,
+            "bloodspotArray": [
+                {
+                    "coordinate": [
+                        15,
+                        1
+                    ],
+                    "injury": 7
+                },
+                {
+                    "coordinate": [
+                        18,
+                        3
+                    ],
+                    "injury": 7
+                }
+            ],
+            "bombCoordinate": null,
+            "bombMoving": false,
+            "chomped": {
+            },
+            "diceDecorationArray": [
+            ],
+            "fieldMarkerArray": [
+            ],
+            "moveSquareArray": [
+            ],
+            "outOfBounds": false,
+            "playerDataArray": [
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        14,
+                        5
+                    ],
+                    "playerId": "18203348",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        11,
+                        7
+                    ],
+                    "playerId": "18203349",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        13,
+                        7
+                    ],
+                    "playerId": "18203351",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        9,
+                        1
+                    ],
+                    "playerId": "18203352",
+                    "playerState": 1
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        9,
+                        3
+                    ],
+                    "playerId": "18203353",
+                    "playerState": 1
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        13,
+                        3
+                    ],
+                    "playerId": "18203355",
+                    "playerState": 1
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        12,
+                        3
+                    ],
+                    "playerId": "18203356",
+                    "playerState": 1
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        11,
+                        3
+                    ],
+                    "playerId": "18203359",
+                    "playerState": 1
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        10,
+                        8
+                    ],
+                    "playerId": "18203358",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        17,
+                        10
+                    ],
+                    "playerId": "18372868",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        -1,
+                        0
+                    ],
+                    "playerId": "18372869",
+                    "playerState": 9
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        10,
+                        9
+                    ],
+                    "playerId": "18458176",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        8,
+                        1
+                    ],
+                    "playerId": "18458177",
+                    "playerState": 260
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        12,
+                        7
+                    ],
+                    "playerId": "18458183",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        15,
+                        5
+                    ],
+                    "playerId": "18458185",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        33,
+                        0
+                    ],
+                    "playerId": "18458180",
+                    "playerState": 7
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        13,
+                        2
+                    ],
+                    "playerId": "18458178",
+                    "playerState": 259
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        12,
+                        8
+                    ],
+                    "playerId": "18458179",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        14,
+                        7
+                    ],
+                    "playerId": "18458181",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        10,
+                        1
+                    ],
+                    "playerId": "18458186",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        17,
+                        9
+                    ],
+                    "playerId": "18458187",
+                    "playerState": 257
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        15,
+                        6
+                    ],
+                    "playerId": "18458188",
+                    "playerState": 259
+                },
+                {
+                    "cardEffects": [
+                    ],
+                    "cards": [
+                    ],
+                    "playerCoordinate": [
+                        14,
+                        2
+                    ],
+                    "playerId": "18458207",
+                    "playerState": 257
+                }
+            ],
+            "playerMarkerArray": [
+                {
+                    "awayText": "m",
+                    "homeText": null,
+                    "playerId": "18203352"
+                },
+                {
+                    "awayText": "l",
+                    "homeText": null,
+                    "playerId": "18372869"
+                },
+                {
+                    "awayText": "ab",
+                    "homeText": null,
+                    "playerId": "18203348"
+                },
+                {
+                    "awayText": "l",
+                    "homeText": null,
+                    "playerId": "18372868"
+                }
+            ],
+            "pushbackSquareArray": [
+            ],
+            "trackNumberArray": [
+            ],
+            "trapDoors": [
+            ],
+            "weather": "Nice Weather"
+        },
+        "finished": null,
+        "gameId": 1962007,
+        "gameOptions": {
+            "gameOptionArray": [
+                {
+                    "gameOptionId": "inducementPrayersMax",
+                    "gameOptionValue": "3"
+                },
+                {
+                    "gameOptionId": "inducementChefsReducedMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementStaffMax",
+                    "gameOptionValue": "2"
+                },
+                {
+                    "gameOptionId": "allowConcessions",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "inducementBiasedRefReducedCost",
+                    "gameOptionValue": "80000"
+                },
+                {
+                    "gameOptionId": "inducementTempCheerleaderCost",
+                    "gameOptionValue": "5000"
+                },
+                {
+                    "gameOptionId": "inducementExtraTrainingMax",
+                    "gameOptionValue": "8"
+                },
+                {
+                    "gameOptionId": "inducementPartTimeCoachTotalMax",
+                    "gameOptionValue": "11"
+                },
+                {
+                    "gameOptionId": "inducementMascotCost",
+                    "gameOptionValue": "25000"
+                },
+                {
+                    "gameOptionId": "bombBouncesOnEmptySquares",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementBribesReducedCost",
+                    "gameOptionValue": "50000"
+                },
+                {
+                    "gameOptionId": "testMode",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementTempCheerleaderTotalMax",
+                    "gameOptionValue": "11"
+                },
+                {
+                    "gameOptionId": "inducementAposCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "freeCardCash",
+                    "gameOptionValue": "0"
+                },
+                {
+                    "gameOptionId": "pilingOnUsesATeamReroll",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "maxPlayersInWideZone",
+                    "gameOptionValue": "2"
+                },
+                {
+                    "gameOptionId": "inducementWeatherMageMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "swoopDistance",
+                    "gameOptionValue": "0"
+                },
+                {
+                    "gameOptionId": "allowBrawlerOnBothBlocks",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "turntime",
+                    "gameOptionValue": "240"
+                },
+                {
+                    "gameOptionId": "inducementMortuaryAssistantsCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "inducementPrayersCost",
+                    "gameOptionValue": "30000"
+                },
+                {
+                    "gameOptionId": "rightStuffCancelsTackle",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementPartTimeCoachCost",
+                    "gameOptionValue": "20000"
+                },
+                {
+                    "gameOptionId": "inducementPrayersUseLeagueTable",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "enableTacklezoneOverlays",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "inducementWizardsCost",
+                    "gameOptionValue": "150000"
+                },
+                {
+                    "gameOptionId": "inducementsAllowOverdogSpending",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "timeoutAllowed",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "sneakyGitAsFoulGuard",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementMortuaryAssistantsMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "askForKickAfterRoll",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementPlagueDoctorsMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementMercenariesMax",
+                    "gameOptionValue": "3"
+                },
+                {
+                    "gameOptionId": "sneakyGitBanToKo",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "minPlayersOnLos",
+                    "gameOptionValue": "3"
+                },
+                {
+                    "gameOptionId": "divingTackleLeavingTzOnly",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementMercenariesSkillCost",
+                    "gameOptionValue": "50000"
+                },
+                {
+                    "gameOptionId": "inducementKegsMax",
+                    "gameOptionValue": "2"
+                },
+                {
+                    "gameOptionId": "inducementsAllowSpendingTreasuryOnEqualCTV",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementIgorsMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementsAllowUnderdogSpending",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "inducementBiasedRefMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "cardsSpecialPlayCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "allowBallAndChainReRoll",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "endTurnWhenHittingAnyPlayerWithTtm",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "overtimeKickOffResults",
+                    "gameOptionValue": "all"
+                },
+                {
+                    "gameOptionId": "animalSavageryLashOutEndsActivation",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "overtimeGoldenGoal",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementTempCheerleaderMax",
+                    "gameOptionValue": "5"
+                },
+                {
+                    "gameOptionId": "inducementChefsCost",
+                    "gameOptionValue": "300000"
+                },
+                {
+                    "gameOptionId": "rulesVersion",
+                    "gameOptionValue": "BB2025"
+                },
+                {
+                    "gameOptionId": "enableGettingEven",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "bombUsesMb",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementPlagueDoctorsCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "forceTreasuryToPettyCash",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "spikedBall",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementBiasedRefCost",
+                    "gameOptionValue": "120000"
+                },
+                {
+                    "gameOptionId": "inducementAposMax",
+                    "gameOptionValue": "2"
+                },
+                {
+                    "gameOptionId": "inducementJosefBugmanMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementMascotMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "sneakyGitCanMoveAfterFoul",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementWizardsMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementsAlwaysUseTreasury",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "freeInducementCash",
+                    "gameOptionValue": "0"
+                },
+                {
+                    "gameOptionId": "inducementPrayersAvailableForUnderdog",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "maxNrOfCards",
+                    "gameOptionValue": "0"
+                },
+                {
+                    "gameOptionId": "pilingOnDoesNotStack",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementRiotousRookiesMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "maxPlayersOnField",
+                    "gameOptionValue": "11"
+                },
+                {
+                    "gameOptionId": "mvpNominations",
+                    "gameOptionValue": "6"
+                },
+                {
+                    "gameOptionId": "inducementStarsMax",
+                    "gameOptionValue": "2"
+                },
+                {
+                    "gameOptionId": "inducementKegsCost",
+                    "gameOptionValue": "50000"
+                },
+                {
+                    "gameOptionId": "overtime",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "allowSpecialBlocksWithBallAndChain",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "pettyCashAffectsTv",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "bomberPlacedProneIgnoresTurnover",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "clawDoesNotStack",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "argueTheCall",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "inducementPartTimeCoachMax",
+                    "gameOptionValue": "5"
+                },
+                {
+                    "gameOptionId": "extraMvp",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementBribesCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "chainsawTurnover",
+                    "gameOptionValue": "kickback"
+                },
+                {
+                    "gameOptionId": "allowSpecialActionsFromProne",
+                    "gameOptionValue": "true"
+                },
+                {
+                    "gameOptionId": "standFirmNoDropOnFailedDodge",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementRiotousRookiesCost",
+                    "gameOptionValue": "150000"
+                },
+                {
+                    "gameOptionId": "pitchUrl",
+                    "gameOptionValue": "https://cdn.fumbbl.com/FUMBBL/Images/Pitches/TombKings.zip"
+                },
+                {
+                    "gameOptionId": "inducementChefsMax",
+                    "gameOptionValue": "1"
+                },
+                {
+                    "gameOptionId": "inducementBribesMax",
+                    "gameOptionValue": "3"
+                },
+                {
+                    "gameOptionId": "pilingOnToKoOnDouble",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementExtraTrainingCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "inducementWeatherMageCost",
+                    "gameOptionValue": "25000"
+                },
+                {
+                    "gameOptionId": "allowStarOnBothTeams",
+                    "gameOptionValue": "false"
+                },
+                {
+                    "gameOptionId": "inducementIgorsCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "inducementChefsReducedCost",
+                    "gameOptionValue": "100000"
+                },
+                {
+                    "gameOptionId": "inducementMercenariesExtraCost",
+                    "gameOptionValue": "30000"
+                }
+            ]
+        },
+        "gameResult": {
+            "teamResultAway": {
+                "badlyHurtSuffered": 0,
+                "conceded": false,
+                "dedicatedFans": 0,
+                "fame": 0,
+                "fanFactor": 4,
+                "fanFactorModifier": 0,
+                "penaltyScore": -1,
+                "pettyCashFromTvDiff": 0,
+                "pettyCashTransferred": 0,
+                "pettyCashUsed": 0,
+                "playerResults": [
+                    {
+                        "blocks": 6,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 4,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458176",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 6,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458177",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 4,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458183",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 4,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458185",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 4,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 2,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458180",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": "18203348",
+                        "sendToBoxHalf": 1,
+                        "sendToBoxReason": "blocked",
+                        "sendToBoxTurn": 8,
+                        "seriousInjury": "Serious Injury (NI)",
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 8
+                    },
+                    {
+                        "blocks": 3,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458178",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 3,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458179",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 4,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458181",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 1,
+                        "casualties": 1,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458186",
+                        "rushing": 20,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 1,
+                        "turnsPlayed": 10
+                    },
+                    {
+                        "blocks": 2,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458187",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 2,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458188",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 1,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18458207",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 6
+                    }
+                ],
+                "raisedDead": 0,
+                "ripSuffered": 0,
+                "score": 1,
+                "seriousInjurySuffered": 1,
+                "spectators": 0,
+                "spirallingExpenses": 0,
+                "stalling": false,
+                "teamValue": 1000000,
+                "treasuryUsedOnInducements": 0,
+                "winnings": 0
+            },
+            "teamResultHome": {
+                "badlyHurtSuffered": 1,
+                "conceded": false,
+                "dedicatedFans": 0,
+                "fame": 0,
+                "fanFactor": 3,
+                "fanFactorModifier": 0,
+                "penaltyScore": -1,
+                "pettyCashFromTvDiff": 25000,
+                "pettyCashTransferred": 0,
+                "pettyCashUsed": 20000,
+                "playerResults": [
+                    {
+                        "blocks": 7,
+                        "casualties": 1,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 1,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203348",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 3,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203349",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 10,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203351",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 9,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 2,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203352",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 8,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 1,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203353",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 1,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203355",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 4,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203356",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 2,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 1,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203359",
+                        "rushing": 4,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 2,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18203358",
+                        "rushing": 7,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 2,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18372868",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": null,
+                        "sendToBoxHalf": 0,
+                        "sendToBoxReason": null,
+                        "sendToBoxTurn": 0,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 12
+                    },
+                    {
+                        "blocks": 0,
+                        "casualties": 0,
+                        "casualtiesWithAdditionalSpp": 0,
+                        "catchesWithAdditionalSpp": 0,
+                        "completions": 0,
+                        "completionsWithAdditionalSpp": 0,
+                        "currentSpps": 0,
+                        "defecting": false,
+                        "fouls": 0,
+                        "gainedHatred": [
+                        ],
+                        "hasUsedSecretWeapon": false,
+                        "interceptions": 0,
+                        "landings": 0,
+                        "passing": 0,
+                        "playerAwards": 0,
+                        "playerId": "18372869",
+                        "rushing": 0,
+                        "sendToBoxByPlayerId": "18458186",
+                        "sendToBoxHalf": 2,
+                        "sendToBoxReason": "blocked",
+                        "sendToBoxTurn": 2,
+                        "seriousInjury": null,
+                        "seriousInjuryDecay": null,
+                        "touchdowns": 0,
+                        "turnsPlayed": 10
+                    }
+                ],
+                "raisedDead": 0,
+                "ripSuffered": 0,
+                "score": 0,
+                "seriousInjurySuffered": 0,
+                "spectators": 0,
+                "spirallingExpenses": 0,
+                "stalling": false,
+                "teamValue": 975000,
+                "treasuryUsedOnInducements": 0,
+                "winnings": 0
+            }
+        },
+        "gameTime": 4043738,
+        "half": 2,
+        "homeFirstOffense": false,
+        "homePlaying": true,
+        "lastDefenderId": null,
+        "lastTurnMode": "selectBlitzTarget",
+        "passCoordinate": null,
+        "scheduled": "2026-11-09T16:00:01.135",
+        "setupOffense": true,
+        "started": "2026-11-09T16:00:33.654",
+        "teamAway": {
+            "apothecaries": 0,
+            "assistantCoaches": 0,
+            "baseIconPath": "https://cdn.fumbbl.com/",
+            "cheerleaders": 0,
+            "coach": "MattDakka",
+            "dedicatedFans": 1,
+            "fanFactor": 0,
+            "logoUrl": null,
+            "playerArray": [
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "female",
+                    "playerId": "18458176",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Rose Gette",
+                    "playerNr": 1,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66318",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Sprint",
+                        "Sure Feet",
+                        "Thick Skull",
+                        "Unsteady"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 4,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "neutral",
+                    "playerId": "18458177",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Journey Whitefall",
+                    "playerNr": 2,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66318",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Sprint",
+                        "Sure Feet",
+                        "Thick Skull",
+                        "Unsteady"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 4,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "neutral",
+                    "playerId": "18458183",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Peyton Lanrthal",
+                    "playerNr": 3,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66321",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Brawler",
+                        "Breathe Fire",
+                        "Disturbing Presence",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "female",
+                    "playerId": "18458185",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Elise Talarin",
+                    "playerNr": 4,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66321",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Brawler",
+                        "Breathe Fire",
+                        "Disturbing Presence",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "female",
+                    "playerId": "18458180",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Paris Eogar",
+                    "playerNr": 5,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66317",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Block",
+                        "Iron Hard Skin",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "nonbinary",
+                    "playerId": "18458178",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Alina Crondon",
+                    "playerNr": 6,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66317",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Block",
+                        "Iron Hard Skin",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "male",
+                    "playerId": "18458179",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Joseph Musty",
+                    "playerNr": 7,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 2,
+                    "positionId": "66317",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Block",
+                        "Iron Hard Skin",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "female",
+                    "playerId": "18458181",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Ryleigh Heatrix",
+                    "playerNr": 8,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 3,
+                    "positionId": "66317",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Block",
+                        "Iron Hard Skin",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 3,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 4,
+                    "playerGender": "male",
+                    "playerId": "18458186",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Holden Wandagwen",
+                    "playerNr": 9,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66316",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 3,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 4,
+                    "playerGender": "neutral",
+                    "playerId": "18458187",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Grace Chirp",
+                    "playerNr": 10,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66316",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 3,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 4,
+                    "playerGender": "nonbinary",
+                    "playerId": "18458188",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Maria Sames",
+                    "playerNr": 11,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 2,
+                    "positionId": "66316",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 3,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 4,
+                    "playerGender": "neutral",
+                    "playerId": "18458207",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Kaiden Killrey",
+                    "playerNr": 12,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 3,
+                    "positionId": "66316",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                }
+            ],
+            "race": "Chaos Dwarf",
+            "reRolls": 2,
+            "roster": {
+                "apothecary": true,
+                "baseIconPath": "https://cdn.fumbbl.com/",
+                "keywords": [
+                ],
+                "logoUrl": "i/486253",
+                "maxBigGuys": 1,
+                "maxReRolls": 8,
+                "nameGenerator": "default",
+                "necromancer": false,
+                "positionArray": [
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 80000,
+                        "displayName": null,
+                        "keywords": [
+                            "Dwarf",
+                            "Special"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 2,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66321",
+                        "positionName": "Flamesmith",
+                        "quantity": 2,
+                        "race": null,
+                        "replacesPosition": "39327",
+                        "shorthand": "F",
+                        "skillArray": [
+                            "Brawler",
+                            "Breathe Fire",
+                            "Disturbing Presence",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Devious",
+                            "Mutation",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength",
+                            "General"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/745754.png",
+                        "urlPortrait": "i/745753"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 7,
+                        "cost": 0,
+                        "displayName": null,
+                        "keywords": [
+                            "Halfling",
+                            "Lineman"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 5,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65792",
+                        "positionName": "Crumbleberry",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "Cr",
+                        "skillArray": [
+                            "Dodge",
+                            "I'll Carry You",
+                            "Lethal Flight",
+                            "Loner",
+                            "Right Stuff",
+                            "Stunty",
+                            "Sure Hands"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            "Carried",
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 2,
+                        "teamWithPositionId": "65791",
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674106.gif",
+                        "urlPortrait": "i/674107"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 250000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Ogre"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 4,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65791",
+                        "positionName": "Grak",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "Gr",
+                        "skillArray": [
+                            "Bone Head",
+                            "I'll Carry You",
+                            "Kick Team-Mate",
+                            "Loner",
+                            "Mighty Blow",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            "Carrier",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": "65792",
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674105.gif",
+                        "urlPortrait": "i/674104"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 8,
+                        "cost": 60000,
+                        "displayName": null,
+                        "keywords": [
+                            "Goblin",
+                            "Special"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 2,
+                        "passing": 5,
+                        "playerGender": "neutral",
+                        "playerType": "Regular",
+                        "positionId": "66320",
+                        "positionName": "Sneaky Stabba",
+                        "quantity": 2,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "S",
+                        "skillArray": [
+                            "Shadowing",
+                            "Stab"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Strength",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "General",
+                            "Devious"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/745751.png",
+                        "urlPortrait": "i/745752"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 130000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Dwarf"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 2,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66318",
+                        "positionName": "Bull Centaur Blitzer",
+                        "quantity": 2,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "BC",
+                        "skillArray": [
+                            "Sprint",
+                            "Sure Feet",
+                            "Thick Skull",
+                            "Unsteady"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Devious",
+                            "Mutation",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength",
+                            "General"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 4,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/436258.png",
+                        "urlPortrait": "i/318585"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 150000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Minotaur"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Big Guy",
+                        "positionId": "66319",
+                        "positionName": "Minotaur",
+                        "quantity": 1,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "M",
+                        "skillArray": [
+                            "Frenzy",
+                            "Horns",
+                            "Loner",
+                            "Mighty Blow",
+                            "Thick Skull",
+                            "Unchannelled Fury"
+                        ],
+                        "skillCategoriesDouble": [
+                            "General",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength",
+                            "Mutation"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/436259.png",
+                        "urlPortrait": "i/318584"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 10,
+                        "cost": 270000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blocker",
+                            "Human"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 5,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65799",
+                        "positionName": "Lord Borak the Despoiler",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "LB",
+                        "skillArray": [
+                            "Block",
+                            "Dirty Player",
+                            "Leader",
+                            "Loner",
+                            "Lord of Chaos",
+                            "Mighty Blow",
+                            "Put the Boot In",
+                            "Sneaky Git"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            "3",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674071.png",
+                        "urlPortrait": "i/674070"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 8,
+                        "cost": 40000,
+                        "displayName": null,
+                        "keywords": [
+                            "Goblin",
+                            "Lineman"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 10,
+                        "passing": 4,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66316",
+                        "positionName": "Hobgoblin Lineman",
+                        "quantity": 16,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "L",
+                        "skillCategoriesDouble": [
+                            "Strength",
+                            "General",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Devious"
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/585631.png",
+                        "urlPortrait": "i/318587"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 300000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Dwarf"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 6,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65846",
+                        "positionName": "H'Thark the Unstoppable",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "HT",
+                        "skillArray": [
+                            "Block",
+                            "Break Tackle",
+                            "Defensive",
+                            "Juggernaut",
+                            "Loner",
+                            "Sprint",
+                            "Sure Feet",
+                            "Thick Skull",
+                            "Unsteady",
+                            "Unstoppable Momentum"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 6,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/745758.png",
+                        "urlPortrait": "i/745757"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 70000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blocker",
+                            "Dwarf"
+                        ],
+                        "movement": 4,
+                        "nameGenerator": null,
+                        "nrOfIcons": 6,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66317",
+                        "positionName": "Chaos Dwarf Blocker",
+                        "quantity": 4,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "B",
+                        "skillArray": [
+                            "Block",
+                            "Iron Hard Skin",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Devious",
+                            "Mutation",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength",
+                            "General"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/436257.png",
+                        "urlPortrait": "i/318586"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 11,
+                        "cost": 340000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Ogre"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 4,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65801",
+                        "positionName": "Morg 'n' Thorg",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "MT",
+                        "skillArray": [
+                            "Block",
+                            "Bullseye",
+                            "Hatred",
+                            "Loner",
+                            "Mighty Blow",
+                            "The Ballista",
+                            "Thick Skull",
+                            "Throw Team-Mate"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            "undead",
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 6,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674075.png",
+                        "urlPortrait": "i/674074"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 130000,
+                        "displayName": null,
+                        "keywords": [
+                            "Dwarf",
+                            "Special"
+                        ],
+                        "movement": 4,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 3,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65845",
+                        "positionName": "Zzharg Madeye",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "ZM",
+                        "skillArray": [
+                            "\"Blastin' Solves Everything\"",
+                            "Cannoneer",
+                            "Hail Mary Pass",
+                            "Loner",
+                            "Nerves of Steel",
+                            "Secret Weapon",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 4,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/745756.png",
+                        "urlPortrait": "i/745755"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 240000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Minotaur"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 6,
+                        "playerGender": "neutral",
+                        "playerType": "Star",
+                        "positionId": "65815",
+                        "positionName": "Grashnak Blackhoof",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "GB",
+                        "skillArray": [
+                            "Frenzy",
+                            "Gored By The Bull",
+                            "Horns",
+                            "Loner",
+                            "Mighty Blow",
+                            "Thick Skull",
+                            "Unchannelled Fury"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 6,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/682645.png",
+                        "urlPortrait": "i/682644"
+                    },
+                    {
+                        "agility": 2,
+                        "armour": 6,
+                        "cost": 80000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Squirrel"
+                        ],
+                        "movement": 7,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 0,
+                        "playerGender": "neutral",
+                        "playerType": "Star",
+                        "positionId": "65814",
+                        "positionName": "Akhorne the Squirrel",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "SQ",
+                        "skillArray": [
+                            "Blind Rage",
+                            "Claws",
+                            "Dauntless",
+                            "Dodge",
+                            "Frenzy",
+                            "Jump Up",
+                            "Loner",
+                            "No Ball",
+                            "Sidestep",
+                            "Stunty",
+                            "Titchy"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 1,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/682638.png",
+                        "urlPortrait": "i/682637"
+                    }
+                ],
+                "raisedPositionId": "",
+                "reRollCost": 70000,
+                "riotousPositionId": null,
+                "rosterId": "1318079",
+                "rosterName": "Chaos Dwarf",
+                "undead": false
+            },
+            "specialRules": [
+            ],
+            "teamId": "1318079",
+            "teamName": "Hashut's Wrath 25",
+            "teamValue": 1000000,
+            "treasury": 45000
+        },
+        "teamHome": {
+            "apothecaries": 0,
+            "assistantCoaches": 0,
+            "baseIconPath": "https://cdn.fumbbl.com/",
+            "cheerleaders": 0,
+            "coach": "JyrKing",
+            "dedicatedFans": 1,
+            "fanFactor": 0,
+            "logoUrl": null,
+            "playerArray": [
+                {
+                    "agility": 5,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "neutral",
+                    "playerId": "18203348",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Chaths",
+                    "playerNr": 1,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66198",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Arm Bar",
+                        "Brawler",
+                        "Decay",
+                        "Regeneration"
+                    ],
+                    "skillDisplayValuesMap": {
+                        "Arm Bar": null
+                    },
+                    "skillValuesMap": {
+                        "Arm Bar": null
+                    },
+                    "strength": 5,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 5,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "neutral",
+                    "playerId": "18203349",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Kosey",
+                    "playerNr": 2,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66198",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Brawler",
+                        "Decay",
+                        "Regeneration"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 5,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 5,
+                    "armour": 10,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 4,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "male",
+                    "playerId": "18203351",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Bastet",
+                    "playerNr": 4,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 2,
+                    "positionId": "66198",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Brawler",
+                        "Decay",
+                        "Regeneration"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 5,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 9,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 5,
+                    "playerGender": "nonbinary",
+                    "playerId": "18203352",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Amsu",
+                    "playerNr": 5,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66197",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Mighty Blow",
+                        "Block",
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                        "Mighty Blow": null
+                    },
+                    "skillValuesMap": {
+                        "Mighty Blow": null
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 9,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 5,
+                    "playerGender": "neutral",
+                    "playerId": "18203353",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Ptah",
+                    "playerNr": 6,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66197",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Block",
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "neutral",
+                    "playerId": "18203355",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Selma",
+                    "playerNr": 8,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66195",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "male",
+                    "playerId": "18203356",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Panya",
+                    "playerNr": 9,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66195",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 9,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 3,
+                    "playerGender": "male",
+                    "playerId": "18203359",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Chaths",
+                    "playerNr": 10,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 0,
+                    "positionId": "66196",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Pass",
+                        "Regeneration",
+                        "Sure Hands",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 9,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 6,
+                    "nrOfIcons": 0,
+                    "passing": 3,
+                    "playerGender": "male",
+                    "playerId": "18203358",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Djoser",
+                    "playerNr": 11,
+                    "playerStatus": "active",
+                    "playerType": "Regular",
+                    "positionIconIndex": 1,
+                    "positionId": "66196",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Pass",
+                        "Regeneration",
+                        "Sure Hands",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                    },
+                    "skillValuesMap": {
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "male",
+                    "playerId": "18372868",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Jack Coldshield",
+                    "playerNr": 17,
+                    "playerStatus": "journeyman",
+                    "playerType": "Regular",
+                    "positionIconIndex": 2,
+                    "positionId": "66195",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Loner",
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                        "Loner": null
+                    },
+                    "skillValuesMap": {
+                        "Loner": null
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                },
+                {
+                    "agility": 4,
+                    "armour": 8,
+                    "lastingInjuries": [
+                    ],
+                    "movement": 5,
+                    "nrOfIcons": 0,
+                    "passing": 6,
+                    "playerGender": "nonbinary",
+                    "playerId": "18372869",
+                    "playerKind": "rosterPlayer",
+                    "playerName": "Tristan Deepspike",
+                    "playerNr": 18,
+                    "playerStatus": "journeyman",
+                    "playerType": "Regular",
+                    "positionIconIndex": 3,
+                    "positionId": "66195",
+                    "recoveringInjury": null,
+                    "skillArray": [
+                        "Loner",
+                        "Regeneration",
+                        "Thick Skull"
+                    ],
+                    "skillDisplayValuesMap": {
+                        "Loner": null
+                    },
+                    "skillValuesMap": {
+                        "Loner": null
+                    },
+                    "strength": 3,
+                    "temporaryModifiersMap": {
+                    },
+                    "temporaryPropertiesMap": {
+                    },
+                    "temporarySkillsMap": {
+                    },
+                    "urlIconSet": null,
+                    "urlPortrait": null,
+                    "usedSkills": [
+                    ]
+                }
+            ],
+            "race": "Tomb Kings",
+            "reRolls": 2,
+            "roster": {
+                "apothecary": false,
+                "baseIconPath": "https://cdn.fumbbl.com/",
+                "keywords": [
+                ],
+                "logoUrl": "i/486301",
+                "maxBigGuys": 1,
+                "maxReRolls": 8,
+                "nameGenerator": "tombking",
+                "necromancer": false,
+                "positionArray": [
+                    {
+                        "agility": 3,
+                        "armour": 7,
+                        "cost": 0,
+                        "displayName": null,
+                        "keywords": [
+                            "Halfling",
+                            "Lineman"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 5,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65792",
+                        "positionName": "Crumbleberry",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "Cr",
+                        "skillArray": [
+                            "Dodge",
+                            "I'll Carry You",
+                            "Lethal Flight",
+                            "Loner",
+                            "Right Stuff",
+                            "Stunty",
+                            "Sure Hands"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            "Carried",
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 2,
+                        "teamWithPositionId": "65791",
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674106.gif",
+                        "urlPortrait": "i/674107"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 10,
+                        "cost": 250000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Ogre"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 4,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65791",
+                        "positionName": "Grak",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "Gr",
+                        "skillArray": [
+                            "Bone Head",
+                            "I'll Carry You",
+                            "Kick Team-Mate",
+                            "Loner",
+                            "Mighty Blow",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            "Carrier",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": "65792",
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674105.gif",
+                        "urlPortrait": "i/674104"
+                    },
+                    {
+                        "agility": 5,
+                        "armour": 10,
+                        "cost": 115000,
+                        "displayName": null,
+                        "keywords": [
+                            "Big Guy",
+                            "Blocker",
+                            "Human",
+                            "Undead"
+                        ],
+                        "movement": 4,
+                        "nameGenerator": null,
+                        "nrOfIcons": 4,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66198",
+                        "positionName": "Tomb Guardian",
+                        "quantity": 4,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "TG",
+                        "skillArray": [
+                            "Brawler",
+                            "Decay",
+                            "Regeneration"
+                        ],
+                        "skillCategoriesDouble": [
+                            "General",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/585610.png",
+                        "urlPortrait": "i/318621"
+                    },
+                    {
+                        "agility": 2,
+                        "armour": 9,
+                        "cost": 180000,
+                        "displayName": null,
+                        "keywords": [
+                        ],
+                        "movement": 7,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 0,
+                        "playerGender": "female",
+                        "playerType": "Star",
+                        "positionId": "65793",
+                        "positionName": "Gretchen Wächter",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "GW",
+                        "skillArray": [
+                            "Disturbing Presence",
+                            "Dodge",
+                            "Foul Appearance",
+                            "Incorporeal",
+                            "Jump Up",
+                            "Loner",
+                            "No Ball",
+                            "Regeneration",
+                            "Shadowing",
+                            "Sidestep"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674103.png",
+                        "urlPortrait": "i/674102"
+                    },
+                    {
+                        "agility": 3,
+                        "armour": 9,
+                        "cost": 220000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Undead",
+                            "Werewolf"
+                        ],
+                        "movement": 8,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 4,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65812",
+                        "positionName": "Wilhelm Chaney",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "WC",
+                        "skillArray": [
+                            "Catch",
+                            "Claws",
+                            "Frenzy",
+                            "Loner",
+                            "Regeneration",
+                            "Savage Mauling",
+                            "Wrestle"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 4,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/674164.png",
+                        "urlPortrait": "i/674163"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 150000,
+                        "displayName": null,
+                        "keywords": [
+                            "Dwarf",
+                            "Skeleton",
+                            "Thrower",
+                            "Undead"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 3,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65804",
+                        "positionName": "Skrull Halfheight",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "SH",
+                        "skillArray": [
+                            "Accurate",
+                            "Loner",
+                            "Nerves of Steel",
+                            "Pass",
+                            "Regeneration",
+                            "Strong Passing Game",
+                            "Sure Hands",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/674082.png",
+                        "urlPortrait": "i/674081"
+                    },
+                    {
+                        "agility": 2,
+                        "armour": 10,
+                        "cost": 300000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blocker",
+                            "Vampire"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 3,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65837",
+                        "positionName": "Count Luthor von Drakenborg",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "LvD",
+                        "skillArray": [
+                            "Block",
+                            "Hypnotic Gaze",
+                            "Loner",
+                            "Regeneration",
+                            "Sidestep",
+                            "Star of the Show"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 5,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/719294.png",
+                        "urlPortrait": "i/719293"
+                    },
+                    {
+                        "agility": 2,
+                        "armour": 6,
+                        "cost": 80000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Squirrel"
+                        ],
+                        "movement": 7,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 0,
+                        "playerGender": "neutral",
+                        "playerType": "Star",
+                        "positionId": "65814",
+                        "positionName": "Akhorne the Squirrel",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "SQ",
+                        "skillArray": [
+                            "Blind Rage",
+                            "Claws",
+                            "Dauntless",
+                            "Dodge",
+                            "Frenzy",
+                            "Jump Up",
+                            "Loner",
+                            "No Ball",
+                            "Sidestep",
+                            "Stunty",
+                            "Titchy"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 1,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/682638.png",
+                        "urlPortrait": "i/682637"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 210000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Human",
+                            "Skeleton",
+                            "Undead"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 5,
+                        "playerGender": "male",
+                        "playerType": "Star",
+                        "positionId": "65839",
+                        "positionName": "Ivan 'The Animal' Deathshroud",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "ID",
+                        "skillArray": [
+                            "Block",
+                            "Disturbing Presence",
+                            "Dwarven Scourge",
+                            "Hatred",
+                            "Juggernaut",
+                            "Loner",
+                            "Regeneration",
+                            "Strip Ball",
+                            "Tackle"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            "dwarf",
+                            null,
+                            "4",
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 4,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/719299.png",
+                        "urlPortrait": "i/719298"
+                    },
+                    {
+                        "agility": 2,
+                        "armour": 9,
+                        "cost": 230000,
+                        "displayName": null,
+                        "keywords": [
+                            "Runner",
+                            "Vampire"
+                        ],
+                        "movement": 7,
+                        "nameGenerator": null,
+                        "nrOfIcons": 1,
+                        "passing": 3,
+                        "playerGender": "female",
+                        "playerType": "Star",
+                        "positionId": "65838",
+                        "positionName": "'Captain' Karina von Riesz",
+                        "quantity": 1,
+                        "race": "Special",
+                        "replacesPosition": "",
+                        "shorthand": "KvR",
+                        "skillArray": [
+                            "Bloodlust",
+                            "Dodge",
+                            "Hypnotic Gaze",
+                            "Jump Up",
+                            "Loner",
+                            "Regeneration",
+                            "Tasty Morsel"
+                        ],
+                        "skillCategoriesDouble": [
+                        ],
+                        "skillCategoriesNormal": [
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            "2",
+                            null,
+                            null,
+                            null,
+                            "4",
+                            null,
+                            null
+                        ],
+                        "strength": 4,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/719444.png",
+                        "urlPortrait": "i/719296"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 65000,
+                        "displayName": null,
+                        "keywords": [
+                            "Human",
+                            "Skeleton",
+                            "Thrower",
+                            "Undead"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 2,
+                        "passing": 3,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66196",
+                        "positionName": "Tomb Kings Thrower",
+                        "quantity": 2,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "T",
+                        "skillArray": [
+                            "Pass",
+                            "Regeneration",
+                            "Sure Hands",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Strength",
+                            "Devious",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "General",
+                            "Passing"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/585608.png",
+                        "urlPortrait": "i/318623"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 9,
+                        "cost": 85000,
+                        "displayName": null,
+                        "keywords": [
+                            "Blitzer",
+                            "Human",
+                            "Skeleton",
+                            "Undead"
+                        ],
+                        "movement": 6,
+                        "nameGenerator": null,
+                        "nrOfIcons": 2,
+                        "passing": 5,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66197",
+                        "positionName": "Tomb Kings Blitzer",
+                        "quantity": 2,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "Z",
+                        "skillArray": [
+                            "Block",
+                            "Regeneration",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Devious",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "Strength",
+                            "General"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": true,
+                        "urlIconSet": "i/585609.png",
+                        "urlPortrait": "i/318622"
+                    },
+                    {
+                        "agility": 4,
+                        "armour": 8,
+                        "cost": 40000,
+                        "displayName": null,
+                        "keywords": [
+                            "Human",
+                            "Lineman",
+                            "Skeleton",
+                            "Undead"
+                        ],
+                        "movement": 5,
+                        "nameGenerator": null,
+                        "nrOfIcons": 8,
+                        "passing": 6,
+                        "playerGender": null,
+                        "playerType": "Regular",
+                        "positionId": "66195",
+                        "positionName": "Skeleton Lineman",
+                        "quantity": 16,
+                        "race": null,
+                        "replacesPosition": "",
+                        "shorthand": "L",
+                        "skillArray": [
+                            "Regeneration",
+                            "Thick Skull"
+                        ],
+                        "skillCategoriesDouble": [
+                            "Strength",
+                            "Devious",
+                            "Agility"
+                        ],
+                        "skillCategoriesNormal": [
+                            "General"
+                        ],
+                        "skillDisplayValues": [
+                            null,
+                            null
+                        ],
+                        "skillValues": [
+                            null,
+                            null
+                        ],
+                        "strength": 3,
+                        "teamWithPositionId": null,
+                        "thrall": false,
+                        "undead": false,
+                        "urlIconSet": "i/585607.png",
+                        "urlPortrait": "i/318624"
+                    }
+                ],
+                "raisedPositionId": "",
+                "reRollCost": 60000,
+                "riotousPositionId": null,
+                "rosterId": "1300820",
+                "rosterName": "Tomb Kings",
+                "undead": true
+            },
+            "specialRules": [
+                "SYLVANIAN_SPOTLIGHT",
+                "MASTERS_OF_UNDEATH"
+            ],
+            "teamId": "1300820",
+            "teamName": "Doom18 GraveGuards",
+            "teamValue": 975000,
+            "treasury": 75000
+        },
+        "teamState": "FULL",
+        "testing": false,
+        "throwerAction": null,
+        "throwerId": null,
+        "timeoutEnforced": false,
+        "timeoutPossible": false,
+        "turnDataAway": {
+            "apothecaries": 0,
+            "blitzUsed": false,
+            "blitzingPlayerId": null,
+            "bombUsed": false,
+            "cheeringFansBlockAssist": 0,
+            "coachBanned": false,
+            "firstTurnAfterKickoff": false,
+            "foulUsed": false,
+            "handOverUsed": false,
+            "homeData": false,
+            "inducementSet": {
+                "cardsActive": [
+                ],
+                "cardsAvailable": [
+                ],
+                "cardsDeactivated": [
+                ],
+                "inducementArray": [
+                    {
+                        "inducementType": "bribes",
+                        "uses": 0,
+                        "value": 1
+                    }
+                ],
+                "prayers": [
+                ]
+            },
+            "ktmUsed": false,
+            "leaderState": "none",
+            "passUsed": false,
+            "plagueDoctors": 0,
+            "puntUsed": false,
+            "reRollUsed": false,
+            "reRolls": 2,
+            "rerollBrilliantCoachingOneDrive": 0,
+            "rerollPumpUpTheCrowdOneDrive": 0,
+            "secureTheBallUsed": false,
+            "ttmUsed": false,
+            "turnNr": 4,
+            "turnStarted": true,
+            "wanderingApothecaries": 0
+        },
+        "turnDataHome": {
+            "apothecaries": 0,
+            "blitzUsed": true,
+            "blitzingPlayerId": "18203352",
+            "bombUsed": false,
+            "cheeringFansBlockAssist": 0,
+            "coachBanned": false,
+            "firstTurnAfterKickoff": false,
+            "foulUsed": false,
+            "handOverUsed": false,
+            "homeData": true,
+            "inducementSet": {
+                "cardsActive": [
+                ],
+                "cardsAvailable": [
+                ],
+                "cardsDeactivated": [
+                ],
+                "inducementArray": [
+                    {
+                        "inducementType": "partTimeCoach",
+                        "uses": 0,
+                        "value": 1
+                    },
+                    {
+                        "inducementType": "bribes",
+                        "uses": 0,
+                        "value": 1
+                    }
+                ],
+                "prayers": [
+                ]
+            },
+            "ktmUsed": false,
+            "leaderState": "none",
+            "passUsed": false,
+            "plagueDoctors": 0,
+            "puntUsed": false,
+            "reRollUsed": false,
+            "reRolls": 1,
+            "rerollBrilliantCoachingOneDrive": 0,
+            "rerollPumpUpTheCrowdOneDrive": 0,
+            "secureTheBallUsed": false,
+            "ttmUsed": false,
+            "turnNr": 5,
+            "turnStarted": true,
+            "wanderingApothecaries": 0
+        },
+        "turnMode": "regular",
+        "turnTime": 104435,
+        "waitingForOpponent": false
+    },
+    "netCommandId": "serverGameState"
+}

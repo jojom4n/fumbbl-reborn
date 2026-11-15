@@ -46,6 +46,8 @@ struct PlayerInfoData {
     QString stateText;       // "Standing", "Prone", "in the box (KO)", ...
     QStringList stateFlags;  // "Confused", "Rooted", "Chomped", ...
     int ma = 0, st = 0, ag = 0, pa = 0, av = 0;
+    int sppBase = 0; // the player's own SPP (first model sight)
+    int sppGain = 0; // SPP earned in-match (current - base)
 
     struct Skill {
         QString name;
@@ -119,7 +121,7 @@ private:
     QFrame *m_divider = nullptr;
 
     QLabel *m_statMa = nullptr, *m_statSt = nullptr, *m_statAg = nullptr,
-        *m_statPa = nullptr, *m_statAv = nullptr;
+        *m_statPa = nullptr, *m_statAv = nullptr, *m_statSpp = nullptr;
     QLabel *m_skillsHeader = nullptr; // "SKILLS" small caps
     SkillChipsWidget *m_skillChips = nullptr; // wrapping outlined chips
     QLabel *m_cardsLabel = nullptr;    // active inducement cards (rare)

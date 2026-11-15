@@ -45,11 +45,19 @@ struct StadiumManifest {
     // grass corners follow the stone arch of the pit.
     qreal pitRadiusX = 0;
     qreal pitRadiusY = 0;
+    // The OUTDOORS: the fill behind/around the stadium image (letterbox and
+    // zoomed-out space). Matches the stadium's own mood — a night arena gets
+    // a deep dark, a day stadium a light neutral. The stadium's edges are
+    // feathered into this color (see FieldView::paintEvent).
+    QColor surround = QColor(0x10, 0x0f, 0x16); // deep night dark (default)
 };
 // The stadium art for `name`. Null pixmap when missing.
-QPixmap stadiumImage(const QString &name = QStringLiteral("medieval_arena"));
+QPixmap stadiumImage(const QString &name = QStringLiteral("dark_arena"));
 // The stadium manifest for `name` (valid=false when missing/malformed).
-StadiumManifest stadiumManifest(const QString &name = QStringLiteral("medieval_arena"));
+StadiumManifest stadiumManifest(const QString &name = QStringLiteral("dark_arena"));
+// The touchdown celebration banner art (Qwen-Image, 3840x1920, the word
+// TOUCHDOWN is painted into the art). Null pixmap when missing.
+QPixmap touchdownBanner();
 
 // Resolved assets directory (empty string when not found).
 QString assetsDir();
@@ -101,6 +109,14 @@ QPixmap dugoutPanel();
 // field view on a white disc BETWEEN attacker and defender while the block
 // die is pending. Null pixmap when missing (vector fallback helmet).
 QPixmap blockHelmet();
+// A team INDUCEMENT badge (assets/inducements/<typeId>.png — typeId is the
+// protocol id: "bribes", "bloodweiserBabes", "prayers" …, FFB
+// Inducement.toJsonValue). 512px source on a flat backdrop, keyed to
+// transparent at load; the generic badge when the type is unknown.
+// `spent`: charges exhausted (value − uses <= 0) — the badge is drawn in
+// grayscale (the server recharging it, e.g. a per-half inducement, turns it
+// back to color; passive inducements never go spent).
+QPixmap inducementPixmap(const QString &typeId, bool spent = false);
 // True when the face set is available.
 bool isAvailable();
 
