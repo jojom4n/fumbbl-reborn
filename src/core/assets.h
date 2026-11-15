@@ -116,6 +116,11 @@ QPixmap blockHelmet();
 // the field view falls back to the flat fill.
 QPixmap puddleDirtTexture();
 QPixmap snowMoundTexture();
+// The APP ICON (assets/app_icon.png — the 1024 master, transparent).
+// Set as the runtime window icon in main.cpp (dev builds / AppImage / zip
+// all show it regardless of the platform install; the .desktop/.ico files
+// cover the installed case). Null when missing.
+QPixmap appIcon();
 // A team INDUCEMENT badge (assets/inducements/<typeId>.png — typeId is the
 // protocol id: "bribes", "bloodweiserBabes", "prayers" …, FFB
 // Inducement.toJsonValue). 512px source on a flat backdrop, keyed to

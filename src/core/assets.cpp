@@ -331,6 +331,11 @@ QPixmap snowMoundTexture()
     return loadPixmap(QStringLiteral("field/snow_mound.png"));
 }
 
+QPixmap appIcon()
+{
+    return loadPixmap(QStringLiteral("app_icon.png"));
+}
+
 QPixmap inducementPixmap(const QString &typeId, bool spent)
 {
     QPixmap pm = loadPixmap(QStringLiteral("inducements/%1.png").arg(typeId));

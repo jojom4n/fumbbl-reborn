@@ -3,11 +3,13 @@
 // =============================================================================
 #include <QApplication>
 #include <QFile>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPalette>
 #include <QTimer>
 
+#include "core/assets.h"
 #include "core/gamemodel.h"
 #include "ui/mainwindow.h"
 
@@ -58,6 +60,13 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QStringLiteral(FUMBBL_VERSION));
 
     applyLightTheme(app);
+
+    // Runtime window icon from the bundled assets: dev builds, AppImage
+    // and the zip all show it regardless of the platform install (the
+    // .desktop / .ico files cover the installed case).
+    const QPixmap appIcon = assets::appIcon();
+    if (!appIcon.isNull())
+        QApplication::setWindowIcon(QIcon(appIcon));
 
     // gateLogin=true: the client login is the gate to the full UI (the
     // modal LoginDialog over the stadium; nothing is clickable — menus
