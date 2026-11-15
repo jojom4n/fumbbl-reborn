@@ -136,6 +136,8 @@ add_executable(fumbbl-qt
     src/core/assets.cpp
     src/core/matchlist.h
     src/core/matchlist.cpp
+    src/core/teamfetch.h
+    src/core/teamfetch.cpp
 
     # UI
     src/ui/mainwindow.h
@@ -279,6 +281,7 @@ add_executable(hud_preview
     src/core/reportparser.cpp
     src/core/assets.cpp
     src/core/matchlist.cpp
+    src/core/teamfetch.cpp
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/logindialog.cpp
@@ -321,6 +324,7 @@ add_executable(move_numbers_preview
     src/core/reportparser.cpp
     src/core/assets.cpp
     src/core/matchlist.cpp
+    src/core/teamfetch.cpp
     src/ui/mainwindow.cpp
     src/ui/spectatedialog.cpp
     src/ui/logindialog.cpp

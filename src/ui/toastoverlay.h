@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QColor>
+#include <QLabel>
+#include <QPair>
+#include <QVector>
 #include <QWidget>
 
 // Live toast overlay (R0): center ribbons for game milestones (CENTER
@@ -25,7 +28,13 @@ public:
     int edgeCount() const { return m_edgeCount; }
 
 private:
-    void makeToast(const QString &text, const QColor &bg, int x, int y,
-                   int visibleMs, bool edge);
+    // Creates and shows one toast; returns the label (the caller stacks
+    // edge pills below it — its height depends on the word-wrap decision).
+    QLabel *makeToast(const QString &text, const QColor &bg, int x,
+                      int y, int visibleMs, bool edge);
     int m_edgeCount = 0;
+    // Live edge pills in placement order (label + height) — a new pill
+    // stacks CUMULATIVELY below the ones still visible (36 + sum(h+6)),
+    // so a fading pill's slot is reused and nothing ever overlaps.
+    QVector<QPair<QLabel *, int>> m_edgeStack;
 };

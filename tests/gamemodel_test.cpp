@@ -50,6 +50,7 @@ private slots:
     void positionNames();
     void resetClearsState();
     void sppInducementsAndCarrier();
+    void sppJoinBaselineAndBrawlinBrutes();
 };
 
 namespace {
@@ -907,24 +908,47 @@ void GameModelTest::sppInducementsAndCarrier()
         return c;
     };
 
-    // --- SPP (playerResultSetCurrentSpps, key = playerId) ------------------
+    // --- SPP (counters + the rare absolute playerResultSetCurrentSpps) ------
+    // The rare absolute set (box path): the server declares a total — it
+    // folds into `base` (the counters explain the earned part).
     changes.append(change(QStringLiteral("playerResultSetCurrentSpps"),
                           QStringLiteral("18109690"), QJsonValue(2)));
     model.applyModelChanges(changes);
-    QCOMPARE(model.sppBase(QStringLiteral("18109690")), 2); // first sight = own
+    QCOMPARE(model.sppBase(QStringLiteral("18109690")), 2);
     QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 2);
 
-    // An in-match gain moves `current`; base stays the player's own SPP.
+    // In-match gains travel as the COUNTERS (bb2025: touchdown x3,
+    // completion x1, interception x2, award x4, the rest x1) and DERIVE
+    // the current value; base (brought-in) is untouched.
     changes = QJsonArray();
-    changes.append(change(QStringLiteral("playerResultSetCurrentSpps"),
-                          QStringLiteral("18109690"), QJsonValue(5)));
+    changes.append(change(QStringLiteral("playerResultSetTouchdowns"),
+                          QStringLiteral("18109690"), QJsonValue(1)));
     model.applyModelChanges(changes);
     QCOMPARE(model.sppBase(QStringLiteral("18109690")), 2);
+    QCOMPARE(model.sppEarned(QStringLiteral("18109690")), 3);
     QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 5);
+
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("playerResultSetCompletions"),
+                          QStringLiteral("18109690"), QJsonValue(2)));
+    changes.append(change(QStringLiteral("playerResultSetInterceptions"),
+                          QStringLiteral("18109690"), QJsonValue(1)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.sppEarned(QStringLiteral("18109690")), 7); // 3 + 2 + 2
+    QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 9);
+
+    // A later absolute set re-baselines: base = total - earned.
+    changes = QJsonArray();
+    changes.append(change(QStringLiteral("playerResultSetCurrentSpps"),
+                          QStringLiteral("18109690"), QJsonValue(12)));
+    model.applyModelChanges(changes);
+    QCOMPARE(model.sppBase(QStringLiteral("18109690")), 5); // 12 - 7
+    QCOMPARE(model.sppCurrent(QStringLiteral("18109690")), 12);
 
     // Unknown player: zeros.
     QCOMPARE(model.sppBase(QStringLiteral("nope")), 0);
     QCOMPARE(model.sppCurrent(QStringLiteral("nope")), 0);
+    QCOMPARE(model.sppEarned(QStringLiteral("nope")), 0);
 
     // --- Carrier (standing player on the ball square) -----------------------
     QJsonArray coords;
@@ -1000,6 +1024,74 @@ void GameModelTest::sppInducementsAndCarrier()
     model.applyModelChanges(changes);
     QCOMPARE(model.prayersAway(),
              QStringList() << QStringLiteral("Fouling Frenzy"));
+}
+
+// SPP AT JOIN: the game state carries per-player currentSpps (the SPP the
+// player brought in, from their record) + the in-match counters so far
+// (gameResult.teamResult*.playerResults — verified on the live capture).
+// A mid-game join must start from those values; only gains AFTER the join
+// move the current value. BRAWLIN BRUTES flips the TD/casualty values.
+void GameModelTest::sppJoinBaselineAndBrawlinBrutes()
+{
+    GameModel model;
+    QVERIFY(model.initialize(loadLiveFixtureGame()));
+
+    // Brought-in SPP from the live capture (home 18234935 = 4, away
+    // 18377963 = 10), no counters yet in the capture.
+    QCOMPARE(model.sppBase(QStringLiteral("18234935")), 4);
+    QCOMPARE(model.sppEarned(QStringLiteral("18234935")), 0);
+    QCOMPARE(model.sppCurrent(QStringLiteral("18234935")), 4);
+    QCOMPARE(model.sppCurrent(QStringLiteral("18377963")), 10);
+    // Every roster player has a baseline entry (even 0-SPP ones).
+    QCOMPARE(model.sppTable().size(), 26); // 13 + 13 in the capture
+    QVERIFY(!model.brawlinBrutesHome());
+    QVERIFY(!model.brawlinBrutesAway());
+
+    // In-match gains (the counters): touchdown x3, award x4.
+    auto change = [](const QString &id, const QString &key, const QJsonValue &value) {
+        QJsonObject c;
+        c.insert(QStringLiteral("modelChangeId"), id);
+        c.insert(QStringLiteral("modelChangeKey"), key);
+        c.insert(QStringLiteral("modelChangeValue"), value);
+        return c;
+    };
+    QJsonArray ch;
+    ch.append(change(QStringLiteral("playerResultSetTouchdowns"),
+                     QStringLiteral("18234935"), QJsonValue(1)));
+    model.applyModelChanges(ch);
+    QCOMPARE(model.sppBase(QStringLiteral("18234935")), 4); // brought-in, stable
+    QCOMPARE(model.sppEarned(QStringLiteral("18234935")), 3);
+    QCOMPARE(model.sppCurrent(QStringLiteral("18234935")), 7);
+
+    ch = QJsonArray();
+    ch.append(change(QStringLiteral("playerResultSetPlayerAwards"),
+                     QStringLiteral("18234935"), QJsonValue(1)));
+    model.applyModelChanges(ch);
+    QCOMPARE(model.sppEarned(QStringLiteral("18234935")), 7); // +4
+    QCOMPARE(model.sppCurrent(QStringLiteral("18234935")), 11);
+
+    // BRAWLIN BRUTES: touchdown SPP is 2 (not 3).
+    QJsonObject game = loadLiveFixtureGame();
+    QJsonArray rules;
+    rules << QStringLiteral("BRAWLIN_BRUTES");
+    QJsonObject teamHome = game.value(QStringLiteral("teamHome")).toObject();
+    teamHome.insert(QStringLiteral("specialRules"), rules);
+    game.insert(QStringLiteral("teamHome"), teamHome);
+    GameModel brutes;
+    QVERIFY(brutes.initialize(game));
+    QVERIFY(brutes.brawlinBrutesHome());
+    QVERIFY(!brutes.brawlinBrutesAway());
+    QJsonArray ch2;
+    ch2.append(change(QStringLiteral("playerResultSetTouchdowns"),
+                      QStringLiteral("18234935"), QJsonValue(1)));
+    brutes.applyModelChanges(ch2);
+    QCOMPARE(brutes.sppEarned(QStringLiteral("18234935")), 2);
+    // An AWAY player still scores 3 (the rule is per team).
+    QJsonArray ch3;
+    ch3.append(change(QStringLiteral("playerResultSetTouchdowns"),
+                      QStringLiteral("18377963"), QJsonValue(1)));
+    brutes.applyModelChanges(ch3);
+    QCOMPARE(brutes.sppEarned(QStringLiteral("18377963")), 3);
 }
 
 QTEST_MAIN(GameModelTest)

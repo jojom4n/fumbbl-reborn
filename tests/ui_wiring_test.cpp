@@ -190,6 +190,11 @@ private slots:
     void rainFollowsPan(); // the rain is anchored to the scene (world space)
     void splashesOnlyOnField(); // drops off the pitch leave no ripples
     void weatherIntensityVaries(); // +/-15 per cycle, clamped to the band
+    void joinMidMatchNoFalseTd(); // join baseline: no phantom TD / FULL TIME
+    void toastFitsLongText(); // word-wrap in stage width + cumulative stack
+    void playerCardShowsPreMatchSpp(); // fumbbl.com base + live in-match gain
+    void sppGainToastsInMatch(); // "+x SPP — Name" on the in-match counters
+    void blitzTargetHasNoWhiteGlow(); // red-only glow while a blitz is active
     void actionLogNameHoverOpensCard(); // log-name hover opens the player card
     void movementAnimationGlidesThroughGrid(); // per-square movement glide
     void dugoutHoverSurvivesModelSync(); // UAF regression: hover + model sync
@@ -1726,6 +1731,7 @@ void UiWiringTest::toastMilestonesAndReportEvents()
     // hidden parent every toast label rendered into nothing (user-observed:
     // no toast ever appeared in a live match).
     QVERIFY(!toasts->isHidden());
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
     w.onGameState(fixtureGame());
     QVERIFY(w.model()->isInitialized());
     // The overlay is transparent to the mouse (never blocks field input).
@@ -1992,17 +1998,19 @@ void UiWiringTest::reportCardShowsAtFullTime()
     MainWindow w;
     w.show();
     w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
     w.onGameState(fixtureGame());
     QVERIFY2(w.findChild<ReportCardDialog *>() == nullptr, "card before full time");
 
-    // Give a home player SPP (first sight = base 2, then +2 in-match).
+    // Give a home player SPP: brought-in 2 (the rare absolute set), then
+    // +2 IN-MATCH via the counters (2 completions x1 — how gains travel).
     QJsonArray ch;
     ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
                          QStringLiteral("18109690"), QJsonValue(2)));
     w.onModelSync(ch, QJsonArray());
     ch = QJsonArray();
-    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
-                         QStringLiteral("18109690"), QJsonValue(4)));
+    ch.append(makeChange(QStringLiteral("playerResultSetCompletions"),
+                         QStringLiteral("18109690"), QJsonValue(2)));
     w.onModelSync(ch, QJsonArray());
 
     QJsonArray ch2;
@@ -2034,6 +2042,33 @@ void UiWiringTest::reportCardShowsAtFullTime()
             if (t->item(r, 3) && t->item(r, 3)->text().contains(QStringLiteral("(+2)")))
                 sawSpp = true;
     QVERIFY2(sawSpp, "SPP gain missing from the roster tables");
+
+    // LIVE SPP: a post-match award (playerResultSetCurrentSpps arrives
+    // AFTER endGame, in the end-game steps) updates the cell in place
+    // instead of the card staying stale.
+    {
+        QTableWidget *sppTable = nullptr;
+        int sppRow = -1;
+        for (QTableWidget *t : tables)
+            for (int r = 0; r < t->rowCount(); ++r)
+                if (t->item(r, 3) &&
+                    t->item(r, 3)->text().contains(QStringLiteral("(+2)"))) {
+                    sppTable = t;
+                    sppRow = r;
+                    break;
+                }
+        QVERIFY2(sppTable && sppRow >= 0, "the award row exists");
+        const QString before = sppTable->item(sppRow, 3)->text();
+        QJsonArray ch3;
+        ch3.append(makeChange(QStringLiteral("playerResultSetCompletions"),
+                              QStringLiteral("18109690"), QJsonValue(4))); // +2 more
+        w.onModelSync(ch3, QJsonArray());
+        const QString after = sppTable->item(sppRow, 3)->text();
+        QVERIFY2(after != before && after.contains(QStringLiteral("(+4)")),
+                 qPrintable(
+                     QStringLiteral("SPP cell updates in place (%1 -> %2)")
+                         .arg(before, after)));
+    }
 
     card->close();
     // A second endGame batch: no second card (m_toastTurnMode already
@@ -3560,6 +3595,274 @@ void UiWiringTest::weatherIntensityVaries()
     QCOMPARE(field.currentIntensityForTest(), 85); // strong base
     field.pumpWeatherForTest(120001.0);
     QCOMPARE(field.currentIntensityForTest(), 100); // 85+15, clamped at 100
+}
+
+// JOIN BASELINE: a match joined MID-GAME already has a score / half /
+// carrier / turnMode — the milestone diff must start from the JOINED state,
+// not from zeros (the user saw a TOUCHDOWN banner on connect of a match
+// with no TD in view, and a phantom FULL TIME on a join of an ended one).
+void UiWiringTest::joinMidMatchNoFalseTd()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+
+    // Case 1 — a live match already 2:1, second half: one harmless sync
+    // (the acting player "moves" to its own square) must fire nothing.
+    QJsonObject game = fixtureGame();
+    QJsonObject result;
+    QJsonObject hr, ar;
+    hr.insert(QStringLiteral("score"), 2);
+    ar.insert(QStringLiteral("score"), 1);
+    result.insert(QStringLiteral("teamResultHome"), hr);
+    result.insert(QStringLiteral("teamResultAway"), ar);
+    game.insert(QStringLiteral("gameResult"), result);
+    game.insert(QStringLiteral("half"), 2);
+    w.onGameState(game);
+    QCOMPARE(w.model()->scoreHome(), 2);
+    QCOMPARE(w.model()->scoreAway(), 1);
+    QCOMPARE(w.model()->half(), 2);
+
+    QJsonArray ch;
+    const FFBPlayer *actor = w.model()->findPlayerById(
+        QStringLiteral("18109690")); // the fixture's acting player
+    QVERIFY(actor && actor->hasCoords);
+    QJsonObject coords;
+    coords.insert(QStringLiteral("x"), actor->fieldX);
+    coords.insert(QStringLiteral("y"), actor->fieldY);
+    ch.append(makeChange(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                         actor->playerId, QJsonValue(coords)));
+    w.onModelSync(ch, QJsonArray());
+    // No TD banner celebration, no phantom 2ND HALF, no report card.
+    QVERIFY(!w.tdBanner() || !w.tdBanner()->celebrating());
+    QVERIFY(!labelContains(w.toastOverlay(), QStringLiteral("2ND HALF")));
+    QVERIFY(w.findChild<ReportCardDialog *>() == nullptr);
+
+    // Case 2 — a join of an ALREADY-ENDED match (turnMode endGame in the
+    // game state): no FULL TIME ribbon, no report card.
+    MainWindow w2;
+    w2.show();
+    w2.resize(1280, 720);
+    w2.setPreMatchFetchForTest(false);
+    QJsonObject game2 = fixtureGame();
+    QJsonObject tm;
+    tm.insert(QStringLiteral("name"), QStringLiteral("endGame"));
+    game2.insert(QStringLiteral("turnMode"), tm);
+    w2.onGameState(game2);
+    QJsonArray ch2;
+    QJsonObject coords2;
+    coords2.insert(QStringLiteral("x"), actor->fieldX);
+    coords2.insert(QStringLiteral("y"), actor->fieldY);
+    ch2.append(makeChange(QStringLiteral("fieldModelSetPlayerCoordinate"),
+                           actor->playerId, QJsonValue(coords2)));
+    w2.onModelSync(ch2, QJsonArray());
+    QVERIFY(!labelContains(w2.toastOverlay(), QStringLiteral("FULL TIME")));
+    QVERIFY(w2.findChild<ReportCardDialog *>() == nullptr);
+}
+
+// TOAST SIZE: text wider than the stage word-wraps (full text, never
+// elided) and edge pills stack CUMULATIVELY below the live ones.
+void UiWiringTest::toastFitsLongText()
+{
+    MainWindow w;
+    w.show();
+    w.resize(480, 420);
+    QApplication::processEvents();
+    ToastOverlay *toasts = w.toastOverlay();
+    QVERIFY(toasts);
+    QVERIFY2(toasts->width() > 200,
+             qPrintable(QStringLiteral("stage is narrow for the test (%1px)")
+                            .arg(toasts->width())));
+
+    const QString longText =
+        QStringLiteral("RAISE THE DEAD — a very long coach name adds a Lineman");
+    toasts->showCenter(longText);
+    QApplication::processEvents();
+    QLabel *center = nullptr;
+    for (QLabel *l : toasts->findChildren<QLabel *>())
+        if (l->text() == longText)
+            center = l;
+    QVERIFY2(center, "the center toast exists");
+    QVERIFY2(center->width() <= w.width() - 16,
+             qPrintable(QStringLiteral("center toast overflows the stage (%1px)")
+                            .arg(center->width())));
+    QVERIFY2(center->wordWrap(), "long text wraps instead of clipping");
+
+    // Two long edge pills: the second stacks below the first. (The texts
+    // are long enough to word-wrap at ANY plausible font metrics — the
+    // stage is only ~480px wide.)
+    const QString e1 =
+        QStringLiteral("+1 SPP — an unbelievably long player name from the "
+                       "fixture, long enough to wrap on a narrow stage");
+    const QString e2 =
+        QStringLiteral("+2 SPP — another unbelievably long player name here, "
+                       "long enough to wrap on a narrow stage");
+    toasts->showEdge(e1, QColor(217, 165, 20));
+    toasts->showEdge(e2, QColor(217, 165, 20));
+    QApplication::processEvents();
+    QLabel *first = nullptr, *second = nullptr;
+    for (QLabel *l : toasts->findChildren<QLabel *>()) {
+        if (l->text() == e1)
+            first = l;
+        if (l->text() == e2)
+            second = l;
+    }
+    QVERIFY(first && second);
+    QVERIFY2(first->wordWrap(), "long edge pill wraps");
+    QVERIFY2(second->y() >= first->y() + first->height(),
+             qPrintable(QStringLiteral("edge pills overlap (y1=%1 h1=%2 y2=%3)")
+                            .arg(first->y())
+                            .arg(first->height())
+                            .arg(second->y())));
+}
+
+// PLAYER CARD SPP: the base is the PRE-MATCH value (fumbbl.com fetch; the
+// test pins it — the live fetch is switched off) and the in-match gain is
+// tracked live. Unknown (no fetch, no stream) = "—", never a fake zero.
+void UiWiringTest::playerCardShowsPreMatchSpp()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1200, 750);
+    QApplication::processEvents();
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+    w.onGameState(fixtureGame());
+    PlayerInfoWidget *info = w.findChild<PlayerInfoWidget *>();
+    QVERIFY(info);
+    const FFBPlayer *p = w.model()->findPlayerById(QStringLiteral("18109690"));
+    QVERIFY(p);
+
+    // 1. Unknown (no pre-match value yet, no stream value): a dash.
+    w.showPlayerCardById(p->playerId);
+    QApplication::processEvents();
+    QLabel *sppCell = nullptr;
+    for (QLabel *l : info->findChildren<QLabel *>())
+        if (l->text().contains(QStringLiteral("SPP")))
+            sppCell = l;
+    QVERIFY2(sppCell, "the SPP cell exists");
+    QVERIFY2(sppCell->text().contains(QChar(0x2014)),
+             "unknown SPP shows a dash, not a fake zero");
+
+    // 2. Pre-match fetch settles (pinned in the test): base = 5.
+    w.setPreMatchSppForTest({{p->playerId, 5}});
+    QApplication::processEvents();
+    QVERIFY2(sppCell->text().contains(QLatin1String(">5<")),
+             qPrintable(QStringLiteral("SPP cell shows the pre-match base: %1")
+                            .arg(sppCell->text())));
+
+    // 3. In-match gain (the server declares 7 = brought-in 5 + 2):
+    // the card keeps the official convention "brought-in + gain" (5 +2),
+    // and the FIRST gain above the pre-match base toasts "+2 SPP".
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetCurrentSpps"),
+                         p->playerId, QJsonValue(7)));
+    w.onModelSync(ch, QJsonArray());
+    QApplication::processEvents();
+    QVERIFY2(sppCell->text().contains(QLatin1String(">5<"))
+               && sppCell->text().contains(QLatin1String("+2")),
+             qPrintable(QStringLiteral("SPP cell keeps base 5 + gain 2: %1")
+                            .arg(sppCell->text())));
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+2 SPP —")),
+             "the in-match gain above the pre-match base toasts");
+}
+
+// SPP GAIN TOASTS (the user ask): in-match SPP gains travel as COUNTER
+// changes (playerResultSetTouchdowns / Completions / ... — the ffb-server
+// never sends a live SPP total, only the rare box-path set). The join
+// state carries the per-player baseline (gameResult.*.playerResults);
+// every gain after it fires the "+x SPP — Name" pill (bb2025 values:
+// touchdown x3, completion/catch-add x1, ...).
+void UiWiringTest::sppGainToastsInMatch()
+{
+    MainWindow w;
+    w.show();
+    w.resize(1280, 720);
+    w.setPreMatchFetchForTest(false); // offline: no live fumbbl.com fetch
+
+    // A join state with the per-player SPP baseline (every real live state
+    // carries it — the capture's 0:0 first-half snapshot already shows
+    // players with brought-in SPP).
+    QJsonObject game = fixtureGame();
+    QJsonObject homeResult, awayResult;
+    QJsonArray homeResults;
+    QJsonObject r0;
+    r0.insert(QStringLiteral("playerId"), QStringLiteral("18109690"));
+    r0.insert(QStringLiteral("currentSpps"), 2); // brought in
+    homeResults.append(r0);
+    homeResult.insert(QStringLiteral("playerResults"), homeResults);
+    awayResult.insert(QStringLiteral("playerResults"), QJsonArray());
+    QJsonObject result;
+    result.insert(QStringLiteral("teamResultHome"), homeResult);
+    result.insert(QStringLiteral("teamResultAway"), awayResult);
+    game.insert(QStringLiteral("gameResult"), result);
+    w.onGameState(game);
+    QCOMPARE(w.model()->sppBase(QStringLiteral("18109690")), 2);
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 2);
+
+    // A TOUCHDOWN (+3 SPP in bb2025): the gain toasts.
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("playerResultSetTouchdowns"),
+                         QStringLiteral("18109690"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 5);
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+3 SPP —")),
+             "a touchdown gain toasts");
+
+    // A bonus CATCH (+1 SPP): it toasts too.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("playerResultSetCatchesWithAdditionalSpp"),
+                         QStringLiteral("18109690"), QJsonValue(1)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(w.model()->sppCurrent(QStringLiteral("18109690")), 6);
+    QVERIFY2(labelContains(w.toastOverlay(), QStringLiteral("+1 SPP —")),
+             "a catch bonus gain toasts");
+}
+
+// BLITZ TARGET: while a blitz is active the target keeps ONLY the red
+// block glow — the white "pass receiver" glow is suppressed (the user saw
+// a white glow with/instead of the red). Without a blitz the white glow
+// works as before.
+void UiWiringTest::blitzTargetHasNoWhiteGlow()
+{
+    MainWindow w;
+    w.show();
+    GameModel *model = w.model();
+    FieldView *field = w.findChild<FieldView *>();
+    QVERIFY(model && field);
+    w.onGameState(fixtureGame());
+
+    const QString actor = QStringLiteral("18109690"); // the fixture's acting player
+    QString target;
+    for (const FieldToken &t : model->fieldTokens()) {
+        if (t.playerId == actor)
+            continue;
+        if (model->findPlayerById(t.playerId)) {
+            target = t.playerId;
+            break;
+        }
+    }
+    QVERIFY(!target.isEmpty());
+
+    // CONTROL (no blitz): a SELECTED target glows white.
+    QJsonObject sel;
+    sel.insert(QStringLiteral("playerId"), target);
+    sel.insert(QStringLiteral("targetSelectionStatus"), QStringLiteral("SELECTED"));
+    QJsonArray ch;
+    ch.append(makeChange(QStringLiteral("fieldModelSetTargetSelectionState"),
+                         QString(), QJsonValue(sel)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(field->passTarget(), target);
+
+    // The BLITZ: the same target is now the blitzer's — white glow off.
+    ch = QJsonArray();
+    ch.append(makeChange(QStringLiteral("turnDataSetBlitzUsed"), QString(),
+                         QJsonValue(true)));
+    ch.append(makeChange(QStringLiteral("fieldModelSetTargetSelectionState"),
+                         QString(), QJsonValue(sel)));
+    w.onModelSync(ch, QJsonArray());
+    QCOMPARE(field->passTarget(), QString());
+    QCOMPARE(model->blitzingPlayerId(), actor);
 }
 
 // Explicit main for the GUI-subsystem test binary (no console attached):
