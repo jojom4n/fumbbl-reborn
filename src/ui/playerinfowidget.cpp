@@ -255,7 +255,6 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
     m_statAg = makeStat(QStringLiteral("AG"), 0, stats, 2);
     m_statPa = makeStat(QStringLiteral("PA"), 0, stats, 3);
     m_statAv = makeStat(QStringLiteral("AV"), 0, stats, 4);
-    m_statSpp = makeStat(QStringLiteral("SPP"), 0, stats, 5);
     v->addLayout(stats);
 
     // Skills header + chips
@@ -267,6 +266,13 @@ PlayerInfoWidget::PlayerInfoWidget(QWidget *parent)
 
     m_skillChips = new SkillChipsWidget(m_content);
     v->addWidget(m_skillChips); // stretched: chips wrap on the card width
+
+    // SPP: shown BELOW the skills (not on the stats row) — same two-line
+    // "label / value" style; the value (+gain) is filled in in showPlayer.
+    m_statSpp = new QLabel(m_content);
+    m_statSpp->setAlignment(Qt::AlignCenter);
+    m_statSpp->setTextFormat(Qt::RichText);
+    v->addWidget(m_statSpp);
 
     // Active inducement cards (rare) — a compact centered line.
     m_cardsLabel = new QLabel(m_content);

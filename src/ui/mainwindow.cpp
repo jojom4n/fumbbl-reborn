@@ -13,6 +13,7 @@
 #include "core/credentialstore.h"
 #include "core/fumbblws.h"
 #include "core/gamemodel.h"
+#include "core/matcharchive.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
 #include "core/teamfetch.h"
@@ -56,6 +57,11 @@
 #include <QSettings>
 #include <QStatusBar>
 #include <QTimer>
+#include <QComboBox>
+#include <QFileDialog>
+#include <QHBoxLayout>
+#include <QSlider>
+#include <QToolButton>
 
 
 namespace {
@@ -160,6 +166,8 @@ MainWindow::MainWindow(QWidget *parent, bool gateLogin)
     connect(m_session, &SpectatorSession::protocolReceived, this,
             [this](const QString &id, const QJsonObject &)
             { this->appendProtocol(QStringLiteral("<< recv "), id); });
+    connect(m_session, &SpectatorSession::protocolReceived, this,
+            &MainWindow::onRawProtocol);
 
     // Field click-to-select (empty id = clicked an empty square = deselect).
     connect(m_field, &FieldView::playerClicked, this, &MainWindow::onFieldPlayerClicked);
@@ -210,6 +218,21 @@ void MainWindow::createActions()
     m_disconnectAction->setEnabled(false);
     connect(m_disconnectAction, &QAction::triggered, this, &MainWindow::onLogout);
 
+    m_replayAction = new QAction(tr("&Watch Replay\u2026"), this);
+    m_replayAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+    m_replayAction->setStatusTip(tr("Watch a previously archived match"));
+    connect(m_replayAction, &QAction::triggered, this, [this] {
+        const QString dir = QFileDialog::getExistingDirectory(
+            this, tr("Select an archived match"), MatchArchive::root());
+        if (!dir.isEmpty())
+            startLocalReplay(dir);
+    });
+
+    m_replayStopAction = new QAction(tr("Stop &Replay"), this);
+    m_replayStopAction->setStatusTip(tr("Stop the current replay"));
+    m_replayStopAction->setEnabled(false);
+    connect(m_replayStopAction, &QAction::triggered, this, &MainWindow::stopReplay);
+
     m_quitAction = new QAction(tr("&Quit"), this);
     m_quitAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Q")));
     connect(m_quitAction, &QAction::triggered, qApp, &QApplication::quit);
@@ -225,6 +248,8 @@ void MainWindow::createMenus()
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
     fileMenu->addAction(m_connectAction);
     fileMenu->addAction(m_disconnectAction);
+    fileMenu->addAction(m_replayAction);
+    fileMenu->addAction(m_replayStopAction);
     fileMenu->addSeparator();
     fileMenu->addAction(m_quitAction);
 
@@ -434,6 +459,9 @@ void MainWindow::createPanels()
     // The chat starts COLLAPSED (the mockup shows the pill).
     m_chat->setCollapsed(true);
 
+    // Local replay transport bar (R1a): hidden until a replay is started.
+    buildReplayBar();
+
     m_protocolLog = new QPlainTextEdit(m_stage);
     m_protocolLog->setObjectName(QStringLiteral("protocol"));
     m_protocolLog->setReadOnly(true);
@@ -586,6 +614,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             m_toasts->setGeometry(m_stage->rect());
         if (m_tdBanner)
             m_tdBanner->setGeometry(m_stage->rect());
+        if (m_replayBar && m_replayBar->isVisible())
+            m_replayBar->setGeometry(0, m_stage->height() - m_replayBar->height(),
+                                     m_stage->width(), m_replayBar->height());
         if (m_waitBoard && m_waitBoard->isVisible())
             m_waitBoard->move((m_stage->width() - m_waitBoard->width()) / 2,
                               (m_stage->height() - m_waitBoard->height()) / 2);
@@ -699,10 +730,266 @@ void MainWindow::appendProtocol(const QString &direction, const QString &text)
 // -----------------------------------------------------------------------------
 // Core -> UI wiring (spectator)
 // -----------------------------------------------------------------------------
+// R1a auto-archive: the RAW frames (the extracted signals lose commandNr /
+// gameTime / turnTime). The login-verification match is never archived; a new
+// gameId closes the previous match (with its current score) and opens a fresh
+// dir. IO errors never block the live UI (one status-bar warning, then the
+// match is simply not archived).
+void MainWindow::onRawProtocol(const QString &netCommandId, const QJsonObject &payload)
+{
+    if (netCommandId == QLatin1String("serverGameState")) {
+        if (m_loginSuppressMatchUi)
+            return; // the login-verification match is never archived
+        const qint64 newId = payload.value("game").toObject()
+                                 .value("gameId").toVariant().toLongLong();
+        if (m_archive.archiving() && m_archive.gameId() != newId)
+            m_archive.endMatch(m_model ? m_model->scoreHome() : 0,
+                               m_model ? m_model->scoreAway() : 0);
+        if (!m_archive.begin(payload) && newId > 0 && !m_archiveWarned) {
+            m_archiveWarned = true;
+            statusBar()->showMessage(
+                tr("Match archiving is unavailable for this match"), 5000);
+        }
+    } else if (netCommandId == QLatin1String("serverModelSync")) {
+        m_archive.appendModelSync(payload);
+    }
+}
+
+void MainWindow::feedRawFrameForTest(const QString &netCommandId,
+                                     const QJsonObject &payload)
+{
+    onRawProtocol(netCommandId, payload);
+}
+
+void MainWindow::setArchiveRootForTest(const QString &root)
+{
+    MatchArchive::setRootForTest(root);
+}
+
+// -----------------------------------------------------------------------------
+// Local replay (R1a) — watch an archived match. The transport plays back
+// stream.jsonl frame by frame; each frameReady goes through the SAME full
+// pipeline as a live frame (applyModelPipeline), so toasts/glows/TD banners
+// play as if live. m_replayActive gates the live session's signals so they
+// don't fight the playback.
+// -----------------------------------------------------------------------------
+void MainWindow::buildReplayBar()
+{
+    m_replayBar = new QWidget(m_stage);
+    m_replayBar->setObjectName(QStringLiteral("replayBar"));
+    m_replayBar->setFixedHeight(44);
+    m_replayBar->setStyleSheet(QStringLiteral("background: rgba(10, 13, 18, 235);"));
+    m_replayBar->setVisible(false);
+    auto *h = new QHBoxLayout(m_replayBar);
+    h->setContentsMargins(10, 4, 10, 4);
+    h->setSpacing(8);
+
+    m_replayPlayPause = new QToolButton(m_replayBar);
+    m_replayPlayPause->setObjectName(QStringLiteral("replayPlayPause"));
+    m_replayPlayPause->setText(QStringLiteral("\u25B6")); // ▶
+    m_replayPlayPause->setToolTip(tr("Play / pause the replay"));
+    h->addWidget(m_replayPlayPause);
+
+    m_replaySpeed = new QComboBox(m_replayBar);
+    m_replaySpeed->setObjectName(QStringLiteral("replaySpeed"));
+    for (const QString &s : {QStringLiteral("0.25x"), QStringLiteral("0.5x"),
+                             QStringLiteral("1x"), QStringLiteral("2x"),
+                             QStringLiteral("4x"), QStringLiteral("8x"),
+                             QStringLiteral("16x")})
+        m_replaySpeed->addItem(s);
+    m_replaySpeed->setCurrentIndex(2); // 1x
+    m_replaySpeed->setToolTip(tr("Replay speed"));
+    h->addWidget(m_replaySpeed);
+
+    m_replayScrub = new QSlider(Qt::Horizontal, m_replayBar);
+    m_replayScrub->setObjectName(QStringLiteral("replayScrub"));
+    m_replayScrub->setRange(0, 0);
+    h->addWidget(m_replayScrub, 1);
+
+    m_replayTurnJump = new QComboBox(m_replayBar);
+    m_replayTurnJump->setObjectName(QStringLiteral("replayTurnJump"));
+    m_replayTurnJump->addItem(QStringLiteral("Jump to turn\u2026"));
+    m_replayTurnJump->setEnabled(false);
+    m_replayTurnJump->setToolTip(tr("Jump straight to a turn"));
+    h->addWidget(m_replayTurnJump);
+
+    m_replayStatus = new QLabel(m_replayBar);
+    m_replayStatus->setObjectName(QStringLiteral("replayStatus"));
+    m_replayStatus->setStyleSheet(QStringLiteral("color: #cdd6e3;"));
+    h->addWidget(m_replayStatus);
+
+    m_transport = new ReplayTransport(this);
+    connect(m_transport, &ReplayTransport::loaded, this, &MainWindow::onReplayLoaded);
+    connect(m_transport, &ReplayTransport::frameReady, this, &MainWindow::onReplayFrame);
+    connect(m_transport, &ReplayTransport::seekRequested, this,
+            &MainWindow::onReplaySeek);
+    connect(m_transport, &ReplayTransport::positionChanged, this,
+            &MainWindow::onReplayPosition);
+
+    connect(m_replayPlayPause, &QToolButton::clicked, this, [this] {
+        if (!m_replayActive)
+            return;
+        if (m_transport->playing())
+            m_transport->pause();
+        else
+            m_transport->resume();
+        syncReplayPlayButton();
+    });
+    connect(m_replaySpeed, &QComboBox::currentIndexChanged, this, [this](int i) {
+        m_transport->setSpeedIndex(i);
+    });
+    connect(m_replayScrub, &QSlider::sliderPressed, this, [this] {
+        if (m_replayActive)
+            m_transport->pause();
+    });
+    connect(m_replayScrub, &QSlider::sliderReleased, this, [this] {
+        if (m_replayActive)
+            m_transport->seek(m_replayScrub->value());
+    });
+    connect(m_replayTurnJump, &QComboBox::currentIndexChanged, this, [this](int i) {
+        if (!m_replayActive || i <= 0)
+            return;
+        const auto &marks = m_transport->turnMarks();
+        if (i - 1 < marks.size())
+            m_transport->seek(marks[i - 1].frameIndex);
+        m_replayTurnJump->blockSignals(true);
+        m_replayTurnJump->setCurrentIndex(0); // reset to the header item
+        m_replayTurnJump->blockSignals(false);
+    });
+}
+
+void MainWindow::onReplayLoaded(const QJsonObject &,
+                                const QVector<ReplayTurnMark> &marks)
+{
+    const int fc = m_transport->frameCount();
+    m_replayScrub->blockSignals(true);
+    m_replayScrub->setRange(0, fc);
+    m_replayScrub->setValue(0);
+    m_replayScrub->blockSignals(false);
+    m_replayTurnJump->blockSignals(true);
+    m_replayTurnJump->clear();
+    m_replayTurnJump->addItem(QStringLiteral("Jump to turn\u2026"));
+    for (const ReplayTurnMark &m : marks)
+        m_replayTurnJump->addItem(m.label);
+    m_replayTurnJump->setEnabled(!marks.isEmpty());
+    m_replayTurnJump->blockSignals(false);
+    m_replayStatus->setText(QStringLiteral("0/%1").arg(fc));
+    syncReplayPlayButton();
+}
+
+void MainWindow::onReplayFrame(int index)
+{
+    if (!m_transport || index < 1 || index > m_transport->frameCount())
+        return;
+    const QJsonObject frame = m_transport->frameAt(index);
+    if (frame.value(QStringLiteral("netCommandId")).toString()
+        == QLatin1String("serverModelSync"))
+        applyModelPipeline(frame.value(QStringLiteral("modelChangeList"))
+                               .toObject()
+                               .value(QStringLiteral("modelChangeArray"))
+                               .toArray(),
+                            frame.value(QStringLiteral("reportList"))
+                                .toObject()
+                                .value(QStringLiteral("reports"))
+                                .toArray());
+    // Non-modelSync frames are skipped (today the stream is modelSync-only).
+}
+
+void MainWindow::onReplaySeek(int index)
+{
+    if (!m_transport)
+        return;
+    const int i = qBound(0, index, m_transport->frameCount());
+    clearMatchUi();
+    applyReplaySeed();
+    // FAST APPLY: model-only (no reports / log / toasts) up to the target —
+    // a full match seeks in well under a second.
+    for (int f = 1; f <= i; ++f) {
+        const QJsonObject frame = m_transport->frameAt(f);
+        if (frame.value(QStringLiteral("netCommandId")).toString()
+            == QLatin1String("serverModelSync"))
+            m_model->applyModelChanges(frame.value(QStringLiteral("modelChangeList"))
+                                            .toObject()
+                                            .value(QStringLiteral("modelChangeArray"))
+                                            .toArray());
+    }
+    applyModelToUi();
+    m_transport->setPosition(i); // the next frame to fire is i+1
+    syncReplayPlayButton();
+}
+
+void MainWindow::onReplayPosition(int index)
+{
+    m_replayScrub->blockSignals(true);
+    m_replayScrub->setValue(index);
+    m_replayScrub->blockSignals(false);
+    m_replayStatus->setText(
+        QStringLiteral("Turn %1 · %2/%3")
+            .arg(m_model ? m_model->turn() : 0)
+            .arg(index)
+            .arg(m_transport ? m_transport->frameCount() : 0));
+}
+
+void MainWindow::applyReplaySeed()
+{
+    if (!m_model->initialize(m_transport->seedGame()))
+        return;
+    // Reset the milestone baseline so the first replay TD / half / SPP is
+    // diffed against the SEED, not a stale live-match snapshot (no network SPP
+    // fetch during replay — the archived stream is self-sufficient).
+    m_toastScoreH = m_model->scoreHome();
+    m_toastScoreA = m_model->scoreAway();
+    m_toastHalf = m_model->half();
+    m_toastTurnMode = m_model->turnMode();
+    m_toastCarrier = m_model->carrierId();
+    m_toastSpp.clear();
+    const QHash<QString, SppInfo> spp = m_model->sppTable();
+    for (auto it = spp.cbegin(); it != spp.cend(); ++it)
+        m_toastSpp.insert(it.key(), it.value().current);
+    hideWaitBoard();
+    applyModelToUi();
+}
+
+void MainWindow::syncReplayPlayButton()
+{
+    m_replayPlayPause->setText(
+        m_transport && m_transport->playing() ? QStringLiteral("\u23F8") // ⏸
+                                              : QStringLiteral("\u25B6")); // ▶
+}
+
+void MainWindow::startLocalReplay(const QString &dir)
+{
+    if (!m_transport->load(dir)) {
+        statusBar()->showMessage(tr("Cannot open replay"), 4000);
+        return;
+    }
+    clearMatchUi();
+    m_replayActive = true;
+    m_replayStopAction->setEnabled(true);
+    applyReplaySeed();
+    m_replayBar->setVisible(true);
+    m_replayBar->setGeometry(0, m_stage->height() - m_replayBar->height(),
+                             m_stage->width(), m_replayBar->height());
+    m_replayBar->raise();
+    m_transport->start(1);
+    syncReplayPlayButton();
+}
+
+void MainWindow::stopReplay()
+{
+    if (!m_replayActive)
+        return;
+    m_transport->stop();
+    m_replayActive = false;
+    m_replayStopAction->setEnabled(false);
+    m_replayBar->setVisible(false);
+    clearMatchUi();
+}
+
 void MainWindow::onGameState(const QJsonObject &game)
 {
-    if (m_loginSuppressMatchUi)
-        return; // verification join: its game state never reaches the UI
+    if (m_loginSuppressMatchUi || m_replayActive)
+        return; // live frames don't fight the replay (or a verification join)
     if (m_model->initialize(game)) {
         // New match: the milestone snapshot starts from the JOINED state
         // (baseline capture). A match joined MID-GAME already has a score,
@@ -1075,6 +1362,7 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
     if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame")) {
         m_toasts->showCenter(QStringLiteral("FULL TIME"));
         showReportCard();
+        m_archive.endMatch(m_model->scoreHome(), m_model->scoreAway());
     }
 
     // Advance the snapshot to this batch's state.
@@ -1142,8 +1430,17 @@ void MainWindow::showReportCard()
 
 void MainWindow::onModelSync(const QJsonArray &changes, const QJsonArray &reports)
 {
-    if (m_loginSuppressMatchUi)
-        return; // verification join: its model sync never reaches the UI
+    if (m_loginSuppressMatchUi || m_replayActive)
+        return; // live frames don't fight the replay (or a verification join)
+    applyModelPipeline(changes, reports);
+}
+
+// Full model-sync pipeline (TD deferral, dedup, log, toasts): shared by the
+// live session (onModelSync) and replay playback (onReplayFrame feeds the
+// archived frames straight here, bypassing the m_replayActive gate).
+void MainWindow::applyModelPipeline(const QJsonArray &changes,
+                                    const QJsonArray &reports)
+{
     if (changes.isEmpty() && reports.isEmpty())
         return;
 
@@ -1543,8 +1840,8 @@ void MainWindow::onLogoReplyFinished(QNetworkReply *reply)
 
 void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
 {
-    if (m_loginSuppressMatchUi)
-        return; // verification join: its clock never reaches the UI
+    if (m_loginSuppressMatchUi || m_replayActive)
+        return; // live frames don't fight the replay (or a verification join)
     // serverGameTime.turnTime = ELAPSED ms of the turn. The Mockup F header
     // counts UP (FUMBBL semantics) — no decreasing progress bar.
     m_headerView->setTurnElapsedSeconds(static_cast<int>(turnTimeMs / 1000));
@@ -1552,8 +1849,8 @@ void MainWindow::onGameTime(qint64, qint64 turnTimeMs)
 
 void MainWindow::onTalk(const QJsonObject &payload)
 {
-    if (m_loginSuppressMatchUi)
-        return; // verification join: its chat never reaches the UI
+    if (m_loginSuppressMatchUi || m_replayActive)
+        return; // live frames don't fight the replay (or a verification join)
     const QString coach = payload.value(QStringLiteral("coach")).toString();
     const QString mode = payload.value(QStringLiteral("talkMode")).toString();
     QString sender = coach.isEmpty() ? QStringLiteral("?") : coach;
