@@ -4,24 +4,43 @@ Format: one entry per version, date, key points. The version of
 record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 (single source of truth; `src/main.cpp` reads it via `FUMBBL_VERSION`).
 
-## 0.4.0 — 2026-11-15
-- **Match auto-archive**: every live match is archived automatically to
-  `~/.config/fumbbl-reborn/matches/` — one directory per match with
-  `match.json` (teams, coaches, rules version, final score) and
-  `stream.jsonl` (the seed plus the raw model-sync frames). A write error
-  never blocks the live UI (a one-time status-bar note, then the match is
-  simply not archived).
+## 0.4.0 — 2026-11-16
+### ✨ New Features
+- **Match auto-archive**: every live match is archived automatically
+  (one directory per match with `match.json` — teams, coaches, rules
+  version, final score — and `stream.jsonl`, the seed plus the raw
+  model-sync frames). On Linux/macOS the archive lives in
+  `~/.config/fumbbl-reborn/matches/`, on Windows in
+  `%USERPROFILE%\Saved Games\FUMBBL Reborn\matches`. A write error never
+  blocks the live UI (a one-time status-bar note, then the match is simply
+  not archived).
 - **Local replay viewer**: File ▸ Watch Replay… (Ctrl+R) plays back any
-  archived match. A bottom transport bar offers play/pause, 0.25x–16x
-  speed (the official Java speed table), a scrubber, a turn-jump menu and a
-  live status; each frame replays through the full live pipeline, so toasts,
-  TD banners and glows play as if the match were live. File ▸ Stop Replay
-  exits the mode.
+  archived match. A bottom transport bar offers play/pause, a stop
+  control, 0.25x–16x speed (the official Java speed table), a scrubber, a
+  turn-jump menu and a live status; each frame replays through the full
+  live pipeline, so toasts, TD banners and glows play as if the match were
+  live.
+- **Player card SPP**: the SPP stat moved off the MA/ST/AG/PA/AV row into
+  its own centered line below the skills.
+
+### 🐛 Bug Fixes
+- **Dugout bandage**: the KO badge is the crossed pair again (two
+  bandages in an X), not a single one.
+- **Windows save location**: the app's files (matches, credentials) now
+  live in `%USERPROFILE%\Saved Games\FUMBBL Reborn` on Windows, in one
+  place instead of the profile directory.
+- **Light transport bar**: the replay bar uses the client's light theme —
+  background, controls and status text were unreadable on the old dark
+  strip.
+- **Stop Replay cleanup**: stopping a replay now wipes the field and
+  dugout UI completely (the last-move arrows, the block marker and the
+  acted/blitzed marks no longer remain).
+- **File menu order**: Stop Replay is no longer a menu item (it is the
+  control in the transport bar); Log out sits after all the other items,
+  right before Quit.
 - **Inducement badges**: smoother anti-aliased edges (a progressive alpha
   blur + resize instead of one large bilinear downscale of the keyed edge)
   and a clean grayscale for spent badges (no more black box).
-- **Player card SPP**: the SPP stat moved off the MA/ST/AG/PA/AV row into
-  its own centered line below the skills.
 
 ## 0.3.1 — 2026-11-15
 - **False touchdown banner fixed**: joining a match mid-game no longer
