@@ -54,6 +54,7 @@ add_executable(ui_wiring_test
     ${CMAKE_SOURCE_DIR}/src/core/assets.cpp
     ${CMAKE_SOURCE_DIR}/src/core/matchlist.cpp
     ${CMAKE_SOURCE_DIR}/src/core/teamfetch.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/matcharchive.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/spectatedialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/logindialog.cpp

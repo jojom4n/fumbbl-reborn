@@ -26,6 +26,7 @@
 #include <QRect>
 #include <QSet>
 
+#include "core/matcharchive.h"
 #include "core/matchlist.h"
 #include "core/reportparser.h"
 #include "ui/fieldview.h"
@@ -177,6 +178,12 @@ public:
 
     // The spectator session (for tooling/tests).
     SpectatorSession *session() const { return m_session; }
+    // The match auto-archive (R1a) — exposed for tests/tooling.
+    MatchArchive *archive() { return &m_archive; }
+    // Test seams: drive the raw-frame archive path without a live socket, and
+    // point the archive root at a temp dir.
+    void feedRawFrameForTest(const QString &netCommandId, const QJsonObject &payload);
+    void setArchiveRootForTest(const QString &root);
 
     // Set the active coach (empty = none) and the Log out action's enabled
     // state. Production: the connect flow sets it, Log out clears it.
@@ -202,6 +209,9 @@ private:
 
     void onSessionStatus(const QString &status, const QString &message);
     void onConnectRequested();
+    // Raw protocol frames (R1a archive): the login-verification match is never
+    // archived; a new gameId closes the previous match and opens a fresh dir.
+    void onRawProtocol(const QString &netCommandId, const QJsonObject &payload);
     // Report dedup: the server re-sends reports (step retries / re-syncs)
     // and the official client does NOT dedupe — we do: a report whose
     // canonical fingerprint arrived within the last kDedupWindowMs is
@@ -292,6 +302,9 @@ private:
     // Core
     SpectatorSession *m_session = nullptr;
     GameModel *m_model = nullptr;
+    // Match auto-archive (R1a): raw frames -> ~/.config/fumbbl-reborn/matches.
+    MatchArchive m_archive;
+    bool m_archiveWarned = false; // one status-bar warning per session on IO err
     QNetworkAccessManager *m_logoNam = nullptr; // team logo downloads
     QString m_homeLogoUrl; // currently loaded/loaded-in-flight logo URLs
     QString m_awayLogoUrl;

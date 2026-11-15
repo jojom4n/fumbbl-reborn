@@ -13,6 +13,7 @@
 #include "core/credentialstore.h"
 #include "core/fumbblws.h"
 #include "core/gamemodel.h"
+#include "core/matcharchive.h"
 #include "core/reportparser.h"
 #include "core/spectatorsession.h"
 #include "core/teamfetch.h"
@@ -160,6 +161,8 @@ MainWindow::MainWindow(QWidget *parent, bool gateLogin)
     connect(m_session, &SpectatorSession::protocolReceived, this,
             [this](const QString &id, const QJsonObject &)
             { this->appendProtocol(QStringLiteral("<< recv "), id); });
+    connect(m_session, &SpectatorSession::protocolReceived, this,
+            &MainWindow::onRawProtocol);
 
     // Field click-to-select (empty id = clicked an empty square = deselect).
     connect(m_field, &FieldView::playerClicked, this, &MainWindow::onFieldPlayerClicked);
@@ -699,6 +702,42 @@ void MainWindow::appendProtocol(const QString &direction, const QString &text)
 // -----------------------------------------------------------------------------
 // Core -> UI wiring (spectator)
 // -----------------------------------------------------------------------------
+// R1a auto-archive: the RAW frames (the extracted signals lose commandNr /
+// gameTime / turnTime). The login-verification match is never archived; a new
+// gameId closes the previous match (with its current score) and opens a fresh
+// dir. IO errors never block the live UI (one status-bar warning, then the
+// match is simply not archived).
+void MainWindow::onRawProtocol(const QString &netCommandId, const QJsonObject &payload)
+{
+    if (netCommandId == QLatin1String("serverGameState")) {
+        if (m_loginSuppressMatchUi)
+            return; // the login-verification match is never archived
+        const qint64 newId = payload.value("game").toObject()
+                                 .value("gameId").toVariant().toLongLong();
+        if (m_archive.archiving() && m_archive.gameId() != newId)
+            m_archive.endMatch(m_model ? m_model->scoreHome() : 0,
+                               m_model ? m_model->scoreAway() : 0);
+        if (!m_archive.begin(payload) && newId > 0 && !m_archiveWarned) {
+            m_archiveWarned = true;
+            statusBar()->showMessage(
+                tr("Match archiving is unavailable for this match"), 5000);
+        }
+    } else if (netCommandId == QLatin1String("serverModelSync")) {
+        m_archive.appendModelSync(payload);
+    }
+}
+
+void MainWindow::feedRawFrameForTest(const QString &netCommandId,
+                                     const QJsonObject &payload)
+{
+    onRawProtocol(netCommandId, payload);
+}
+
+void MainWindow::setArchiveRootForTest(const QString &root)
+{
+    MatchArchive::setRootForTest(root);
+}
+
 void MainWindow::onGameState(const QJsonObject &game)
 {
     if (m_loginSuppressMatchUi)
@@ -1075,6 +1114,7 @@ void MainWindow::toastMilestones(bool sawCatchRoll)
     if (mode == QLatin1String("endGame") && m_toastTurnMode != QLatin1String("endGame")) {
         m_toasts->showCenter(QStringLiteral("FULL TIME"));
         showReportCard();
+        m_archive.endMatch(m_model->scoreHome(), m_model->scoreAway());
     }
 
     // Advance the snapshot to this batch's state.

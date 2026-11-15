@@ -138,6 +138,8 @@ add_executable(fumbbl-qt
     src/core/matchlist.cpp
     src/core/teamfetch.h
     src/core/teamfetch.cpp
+    src/core/matcharchive.h
+    src/core/matcharchive.cpp
 
     # UI
     src/ui/mainwindow.h
@@ -273,6 +275,7 @@ fumbbl_add_credential_store(reports_capturer)
 # kickoff, rain.
 add_executable(hud_preview
     tools/hud_preview.cpp
+    src/core/matcharchive.cpp
     src/core/lzstring.cpp
     src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp
@@ -316,6 +319,7 @@ fumbbl_add_credential_store(hud_preview)
 # sequences.
 add_executable(move_numbers_preview
     tools/move_numbers_preview.cpp
+    src/core/matcharchive.cpp
     src/core/lzstring.cpp
     src/core/passwordchallenge.cpp
     src/core/fumbblws.cpp

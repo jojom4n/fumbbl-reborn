@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 #include <QJsonDocument>
 #include <QBuffer>
 #include <QEvent> // QEnterEvent / QLeaveEvent
@@ -43,6 +44,7 @@
 
 #include "core/assets.h"
 #include "core/gamemodel.h"
+#include "core/matcharchive.h"
 #include "core/matchlist.h"
 #include "core/passwordchallenge.h"
 #include "core/reportparser.h"
@@ -160,6 +162,7 @@ private slots:
     void parseToastEvents();
     void toastMilestonesAndReportEvents();
     void matchListDivisionTabsAndPolling();
+    void archiveRoundTrip();
     void joinWaitingBoardShowsVsAndDiesOnGameState();
     void reportCardShowsAtFullTime();
     void chatCollapsesToPillWithUnreadBadge();
@@ -4037,6 +4040,102 @@ void UiWiringTest::blitzTargetHasNoWhiteGlow()
     w.onModelSync(ch, QJsonArray());
     QCOMPARE(field->passTarget(), QString());
     QCOMPARE(model->blitzingPlayerId(), actor);
+}
+
+// R1a auto-archive: a raw serverGameState + 2 serverModelSync frames through
+// the REAL MainWindow wiring land in <root>/<gameId>_<ts>/ with a match.json
+// (metadata) and a stream.jsonl (seed line + one raw frame per line).
+void UiWiringTest::archiveRoundTrip()
+{
+    const QString tmp =
+        QDir::tempPath() + QStringLiteral("/fumbbl_archive_test_%1")
+            .arg(QCoreApplication::applicationPid());
+    QDir().remove(tmp);
+    MainWindow w;
+    w.setArchiveRootForTest(tmp);
+
+    QJsonObject home;
+    home.insert(QStringLiteral("teamId"), 1);
+    home.insert(QStringLiteral("teamName"), QStringLiteral("Home T"));
+    home.insert(QStringLiteral("coach"), QStringLiteral("hc"));
+    home.insert(QStringLiteral("race"), QStringLiteral("Orcs"));
+    QJsonObject away;
+    away.insert(QStringLiteral("teamId"), 2);
+    away.insert(QStringLiteral("teamName"), QStringLiteral("Away T"));
+    away.insert(QStringLiteral("coach"), QStringLiteral("ac"));
+    away.insert(QStringLiteral("race"), QStringLiteral("Orcs"));
+    QJsonObject rv;
+    rv.insert(QStringLiteral("gameOptionId"), QStringLiteral("rulesVersion"));
+    rv.insert(QStringLiteral("gameOptionValue"), QStringLiteral("BB2025"));
+    QJsonObject game;
+    game.insert(QStringLiteral("gameId"), 12345);
+    game.insert(QStringLiteral("teamHome"), home);
+    game.insert(QStringLiteral("teamAway"), away);
+    game.insert(QStringLiteral("gameOptions"),
+                QJsonObject{{"gameOptionArray", QJsonArray{rv}}});
+    QJsonObject gs;
+    gs.insert(QStringLiteral("netCommandId"), QStringLiteral("serverGameState"));
+    gs.insert(QStringLiteral("game"), game);
+    QJsonObject ms1{{"netCommandId", QStringLiteral("serverModelSync")},
+                    {"commandNr", 1}};
+    QJsonObject ms2{{"netCommandId", QStringLiteral("serverModelSync")},
+                    {"commandNr", 2}};
+
+    w.feedRawFrameForTest(QStringLiteral("serverGameState"), gs);
+    w.feedRawFrameForTest(QStringLiteral("serverModelSync"), ms1);
+    w.feedRawFrameForTest(QStringLiteral("serverModelSync"), ms2);
+
+    // One dir, named <gameId>_<ts>.
+    const QFileInfoList dirs =
+        QDir(tmp).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    QCOMPARE(dirs.size(), 1);
+    const QString dir = dirs.first().filePath();
+    QCOMPARE(QFileInfo(dir).fileName().left(6), QStringLiteral("12345_"));
+
+    // match.json: metadata, no score/ended yet.
+    {
+        QFile f(dir + QStringLiteral("/match.json"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QJsonObject m = QJsonDocument::fromJson(f.readAll()).object();
+        QCOMPARE(m.value("gameId").toVariant().toInt(), 12345);
+        QCOMPARE(m.value("home").toObject().value("name").toString(),
+                 QStringLiteral("Home T"));
+        QCOMPARE(m.value("away").toObject().value("name").toString(),
+                 QStringLiteral("Away T"));
+        QCOMPARE(m.value("rulesVersion").toString(), QStringLiteral("BB2025"));
+        QCOMPARE(m.value("source").toString(), QStringLiteral("live"));
+        QVERIFY(m.value("endedAt").isNull());
+    }
+    // stream.jsonl: 3 lines (seed + 2 syncs); line 0 seedKind "initial".
+    {
+        QFile f(dir + QStringLiteral("/stream.jsonl"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QStringList lines =
+            QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        QCOMPARE(lines.size(), 3);
+        const QJsonObject l0 = QJsonDocument::fromJson(lines[0].toUtf8()).object();
+        QCOMPARE(l0.value("seedKind").toString(), QStringLiteral("initial"));
+        QCOMPARE(l0.value("game").toObject().value("gameId").toVariant().toInt(),
+                 12345);
+    }
+    // endMatch -> final scores + ended, visible via listMatches().
+    w.archive()->endMatch(3, 2);
+    {
+        QFile f(dir + QStringLiteral("/match.json"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QJsonObject m = QJsonDocument::fromJson(f.readAll()).object();
+        QCOMPARE(m.value("scoreHome").toVariant().toInt(), 3);
+        QCOMPARE(m.value("scoreAway").toVariant().toInt(), 2);
+        QVERIFY(!m.value("endedAt").isNull());
+    }
+    const QVector<MatchArchiveInfo> list = MatchArchive::listMatches();
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.first().gameId, static_cast<qint64>(12345));
+    QVERIFY(list.first().ended);
+    QCOMPARE(list.first().scoreHome, 3);
+    QCOMPARE(list.first().scoreAway, 2);
+    QCOMPARE(list.first().rulesVersion, QStringLiteral("BB2025"));
+    QDir().remove(tmp);
 }
 
 // Explicit main for the GUI-subsystem test binary (no console attached):
