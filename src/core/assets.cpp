@@ -144,46 +144,62 @@ QPixmap loadPixmap(const QString &relPath)
     return pm;
 }
 
-// featherAlpha — one 4-tap box pass over a COPY of the alpha channel
-// (a(x,y) = mean of the in-bounds taps of the ORIGINAL alpha): a hard
-// keyed edge (binary alpha) becomes a 1px soft edge. Inducement badges
-// only — keyed assets get a binary edge from the flood fill, and that
-// edge, downscaled to header size, leaves a jagged halo.
-static QImage featherAlpha(QImage img)
+// smoothAndShrink — high-quality prep of a badge for small display. The
+// 1024px source is drawn at ~44px (header badge): a single ~23x bilinear
+// downscale of a BINARY flood-fill edge aliases into a jagged halo. Two
+// fixes, run ONCE per type (cached by the caller — paintEvent does no pixel
+// work):
+//   (a) if `softenAlpha`: a symmetric 2-pass box blur on the alpha channel
+//       turns the hard keyed edge into a smooth gradient (the jaggedness is
+//       the binary SHAPE, not just its sharpness — a 1px feather is a
+//       sub-pixel no-op at this downscale).
+//   (b) progressive halving to `workSize` — a clean area-averaged downscale,
+//       so the draw-time scale is a small step (workSize -> ~44px), not the
+//       whole 1024 -> 44px in one bilinear.
+static QPixmap smoothAndShrink(const QPixmap &pm, bool softenAlpha, int workSize)
 {
-    if (img.isNull())
-        return img;
-    img = img.convertToFormat(QImage::Format_ARGB32);
-    const int w = img.width(), h = img.height();
-    if (w < 2 || h < 2)
-        return img;
-    const int n = w * h;
-    QRgb *bits = reinterpret_cast<QRgb *>(img.bits());
-    QVector<quint8> src(n);
-    for (int i = 0; i < n; ++i)
-        src[i] = qAlpha(bits[i]);
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            const int i = y * w + x;
-            int sum = src[i], taps = 1; // in-bounds taps only (no border
-                                         // replication)
-            if (x + 1 < w) {
-                sum += src[i + 1];
-                ++taps;
+    if (pm.isNull())
+        return pm;
+    QPixmap out = pm;
+    if (softenAlpha && out.width() > workSize) {
+        QImage img = pm.toImage().convertToFormat(QImage::Format_ARGB32);
+        const int w = img.width(), h = img.height();
+        const int n = w * h;
+        const int r = qBound(2, w / 170, 8);   // ~6 at 1024
+        QRgb *bits = reinterpret_cast<QRgb *>(img.bits());
+        QVector<quint8> a(n), t(n);
+        for (int i = 0; i < n; ++i)
+            a[i] = qAlpha(bits[i]);
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int y = 0; y < h; ++y) {      // horizontal box blur (clamped)
+                int sum = 0;
+                for (int x = -r; x <= r; ++x)
+                    sum += a[y * w + qBound(0, x, w - 1)];
+                for (int x = 0; x < w; ++x) {
+                    t[y * w + x] = quint8(sum / (2 * r + 1));
+                    sum += a[y * w + qBound(0, x + r + 1, w - 1)]
+                         - a[y * w + qBound(0, x - r, w - 1)];
+                }
             }
-            if (y + 1 < h) {
-                sum += src[i + w];
-                ++taps;
+            for (int x = 0; x < w; ++x) {      // vertical box blur (clamped)
+                int sum = 0;
+                for (int y = -r; y <= r; ++y)
+                    sum += t[qBound(0, y, h - 1) * w + x];
+                for (int y = 0; y < h; ++y) {
+                    a[y * w + x] = quint8(sum / (2 * r + 1));
+                    sum += t[qBound(0, y + r + 1, h - 1) * w + x]
+                         - t[qBound(0, y - r, h - 1) * w + x];
+                }
             }
-            if (x + 1 < w && y + 1 < h) {
-                sum += src[i + w + 1];
-                ++taps;
-            }
-            // QRgb alpha is the TOP byte (0xFF000000) — shift it in.
-            bits[i] = (bits[i] & 0x00FFFFFFu) | (quint32(sum / taps) << 24);
         }
+        for (int i = 0; i < n; ++i)
+            bits[i] = (bits[i] & 0x00FFFFFFu) | (quint32(a[i]) << 24);
+        out = QPixmap::fromImage(img);
     }
-    return img;
+    // Progressive halving to workSize (each bilinear step ~= an area average).
+    for (int s = out.width(); s > workSize; s >>= 1)
+        out = out.scaled(s / 2, s / 2, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return out;
 }
 
 // Slugify: lowercase, non-alphanumerics -> '_', trimmed. ('Ooligan -> ooligan,
@@ -343,23 +359,24 @@ QPixmap inducementPixmap(const QString &typeId, bool spent)
         pm = loadPixmap(QStringLiteral("inducements/generic.png"));
     if (pm.isNull())
         return pm;
-    // The generated badges ship on a flat backdrop — key it (the keyer is
-    // guarded: real alpha or non-flat borders pass through untouched).
-    // The KEYED edge is binary alpha; feathered 1px it stops leaving a
-    // jagged halo after the SmoothTransformation downscale to header size.
-    // Keying + feathering run ONCE per type (cache): paintEvent does no
-    // pixel work. Real-alpha assets are cached as-is (no feather — their
-    // edges are the artist's).
+    // The generated badges ship on a flat white backdrop — key it (the keyer
+    // is guarded: real alpha or non-flat borders pass through untouched). The
+    // 1024px result is drawn at ~44px (the header badge); a single ~23x
+    // bilinear of a BINARY keyed edge aliases into a jagged halo, so it's
+    // smoothed + progressively shrunk to a working size. All of it runs ONCE
+    // per type (cache): paintEvent does no pixel work. Real-alpha assets are
+    // shrunk the same way but keep their (artist's) edge — no alpha blur.
     static QHash<QString, QPixmap> keyedCache;
     QPixmap keyed;
     if (auto it = keyedCache.constFind(typeId); it != keyedCache.end())
         keyed = it.value();
     else {
         keyed = pm;
-        if (!keyed.hasAlphaChannel()) {
-            keyed = QPixmap::fromImage(keyBackground(keyed.toImage()));
-            keyed = QPixmap::fromImage(featherAlpha(keyed.toImage()));
-        }
+        if (!keyed.hasAlphaChannel())
+            keyed = smoothAndShrink(QPixmap::fromImage(keyBackground(keyed.toImage())),
+                                    /*softenAlpha=*/true, 256);
+        else
+            keyed = smoothAndShrink(keyed, /*softenAlpha=*/false, 256);
         keyedCache.insert(typeId, keyed);
     }
     if (!spent)
@@ -371,8 +388,20 @@ QPixmap inducementPixmap(const QString &typeId, bool spent)
     static QHash<QString, QPixmap> spentCache;
     if (auto it = spentCache.constFind(typeId); it != spentCache.end())
         return it.value();
-    const QImage gray = keyed.toImage().convertToFormat(QImage::Format_Grayscale8)
-                            .convertToFormat(QImage::Format_ARGB32);
+    // Grayscale the RGB but KEEP the alpha — a Grayscale8 round-trip drops
+    // the alpha channel and the badge would render as a solid opaque square
+    // behind the icon (a visible box on the header). The luma is the standard
+    // Rec.709 mix (0.299/0.587/0.114, scaled to 16 bits).
+    const QImage src = keyed.toImage().convertToFormat(QImage::Format_ARGB32);
+    const int n = src.width() * src.height();
+    QImage gray(src.size(), QImage::Format_ARGB32);
+    const QRgb *in = reinterpret_cast<const QRgb *>(src.constBits());
+    QRgb *ob = reinterpret_cast<QRgb *>(gray.bits());
+    for (int i = 0; i < n; ++i) {
+        const QRgb px = in[i];
+        const int l = (qRed(px) * 19595 + qGreen(px) * 38470 + qBlue(px) * 7471) >> 16;
+        ob[i] = qRgba(l, l, l, qAlpha(px));
+    }
     const QPixmap g = QPixmap::fromImage(gray);
     spentCache.insert(typeId, g);
     return g;
