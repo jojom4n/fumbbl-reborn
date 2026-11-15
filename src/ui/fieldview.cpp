@@ -1395,7 +1395,8 @@ void FieldView::drawMoveTrail(QPainter &p)
             QVector<CornerBadge> v;
             v.append({QPointF(0.276, 0.294), 0.15}); // jersey number
             if (t.hasBall)
-                v.append({QPointF(-0.313, -0.350), 0.16}); // ball-in-hand
+                v.append({QPointF(-0.313, -0.350), 0.17}); // ball-in-hand
+            // (0.16 x 1.07 — the +7% carrier ball keeps the number clear)
             if (m_actedPlayers.contains(t.playerId))
                 v.append({QPointF(0.239, -0.258), 0.15}); // green check
             if (t.playerId == m_blitzingPlayer)
@@ -2921,7 +2922,9 @@ void FieldView::paintEvent(QPaintEvent *)
                 // The carrier ball GLOWS GOLD on the token too, ANIMATED —
                 // it breathes with the pulse timer.
                 const QPointF bc2(ctr.x() - s * 0.34, ctr.y() - s * 0.38);
-                const qreal bw2 = cellW * 0.30, bh2 = cellH * 0.20;
+                // The ball-in-hand token is +7% over the resting ball
+                // (0.30/0.20 base) — the carrier reads as the bigger ball.
+                const qreal bw2 = cellW * 0.30 * 1.07, bh2 = cellH * 0.20 * 1.07;
                 const qreal breath = 0.5 - 0.5 * std::cos(m_ballPulsePhase);
                 drawBallGlow(p, bc2, qMax(bw2, bh2) * 1.25, breath);
                 drawFootball(p, bc2, bw2, bh2, -18);
