@@ -1,3 +1,4 @@
+#include "core/apppaths.h"
 #include "core/matcharchive.h"
 
 #include <QDir>
@@ -13,7 +14,7 @@ QString MatchArchive::s_root;
 QString MatchArchive::root()
 {
     if (s_root.isEmpty())
-        s_root = QDir::homePath() + QStringLiteral("/.config/fumbbl-reborn/matches");
+        s_root = appSaveRoot() + QStringLiteral("/matches");
     return s_root;
 }
 

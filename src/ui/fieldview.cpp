@@ -2010,14 +2010,16 @@ void drawStar(QPainter &p, const QPointF &c, qreal r, qreal rot,
 // made EXACTLY LIKE THE NUMBER BADGE (dark disc + gold rim) but SLIGHTLY
 // MORE INTERNAL and smaller. Vector — QPainter is the right tool for
 // small crisp badges.
-// Comic-style bandage (the KO badge): a capsule rotated ~35°, tan body,
-// lighter center pad with tiny dots, bold dark outline (cartoon look).
-void drawComicBandage(QPainter &p, const QPointF &c, qreal br)
+// Comic-style bandage (the KO badge): a CROSSED PAIR (an X) — two capsules
+// at ±35°, tan body, lighter center pad with tiny dots, bold dark outline
+// (cartoon look). One bandage is no longer "a bandage" for the user — the
+// dugout badge is the double X.
+void drawComicBandageOne(QPainter &p, const QPointF &c, qreal br, qreal rotDeg)
 {
     p.save();
     p.translate(c);
-    p.rotate(-35);
-    const qreal w = br * 1.72, h = br * 0.88, r = h / 2;
+    p.rotate(rotDeg);
+    const qreal w = br * 1.55, h = br * 0.80, r = h / 2;
     // Body (tan) with a bold comic outline.
     p.setPen(QPen(QColor(58, 40, 24, 255), qMax(1.0, br * 0.10)));
     p.setBrush(QColor(233, 197, 148, 255));
@@ -2032,6 +2034,12 @@ void drawComicBandage(QPainter &p, const QPointF &c, qreal br)
         p.drawEllipse(QPointF((i % 2 ? 0.22 : -0.22) * pw, (i < 2 ? -0.25 : 0.25) * ph),
                       br * 0.05, br * 0.05);
     p.restore();
+}
+
+void drawComicBandage(QPainter &p, const QPointF &c, qreal br)
+{
+    drawComicBandageOne(p, c, br, -35);
+    drawComicBandageOne(p, c, br, 35);
 }
 
 void drawDugoutStateBadge(QPainter &p, int state, const QPointF &c, qreal faceD)

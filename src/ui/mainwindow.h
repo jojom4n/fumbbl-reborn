@@ -331,6 +331,7 @@ private:
     bool m_replayActive = false;
     QWidget *m_replayBar = nullptr;
     QToolButton *m_replayPlayPause = nullptr;
+    QToolButton *m_replayStop = nullptr;
     QComboBox *m_replaySpeed = nullptr;
     QSlider *m_replayScrub = nullptr;
     QComboBox *m_replayTurnJump = nullptr;
@@ -400,7 +401,6 @@ private:
     QAction *m_connectAction = nullptr;
     QAction *m_disconnectAction = nullptr;
     QAction *m_replayAction = nullptr;
-    QAction *m_replayStopAction = nullptr;
     QAction *m_quitAction = nullptr;
     QAction *m_resetLayoutAction = nullptr;
     QHash<QString, QAction *> m_panelViewActions; // name -> View-menu action

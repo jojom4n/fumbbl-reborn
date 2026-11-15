@@ -89,9 +89,28 @@ jobs:
           CLEAN_VER="${GITHUB_REF_NAME#v}"
           mv FUMBBL-Reborn*.AppImage "dist/FUMBBL-Reborn-${CLEAN_VER}-x86_64.AppImage"
 
+      - name: Build release notes
+        # The release body is GENERATED from CHANGELOG.md (single source of
+        # truth): "# FUMBBL Reborn <ver>" + the version's sections verbatim
+        # ("### ✨ New Features" / "### 🐛 Bug Fixes"). The release itself
+        # is created by THIS workflow (github-actions) — never manually.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          {
+            echo "# FUMBBL Reborn ${VER}"
+            echo
+            awk -v pat="^## ${VER} " '
+              f && /^## / { exit }
+              !f && $0 ~ pat { f = 1; next }
+              f { print }
+            ' CHANGELOG.md
+          } > release_body.md
+          cat release_body.md
+
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
+          file: release_body.md
           files: |
             dist/*.AppImage
             dist/*.tar.gz
@@ -172,7 +191,22 @@ jobs:
           $ver = $env:VER.TrimStart('v')
           Compress-Archive -Path "staging\*" -DestinationPath "FUMBBL-Reborn-$ver-windows-x86_64.zip"
 
+      - name: Build release notes
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          {
+            echo "# FUMBBL Reborn ${VER}"
+            echo
+            awk -v pat="^## ${VER} " '
+              f && /^## / { exit }
+              !f && $0 ~ pat { f = 1; next }
+              f { print }
+            ' CHANGELOG.md
+          } > release_body.md
+          cat release_body.md
+
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
+          file: release_body.md
           files: FUMBBL-Reborn-*-windows-x86_64.zip

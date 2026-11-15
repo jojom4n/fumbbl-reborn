@@ -228,11 +228,6 @@ void MainWindow::createActions()
             startLocalReplay(dir);
     });
 
-    m_replayStopAction = new QAction(tr("Stop &Replay"), this);
-    m_replayStopAction->setStatusTip(tr("Stop the current replay"));
-    m_replayStopAction->setEnabled(false);
-    connect(m_replayStopAction, &QAction::triggered, this, &MainWindow::stopReplay);
-
     m_quitAction = new QAction(tr("&Quit"), this);
     m_quitAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Q")));
     connect(m_quitAction, &QAction::triggered, qApp, &QApplication::quit);
@@ -247,9 +242,9 @@ void MainWindow::createMenus()
 {
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
     fileMenu->addAction(m_connectAction);
-    fileMenu->addAction(m_disconnectAction);
     fileMenu->addAction(m_replayAction);
-    fileMenu->addAction(m_replayStopAction);
+    // Log out: AFTER all the others, right before Quit (user rule).
+    fileMenu->addAction(m_disconnectAction);
     fileMenu->addSeparator();
     fileMenu->addAction(m_quitAction);
 
@@ -778,7 +773,23 @@ void MainWindow::buildReplayBar()
     m_replayBar = new QWidget(m_stage);
     m_replayBar->setObjectName(QStringLiteral("replayBar"));
     m_replayBar->setFixedHeight(44);
-    m_replayBar->setStyleSheet(QStringLiteral("background: rgba(10, 13, 18, 235);"));
+    // LIGHT theme (Mockup F): the client is light everywhere — the old
+    // near-black bar was a dark island nobody could read.
+    m_replayBar->setStyleSheet(QStringLiteral(
+        "QWidget#replayBar { background: #f2f3f8; border-top: 1px solid #d5d5dd; }"
+        "QWidget#replayBar QToolButton { background: #ffffff; color: #222832;"
+        " border: 1px solid #c9ccd6; border-radius: 6px; padding: 3px 9px;"
+        " font-size: 13px; }"
+        "QWidget#replayBar QToolButton:hover { background: #e7ecf5; }"
+        "QWidget#replayBar QToolButton:pressed { background: #d8e0ee; }"
+        "QWidget#replayBar QToolButton:disabled { color: #9aa1ad; background: #eef0f4; }"
+        "QWidget#replayBar QSlider::groove:horizontal { background: #d5d5dd;"
+        " height: 4px; border-radius: 2px; }"
+        "QWidget#replayBar QSlider::sub-page:horizontal { background: #4a7cba;"
+        " border-radius: 2px; }"
+        "QWidget#replayBar QSlider::handle:horizontal { background: #ffffff;"
+        " border: 2px solid #4a7cba; width: 12px; height: 12px; margin: -5px 0;"
+        " border-radius: 7px; }"));
     m_replayBar->setVisible(false);
     auto *h = new QHBoxLayout(m_replayBar);
     h->setContentsMargins(10, 4, 10, 4);
@@ -789,6 +800,15 @@ void MainWindow::buildReplayBar()
     m_replayPlayPause->setText(QStringLiteral("\u25B6")); // ▶
     m_replayPlayPause->setToolTip(tr("Play / pause the replay"));
     h->addWidget(m_replayPlayPause);
+
+    // Stop is a TRANSPORT CONTROL (not a menu item): it lives here next to
+    // play/pause, and it is the ONLY way out of replay mode.
+    m_replayStop = new QToolButton(m_replayBar);
+    m_replayStop->setObjectName(QStringLiteral("replayStop"));
+    m_replayStop->setText(QStringLiteral("\u23F9")); // ⏹
+    m_replayStop->setToolTip(tr("Stop the replay"));
+    m_replayStop->setEnabled(false);
+    h->addWidget(m_replayStop);
 
     m_replaySpeed = new QComboBox(m_replayBar);
     m_replaySpeed->setObjectName(QStringLiteral("replaySpeed"));
@@ -815,7 +835,7 @@ void MainWindow::buildReplayBar()
 
     m_replayStatus = new QLabel(m_replayBar);
     m_replayStatus->setObjectName(QStringLiteral("replayStatus"));
-    m_replayStatus->setStyleSheet(QStringLiteral("color: #cdd6e3;"));
+    m_replayStatus->setStyleSheet(QStringLiteral("color: #222832;"));
     h->addWidget(m_replayStatus);
 
     m_transport = new ReplayTransport(this);
@@ -835,6 +855,7 @@ void MainWindow::buildReplayBar()
             m_transport->resume();
         syncReplayPlayButton();
     });
+    connect(m_replayStop, &QToolButton::clicked, this, &MainWindow::stopReplay);
     connect(m_replaySpeed, &QComboBox::currentIndexChanged, this, [this](int i) {
         m_transport->setSpeedIndex(i);
     });
@@ -965,7 +986,7 @@ void MainWindow::startLocalReplay(const QString &dir)
     }
     clearMatchUi();
     m_replayActive = true;
-    m_replayStopAction->setEnabled(true);
+    m_replayStop->setEnabled(true);
     applyReplaySeed();
     m_replayBar->setVisible(true);
     m_replayBar->setGeometry(0, m_stage->height() - m_replayBar->height(),
@@ -981,7 +1002,7 @@ void MainWindow::stopReplay()
         return;
     m_transport->stop();
     m_replayActive = false;
-    m_replayStopAction->setEnabled(false);
+    m_replayStop->setEnabled(false);
     m_replayBar->setVisible(false);
     clearMatchUi();
 }
@@ -2163,6 +2184,14 @@ void MainWindow::clearMatchUi()
     m_field->setPlayers({}, {});
     m_field->setBoxes({}, {});
     m_field->setBall(-1, -1, false);
+    // Transient field state must not survive the wipe (user-reported: the
+    // last-move arrows remained after Stop Replay): move trail, block
+    // marker, acted/blitzed marks, pass glow.
+    m_field->setMoveTrace({}, {});
+    m_field->setBlockMarker(QString(), QString(), 0);
+    m_field->setActedPlayers({});
+    m_field->setBlitzingPlayer(QString());
+    m_field->setPassTarget(QString());
     m_matchLog->clearLog();
     m_chat->clearChat();
     // A new match = a fresh dedup universe (report fingerprints from the

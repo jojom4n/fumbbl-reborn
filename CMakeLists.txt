@@ -49,6 +49,8 @@ endif()
 function(fumbbl_add_credential_store target)
     # CMAKE_SOURCE_DIR (NOT CURRENT_): the tests subdirectory calls this too.
     target_sources(${target} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/apppaths.h
+        ${CMAKE_SOURCE_DIR}/src/core/apppaths.cpp
         ${CMAKE_SOURCE_DIR}/src/core/credentialstore.h
         ${CMAKE_SOURCE_DIR}/src/core/credentialstore.cpp)
     if(WIN32)
