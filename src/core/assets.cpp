@@ -321,6 +321,16 @@ QPixmap blockHelmet()
     return loadPixmap(QStringLiteral("markers/helmet.png"));
 }
 
+QPixmap puddleDirtTexture()
+{
+    return loadPixmap(QStringLiteral("field/puddle_dirt.png"));
+}
+
+QPixmap snowMoundTexture()
+{
+    return loadPixmap(QStringLiteral("field/snow_mound.png"));
+}
+
 QPixmap inducementPixmap(const QString &typeId, bool spent)
 {
     QPixmap pm = loadPixmap(QStringLiteral("inducements/%1.png").arg(typeId));

@@ -595,6 +595,36 @@ qreal FieldView::firstPatchRadiusForTest() const
     return 0.0;
 }
 
+QRectF FieldView::firstPatchRectForTest() const
+{
+    if (!m_puddles.isEmpty())
+        return patchRect(m_puddles.first(), fieldRectPx());
+    if (!m_snowPatches.isEmpty())
+        return patchRect(m_snowPatches.first(), fieldRectPx());
+    return QRectF();
+}
+
+void FieldView::setFirstPatchRadiusForTest(qreal fr)
+{
+    Puddle *pd = nullptr;
+    if (!m_puddles.isEmpty())
+        pd = &m_puddles.first();
+    else if (!m_snowPatches.isEmpty())
+        pd = &m_snowPatches.first();
+    if (pd) {
+        pd->fr = fr;
+        pd->frMax = qMax(fr, pd->frMax);
+    }
+}
+
+void FieldView::setPatchTexturesForTest(bool enabled, const QPixmap &puddle,
+                                        const QPixmap &snow)
+{
+    m_testPatchTextures = enabled;
+    m_testPuddleTexture = puddle;
+    m_testSnowTexture = snow;
+}
+
 QPointF FieldView::dropWidgetPosForTest(int i) const
 {
     if (i < 0 || i >= m_rain.drops().size())
@@ -674,6 +704,10 @@ void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
+    // Cached in assets (file path -> pixmap): one hash lookup per paint.
+    const QPixmap puddleTex = m_testPatchTextures
+                                  ? m_testPuddleTexture
+                                  : assets::puddleDirtTexture();
     for (const Puddle &pd : m_puddles) {
         const qreal fadeIn =
             qBound(0.0, (m_puddleClockMs - pd.birthMs) / 1800.0, 1.0);
@@ -694,6 +728,28 @@ void FieldView::drawPuddles(QPainter &p, const QRectF &f) const
             const qreal t = qreal(li) / 3.0;
             p.setBrush(QColor(154, 124, 84, int(20 + 48 * t)));
             p.drawPolygon(stableMudBlob(seed, 0.14, rx * (1.55 - 0.55 * t)));
+        }
+        // 1b. Wet-dirt TEXTURE under the mud core (issue 12): the flat
+        // brown blob is now real muddy ground. Clipped to the mud-core
+        // outline, drawn TRANSLUCENT (0.8): the grid lines (painted after
+        // the patches) and the grass underneath must never be fully
+        // covered. Null texture (asset missing) = the flat fill below.
+        if (!puddleTex.isNull()) {
+            p.save();
+            const qreal mTex = rx * 1.05 * 1.25; // blob radius + wobble
+            QPainterPath clip;
+            clip.addPolygon(stableMudBlob(seed + 11, 0.18, rx * 1.05));
+            p.setClipPath(clip);
+            p.setOpacity(0.8);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            // 5% source inset: crops the texture's generated edge ring
+            // (no dark rim inside the stain).
+            const QRectF texSrc = QRectF(puddleTex.rect()).adjusted(
+                puddleTex.width() * 0.05, puddleTex.height() * 0.05,
+                -puddleTex.width() * 0.05, -puddleTex.height() * 0.05);
+            p.drawPixmap(QRectF(-mTex, -mTex, mTex * 2, mTex * 2),
+                         puddleTex, texSrc);
+            p.restore();
         }
         // 2. Wet mud: the worn core — darker, 3 layers, still wide.
         for (int li = 0; li < 3; ++li) {
@@ -733,6 +789,10 @@ void FieldView::drawSnowPatches(QPainter &p, const QRectF &f) const
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
+    // Cached in assets (file path -> pixmap): one hash lookup per paint.
+    const QPixmap snowTex = m_testPatchTextures
+                                ? m_testSnowTexture
+                                : assets::snowMoundTexture();
     for (const Puddle &pd : m_snowPatches) {
         const qreal fadeIn =
             qBound(0.0, (m_snowClockMs - pd.birthMs) / 2600.0, 1.0);
@@ -746,6 +806,27 @@ void FieldView::drawSnowPatches(QPainter &p, const QRectF &f) const
         p.rotate(pd.rotDeg);
         p.scale(1.0, pd.squash);
         p.setOpacity(fadeIn);
+        // Wet-snow TEXTURE under the white wash (issue 12): clumped moist
+        // snow instead of a flat white blob. Same rules as the puddle
+        // texture: clipped to the mound outline, TRANSLUCENT (0.8) so the
+        // grid lines and the grass underneath stay visible.
+        if (!snowTex.isNull()) {
+            p.save();
+            const qreal mTex = rx * 1.25 * 1.2; // mound radius + wobble
+            QPainterPath clip;
+            clip.addPolygon(stableMudBlob(seed, 0.12, rx * 1.25));
+            p.setClipPath(clip);
+            p.setOpacity(0.8);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            // 5% source inset: crops the texture's dark edge ring (the
+            // generated "dirty streaks at the edges") out of the mound.
+            const QRectF texSrc = QRectF(snowTex.rect()).adjusted(
+                snowTex.width() * 0.05, snowTex.height() * 0.05,
+                -snowTex.width() * 0.05, -snowTex.height() * 0.05);
+            p.drawPixmap(QRectF(-mTex, -mTex, mTex * 2, mTex * 2),
+                         snowTex, texSrc);
+            p.restore();
+        }
         // Cool shadowed rim -> bright belly (3 layers, same outline).
         for (int li = 0; li < 3; ++li) {
             const qreal t = qreal(li) / 2.0;

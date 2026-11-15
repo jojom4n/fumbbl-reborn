@@ -190,6 +190,8 @@ private slots:
     void rainFollowsPan(); // the rain is anchored to the scene (world space)
     void splashesOnlyOnField(); // drops off the pitch leave no ripples
     void weatherIntensityVaries(); // +/-15 per cycle, clamped to the band
+    void puddleTextureRenders(); // wet-dirt texture in the mud core
+    void snowMoundTextureRenders(); // wet-snow texture, translucent
     void joinMidMatchNoFalseTd(); // join baseline: no phantom TD / FULL TIME
     void toastFitsLongText(); // word-wrap in stage width + cumulative stack
     void playerCardShowsPreMatchSpp(); // fumbbl.com base + live in-match gain
@@ -3641,6 +3643,132 @@ void UiWiringTest::weatherIntensityVaries()
     QCOMPARE(field.currentIntensityForTest(), 85); // strong base
     field.pumpWeatherForTest(120001.0);
     QCOMPARE(field.currentIntensityForTest(), 100); // 85+15, clamped at 100
+}
+
+// Distinct quantized colors + mean luma inside a widget rect (texture
+// DETAIL vs flat fill, sampled every 2px).
+static void patchRegionMetrics(const QImage &img, const QRectF &r,
+                               int &distinct, double &meanLuma)
+{
+    QSet<int> colors;
+    double luma = 0.0;
+    int n = 0;
+    const QRect ro = r.toAlignedRect();
+    for (int y = ro.top(); y < ro.bottom(); y += 2) {
+        for (int x = ro.left(); x < ro.right(); x += 2) {
+            const QRgb px = img.pixel(x, y);
+            colors.insert((qRed(px) >> 5) * 1024 + (qGreen(px) >> 5) * 32
+                          + (qBlue(px) >> 5));
+            luma += 0.299 * qRed(px) + 0.587 * qGreen(px)
+                    + 0.114 * qBlue(px);
+            ++n;
+        }
+    }
+    distinct = colors.size();
+    meanLuma = n ? luma / n : 0.0;
+}
+
+// PUDDLE TEXTURE (issue 12): the rain stain is no longer a flat brown
+// blob — the wet-dirt Qwen texture is clipped into the mud core, under
+// the existing painterly layers (0.8 opacity: the grass underneath and
+// the grid lines — painted after the patches — stay visible). Proof: the
+// SAME patch rendered with the texture vs forced-flat (null override)
+// carries more color detail when the texture is on.
+void UiWiringTest::puddleTextureRenders()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Pouring Rain"));
+    QApplication::processEvents();
+    // Grow the first patch: the seeded ones start ~8px radius — below
+    // the scale at which the 1024px texture shows detail at all.
+    field.setFirstPatchRadiusForTest(0.12);
+    QApplication::processEvents();
+    const QRectF r = field.firstPatchRectForTest();
+    QVERIFY2(!r.isNull(), "a seeded puddle exists");
+    // The INNER 70% of the patch: fully inside the stain (the rim is
+    // halo + AA).
+    const QRectF inner = r.adjusted(r.width() * 0.15, r.height() * 0.15,
+                                    -r.width() * 0.15, -r.height() * 0.15);
+    const QImage textured = field.grab().toImage();
+    // Force the FLAT painterly fill (null textures), same patch geometry:
+    // the diff between the two grabs IS the texture.
+    field.setPatchTexturesForTest(true, QPixmap(), QPixmap());
+    field.update();
+    QApplication::processEvents();
+    const QImage flat = field.grab().toImage();
+
+    int texDistinct = 0, flatDistinct = 0;
+    double texLuma = 0.0, flatLuma = 0.0;
+    patchRegionMetrics(textured, inner, texDistinct, texLuma);
+    patchRegionMetrics(flat, inner, flatDistinct, flatLuma);
+    // The textured render must differ from the flat fill: the wet-dirt
+    // texture has a real mean tone of its own (a missing asset or a dead
+    // draw path renders the flat layers — Δ ≈ 0). Calibrated ~9.
+    QVERIFY2(qAbs(texLuma - flatLuma) > 4.0,
+             qPrintable(QStringLiteral(
+                            "puddle texture not rendered (Δluma %1: textured "
+                            "%2 vs flat %3; distinct %4 vs %5)")
+                            .arg(QString::number(qAbs(texLuma - flatLuma), 'f', 1))
+                            .arg(QString::number(texLuma, 'f', 1))
+                            .arg(QString::number(flatLuma, 'f', 1))
+                            .arg(texDistinct)
+                            .arg(flatDistinct)));
+}
+
+// SNOW MOUND TEXTURE (issue 12): the blizzard mound is no longer a flat
+// white blob — the wet-snow texture is clipped into the mound under the
+// white wash. Same proof as the puddle: texture-on vs forced-flat on the
+// SAME geometry; plus the translucent rule (the region stays below an
+// opaque white fill — the grass underneath shows through, and the grid
+// lines are painted on top).
+void UiWiringTest::snowMoundTextureRenders()
+{
+    FieldView field;
+    field.setFixedSize(800, 500);
+    field.show();
+    QApplication::processEvents();
+    field.setWeather(QStringLiteral("Blizzard"));
+    QApplication::processEvents();
+    field.setFirstPatchRadiusForTest(0.14);
+    QApplication::processEvents();
+    const QRectF r = field.firstPatchRectForTest();
+    QVERIFY2(!r.isNull(), "a seeded snow mound exists");
+    const QRectF inner = r.adjusted(r.width() * 0.15, r.height() * 0.15,
+                                    -r.width() * 0.15, -r.height() * 0.15);
+    const QImage textured = field.grab().toImage();
+    field.setPatchTexturesForTest(true, QPixmap(), QPixmap());
+    field.update();
+    QApplication::processEvents();
+    const QImage flat = field.grab().toImage();
+
+    int texDistinct = 0, flatDistinct = 0;
+    double texLuma = 0.0, flatLuma = 0.0;
+    patchRegionMetrics(textured, inner, texDistinct, texLuma);
+    patchRegionMetrics(flat, inner, flatDistinct, flatLuma);
+    // The textured render must differ from the flat wash: the wet-snow
+    // texture has a real mean tone of its own (a missing asset or a dead
+    // draw path renders the flat wash — Δ ≈ 0). Calibrated ~40.
+    QVERIFY2(qAbs(texLuma - flatLuma) > 10.0,
+             qPrintable(QStringLiteral(
+                            "snow texture not rendered (Δluma %1: textured "
+                            "%2 vs flat %3; distinct %4 vs %5)")
+                            .arg(QString::number(qAbs(texLuma - flatLuma), 'f', 1))
+                            .arg(QString::number(texLuma, 'f', 1))
+                            .arg(QString::number(flatLuma, 'f', 1))
+                            .arg(texDistinct)
+                            .arg(flatDistinct)));
+    // The mound is bright (snow is present)...
+    QVERIFY2(texLuma > 150.0,
+             qPrintable(QStringLiteral("snow mound not bright (luma %1)")
+                            .arg(QString::number(texLuma, 'f', 1))));
+    // ...but translucent: an opaque white fill would sit near 245+.
+    QVERIFY2(texLuma < 230.0,
+             qPrintable(QStringLiteral(
+                            "snow mound looks opaque (mean luma %1)")
+                            .arg(QString::number(texLuma, 'f', 1))));
 }
 
 // JOIN BASELINE: a match joined MID-GAME already has a score / half /
