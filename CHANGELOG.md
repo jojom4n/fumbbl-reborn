@@ -38,6 +38,10 @@ record is `project(fumbbl-qt VERSION ...)` in `CMakeLists.txt`
 - **File menu order**: Stop Replay is no longer a menu item (it is the
   control in the transport bar); Log out sits after all the other items,
   right before Quit.
+- **Toast size**: the pills are sized from the label's own sizeHint (with
+  a safety margin) instead of a hand-measured text advance, so the toast
+  always covers the FULL text — special characters included and the
+  trailing "(N)" of a player name is never clipped.
 - **Inducement badges**: smoother anti-aliased edges (a progressive alpha
   blur + resize instead of one large bilinear downscale of the keyed edge)
   and a clean grayscale for spent badges (no more black box).

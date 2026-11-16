@@ -30,17 +30,12 @@ void ToastOverlay::showCenter(const QString &text, int visibleMs)
 {
     if (text.isEmpty())
         return;
-    QFont f = font();
-    f.setPointSizeF(20);
-    f.setBold(true);
-    // Same width formula as makeToast (advance CEILED + 32px padding,
-    // capped at the stage width with word-wrap) so the centering matches
-    // the label's real size.
-    const int maxW = width() - 16;
-    const int w =
-        qMin(int(qCeil(QFontMetricsF(f).horizontalAdvance(text))) + 32, maxW);
-    makeToast(text, QColor(24, 24, 30, 215), qMax(8, (width() - w) / 2), 36,
-              visibleMs, false);
+    // The label sizes itself inside makeToast (its own sizeHint — the exact
+    // font/style it renders with); center it on the FINAL width so the
+    // centering can never drift from the rendered size.
+    QLabel *label =
+        makeToast(text, QColor(24, 24, 30, 215), 0, 36, visibleMs, false);
+    label->move(qMax(8, (width() - label->width()) / 2), 36);
 }
 
 void ToastOverlay::showEdge(const QString &text, const QColor &accent,
@@ -67,25 +62,53 @@ QLabel *ToastOverlay::makeToast(const QString &text, const QColor &bg, int x,
     f.setBold(true);
     f.setPointSizeF(edge ? 11 : 20);
     label->setFont(f);
+    // The padding is the SINGLE SOURCE for both the stylesheet and the
+    // size math (they must never drift apart).
+    const int kPadX = 16, kPadY = 6;
     label->setStyleSheet(QStringLiteral(
-        "background: %1; color: #ffffff; border-radius: 8px; padding: 6px 16px;")
-        .arg(rgba(bg)));
+        "background: %1; color: #ffffff; border-radius: 8px; padding: %2px %3px;")
+        .arg(rgba(bg)).arg(kPadY).arg(kPadX));
     const QFontMetricsF fm(f);
-    // Full text always shown (no elision): a text wider than the stage
-    // word-wraps to a two-line toast instead of clipping (user-reported:
-    // the pills were too small for their text).
-    const qreal textW = fm.horizontalAdvance(text);
+    // The border must HUG the text: same font as the label renders with,
+    // the exact number of lines, and the longest line — never wider than
+    // the text (a wrapped pill used to stretch to the stage width) and
+    // never shorter (user-reported, 4th time: "name (9)" lost its closing
+    // parenthesis; special characters that fall back to another font are
+    // covered by the +2px safety margin). Full text always shown (no
+    // elision): a text wider than the stage word-wraps instead of
+    // clipping.
     const int maxW = edge ? width() - 48 : width() - 16;
     int w, h;
-    if (textW + 32 > maxW && maxW > 0) {
+    if (maxW > 0 && fm.horizontalAdvance(text) + 2 * kPadX > maxW) {
+        // Word-wrap: the LINE COUNT/height comes from the label's own
+        // layout (sizeHint with word wrap at maxW — the same engine that
+        // renders, per-glyph grid rounding included), so the border has
+        // the exact number of lines. The width is the LONGEST LINE
+        // (metrics block) — the pill hugs the text instead of stretching
+        // to the stage width — plus a few px for the grid rounding of
+        // that line. The content width stays >= the longest line, so the
+        // label's own re-wrap can only merge lines, never add them.
         label->setWordWrap(true);
-        w = maxW;
-        h = edge ? 46 : 58; // two lines
+        label->setGeometry(x, y, maxW, maxW);
+        const QSize hint = label->sizeHint();
+        const QRectF block = fm.boundingRect(
+            QRectF(0, 0, maxW - 2 * kPadX, 100000),
+            Qt::TextWordWrap | Qt::TextDontClip, text);
+        w = qMin(int(qCeil(block.width())) + 2 * kPadX + 4, maxW);
+        h = hint.height() + 2;
     } else {
-        // CEIL the advance: int() truncation left the last glyph short by
-        // a fraction of a pixel (and the padding is exactly 16px per side).
-        w = int(qCeil(textW)) + 32;
-        h = edge ? 30 : 44;
+        // Single line: the label's OWN sizeHint — measured by the same
+        // layout engine that renders (QFontMetricsF's float advance runs
+        // a few px SHORT of the grid-rounded rendered text, which is how
+        // the last glyph got clipped). +2px safety margin for special
+        // characters that fall back to another font.
+        QSize s = label->sizeHint();
+        s.setWidth(s.width() + 2);
+        if (maxW > 0)
+            s.setWidth(qMin(s.width(), maxW));
+        s.setHeight(s.height() + 2);
+        w = s.width();
+        h = s.height();
     }
     label->setGeometry(x, y, w, h);
     label->show();
